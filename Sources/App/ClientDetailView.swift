@@ -11,7 +11,7 @@ struct ClientDetailView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: Theme.cardSpacing) {
                 volumeChart
                 fuelChart
                 bodyweightChart
@@ -21,6 +21,8 @@ struct ClientDetailView: View {
             }
             .padding()
         }
+        .liftScreen()
+        .background(Theme.background)
         .navigationTitle(client.name)
     }
 
@@ -33,10 +35,10 @@ struct ClientDetailView: View {
             }
             return (day.dayKey, volume)
         }
-        return VStack(alignment: .leading) {
-            Text("Training Volume").font(.headline)
+        return LiftCard(title: "Training Volume") {
             Chart(points, id: \.0) { point in
                 BarMark(x: .value("Day", point.0), y: .value("Volume (lb)", point.1))
+                    .foregroundStyle(Theme.accent)
             }
             .frame(height: 180)
         }
@@ -49,15 +51,19 @@ struct ClientDetailView: View {
             guard let calories = day.foodCalories else { return nil }
             return (day.dayKey, calories)
         }
-        return VStack(alignment: .leading) {
-            Text("Fuel").font(.headline)
+        return LiftCard(title: "Fuel") {
             Chart {
                 ForEach(points, id: \.0) { point in
                     LineMark(x: .value("Day", point.0), y: .value("Calories", point.1))
+                        .foregroundStyle(Theme.accent)
                 }
                 if let goal = client.goal {
+                    // Reference line, not the data itself: hairline keeps it
+                    // legible as "the goal" without competing with the
+                    // accent-colored data line, matching how MacroProgressRow
+                    // uses hairline for its background track.
                     RuleMark(y: .value("Goal", goal.calories))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.hairline)
                 }
             }
             .frame(height: 180)
@@ -71,11 +77,12 @@ struct ClientDetailView: View {
             guard let weight = day.bodyweightLb else { return nil }
             return (day.dayKey, weight)
         }
-        return VStack(alignment: .leading) {
-            Text("Bodyweight").font(.headline)
+        return LiftCard(title: "Bodyweight") {
             Chart(points, id: \.0) { point in
                 LineMark(x: .value("Day", point.0), y: .value("Weight (lb)", point.1))
+                    .foregroundStyle(Theme.accent)
                 PointMark(x: .value("Day", point.0), y: .value("Weight (lb)", point.1))
+                    .foregroundStyle(Theme.accent)
             }
             .frame(height: 180)
         }
@@ -89,21 +96,23 @@ struct ClientDetailView: View {
                 .map { (day.dayKey, $0) }
         }, by: { $0.1.exerciseName })
 
-        return VStack(alignment: .leading, spacing: 12) {
-            Text("Estimated 1RM").font(.headline)
-            ForEach(byLift.keys.sorted(), id: \.self) { lift in
-                let points = (byLift[lift] ?? []).map { dayKey, set -> (String, Double) in
-                    let weight = set.weightLb ?? 0
-                    let reps = Double(set.reps ?? 0)
-                    let estimate = weight * (1 + reps / 30)   // Epley
-                    return (dayKey, estimate)
-                }
-                VStack(alignment: .leading) {
-                    Text(lift).font(.subheadline)
-                    Chart(points, id: \.0) { point in
-                        LineMark(x: .value("Day", point.0), y: .value("Est. 1RM (lb)", point.1))
+        return LiftCard(title: "Estimated 1RM") {
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(byLift.keys.sorted(), id: \.self) { lift in
+                    let points = (byLift[lift] ?? []).map { dayKey, set -> (String, Double) in
+                        let weight = set.weightLb ?? 0
+                        let reps = Double(set.reps ?? 0)
+                        let estimate = weight * (1 + reps / 30)   // Epley
+                        return (dayKey, estimate)
                     }
-                    .frame(height: 100)
+                    VStack(alignment: .leading) {
+                        Text(lift).font(.subheadline).foregroundStyle(Theme.textSecondary)
+                        Chart(points, id: \.0) { point in
+                            LineMark(x: .value("Day", point.0), y: .value("Est. 1RM (lb)", point.1))
+                                .foregroundStyle(Theme.accent)
+                        }
+                        .frame(height: 100)
+                    }
                 }
             }
         }
@@ -112,15 +121,16 @@ struct ClientDetailView: View {
     // MARK: - Week table
 
     private var weekTable: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Weeks").font(.headline)
-            ForEach(sortedDays) { day in
-                HStack {
-                    Text(day.dayKey)
-                    Spacer()
-                    if let name = day.sessionName { Text(name).foregroundStyle(.secondary) }
+        LiftCard(title: "Weeks") {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(sortedDays) { day in
+                    HStack {
+                        Text(day.dayKey).foregroundStyle(Theme.textPrimary)
+                        Spacer()
+                        if let name = day.sessionName { Text(name).foregroundStyle(Theme.textSecondary) }
+                    }
+                    .font(.caption)
                 }
-                .font(.caption)
             }
         }
     }
@@ -128,14 +138,18 @@ struct ClientDetailView: View {
     // MARK: - Session log
 
     private var sessionLog: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Sessions").font(.headline)
-            ForEach(sortedDays.reversed()) { day in
-                DisclosureGroup(day.sessionName ?? day.dayKey) {
-                    ForEach(day.sets) { set in
-                        Text("\(set.exerciseName): \(Int(set.weightLb ?? 0)) lb × \(set.reps ?? 0)")
-                            .font(.caption)
+        LiftCard(title: "Sessions") {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(sortedDays.reversed()) { day in
+                    DisclosureGroup(day.sessionName ?? day.dayKey) {
+                        ForEach(day.sets) { set in
+                            Text("\(set.exerciseName): \(Int(set.weightLb ?? 0)) lb × \(set.reps ?? 0)")
+                                .font(.caption)
+                                .foregroundStyle(Theme.textSecondary)
+                        }
                     }
+                    .foregroundStyle(Theme.textPrimary)
+                    .tint(Theme.accent)
                 }
             }
         }
