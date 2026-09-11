@@ -1,10 +1,12 @@
 import SwiftUI
+import SwiftData
 
 @main
 struct CoachApp: App {
     var body: some Scene {
         WindowGroup {
-            Text("Coach")
+            RootView()
         }
+        .modelContainer(for: [Client.self, Goal.self, TrainingDay.self, ExerciseSet.self, FoodEntry.self])
     }
 }
