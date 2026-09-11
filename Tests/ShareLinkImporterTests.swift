@@ -138,4 +138,50 @@ final class ShareLinkImporterTests: XCTestCase {
         XCTAssertEqual(clients.first?.goal?.calories, 2400)
         XCTAssertEqual(clients.first?.goal?.proteinG, 190)
     }
+
+    /// `CoachShare.swift` (the real encoder) always emits `servings: 1` and
+    /// puts as-eaten totals directly in the macro slots — every other test
+    /// fixture in this file also uses `servings: 1`, which would silently
+    /// pass even if the importer wrongly multiplied macros by `servings`.
+    /// This uses `servings: 2` specifically to catch that mutant.
+    func testItemizedFoodMacrosAreNeverMultipliedByServings() throws {
+        let context = try makeContext()
+        let day = WireDay(k: 0, n: nil, fo: nil, bw: nil, st: nil, w: nil, ft: nil,
+                           f: [[0, 2, 201, 22, 4, 0, 0, 1]])
+        var withFoodDict = payload(days: [day])
+        withFoodDict = ShareLinkPayload(v: withFoodDict.v, c: withFoodDict.c, g: withFoodDict.g,
+                                        r: withFoodDict.r, t: withFoodDict.t, z: withFoodDict.z,
+                                        x: withFoodDict.x, fd: ["Chicken breast"], d: withFoodDict.d)
+        try ShareLinkImporter.importPayload(withFoodDict, into: context)
+
+        let food = try XCTUnwrap(try context.fetch(FetchDescriptor<FoodEntry>()).first)
+        XCTAssertEqual(food.servings, 2)
+        XCTAssertEqual(food.calories, 201)   // NOT 402 — never multiplied by servings
+    }
+
+    /// A malformed or adversarial pasted link could carry a negative index —
+    /// this must be dropped like any other out-of-range index, not crash.
+    func testNegativeExerciseIndexIsDroppedRatherThanCrashing() throws {
+        let context = try makeContext()
+        let entry = WireWorkoutEntry(exerciseIndex: -1, sets: [[185, 5, 8]])
+        let day = WireDay(k: 0, n: nil, fo: nil, bw: nil, st: nil, w: [entry], ft: nil, f: nil)
+        try ShareLinkImporter.importPayload(payload(days: [day]), into: context)
+
+        let sets = try context.fetch(FetchDescriptor<ExerciseSet>())
+        XCTAssertTrue(sets.isEmpty)
+    }
+
+    func testNegativeFoodIndexIsDroppedRatherThanCrashing() throws {
+        let context = try makeContext()
+        let day = WireDay(k: 0, n: nil, fo: nil, bw: nil, st: nil, w: nil, ft: nil,
+                           f: [[-1, 1, 201, 22, 4, 0, 0, 1]])
+        var withFoodDict = payload(days: [day])
+        withFoodDict = ShareLinkPayload(v: withFoodDict.v, c: withFoodDict.c, g: withFoodDict.g,
+                                        r: withFoodDict.r, t: withFoodDict.t, z: withFoodDict.z,
+                                        x: withFoodDict.x, fd: ["Chicken breast"], d: withFoodDict.d)
+        try ShareLinkImporter.importPayload(withFoodDict, into: context)
+
+        let foods = try context.fetch(FetchDescriptor<FoodEntry>())
+        XCTAssertTrue(foods.isEmpty)
+    }
 }
