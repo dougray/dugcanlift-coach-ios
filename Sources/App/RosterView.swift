@@ -18,9 +18,27 @@ struct RosterView: View {
                 .foregroundStyle(Theme.textPrimary)
                 .listRowBackground(Theme.background)
             } else {
+                if !silentClients.isEmpty {
+                    Section {
+                        Text("\(silentClients.count) client\(silentClients.count == 1 ? "" : "s") logged nothing in a week: \(silentClients.map(\.name).joined(separator: ", "))")
+                            .font(.caption)
+                            .foregroundStyle(Theme.accent)
+                    }
+                    .listRowBackground(Theme.background)
+                }
                 ForEach(clients) { client in
-                    NavigationLink(client.name) {
+                    NavigationLink {
                         ClientDetailView(client: client)
+                    } label: {
+                        VStack(alignment: .leading) {
+                            Text(client.name)
+                            Text(silenceText(for: client))
+                                .font(.caption)
+                                .foregroundStyle(
+                                    (client.daysSinceLastLoggedDay ?? Int.max) >= 7
+                                        ? Theme.accent : Theme.textSecondary
+                                )
+                        }
                     }
                     .foregroundStyle(Theme.textPrimary)
                     .listRowBackground(Theme.surface)
@@ -37,5 +55,16 @@ struct RosterView: View {
         .sheet(isPresented: $showingPasteLink) {
             PasteLinkView()
         }
+    }
+
+    private func silenceText(for client: Client) -> String {
+        guard let days = client.daysSinceLastLoggedDay else { return "Nothing logged yet" }
+        if days <= 0 { return "Logged today" }
+        if days == 1 { return "Logged yesterday" }
+        return "Logged \(days) days ago"
+    }
+
+    private var silentClients: [Client] {
+        clients.filter { ($0.daysSinceLastLoggedDay ?? Int.max) >= 7 }
     }
 }

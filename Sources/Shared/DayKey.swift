@@ -35,4 +35,11 @@ enum DayKey {
         else { return nil }
         return string(from: shifted)
     }
+
+    /// Whole days between two date-only keys (`to` minus `from`) -- for
+    /// "logged N days ago"-style silence indicators.
+    static func daysBetween(_ from: String, _ to: String) -> Int? {
+        guard let fromDate = date(from: from), let toDate = date(from: to) else { return nil }
+        return utcCalendar.dateComponents([.day], from: fromDate, to: toDate).day
+    }
 }

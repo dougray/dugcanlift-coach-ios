@@ -24,6 +24,19 @@ final class Client {
     }
 }
 
+extension Client {
+    /// Days since this client's most-recently-LOGGED day (derived from
+    /// their actual training data, not `lastImportedAt` -- re-pasting an
+    /// old link from a silent client should not make them look active).
+    /// `nil` means they have never logged anything at all. Mirrors the
+    /// web Coach app's own silence-indicator logic (`app.js`'s
+    /// `lastLogged`).
+    var daysSinceLastLoggedDay: Int? {
+        guard let mostRecentDayKey = trainingDays.map(\.dayKey).max() else { return nil }
+        return DayKey.daysBetween(mostRecentDayKey, DayKey.string(from: .now))
+    }
+}
+
 @Model
 final class Goal {
     var client: Client?
