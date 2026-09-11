@@ -146,7 +146,11 @@ struct ClientDetailView: View {
                 ForEach(sortedDays.reversed()) { day in
                     DisclosureGroup(day.sessionName ?? day.dayKey) {
                         ForEach(day.sets) { set in
-                            Text("\(set.exerciseName): \(Int(set.weightLb ?? 0)) lb × \(set.reps ?? 0)")
+                            // `Int(Double)` traps on an out-of-range value, and
+                            // `weightLb` comes straight off a pasted link with
+                            // no bound -- same crash class already fixed in
+                            // `ShareLinkImporter`, reachable here on display.
+                            Text("\(set.exerciseName): \(Int(exactly: (set.weightLb ?? 0).rounded()) ?? 0) lb × \(set.reps ?? 0)")
                                 .font(.caption)
                                 .foregroundStyle(Theme.textSecondary)
                         }
