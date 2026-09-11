@@ -1,0 +1,141 @@
+import XCTest
+import SwiftData
+@testable import Coach
+
+final class ShareLinkImporterTests: XCTestCase {
+
+    private func makeContext() throws -> ModelContext {
+        let schema = Schema([Client.self, Goal.self, TrainingDay.self, ExerciseSet.self, FoodEntry.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        return ModelContext(container)
+    }
+
+    private func payload(clientID: String = "b7f3a1c8", r: String = "2026-09-01",
+                          days: [WireDay]) -> ShareLinkPayload {
+        ShareLinkPayload(
+            v: 1,
+            c: WireClient(i: clientID, n: "Jordan Reyes", s: nil, a: nil, h: nil, u: "lb", p: "ios"),
+            g: nil, r: r, t: "2026-09-10", z: 1, x: ["Back Squat|Barbell"], fd: nil, d: days
+        )
+    }
+
+    func testCreatesNewClientOnFirstImport() throws {
+        let context = try makeContext()
+        try ShareLinkImporter.importPayload(payload(days: []), into: context)
+
+        let clients = try context.fetch(FetchDescriptor<Client>())
+        XCTAssertEqual(clients.count, 1)
+        XCTAssertEqual(clients.first?.id, "b7f3a1c8")
+        XCTAssertEqual(clients.first?.name, "Jordan Reyes")
+    }
+
+    func testSecondImportReusesExistingClientRatherThanDuplicating() throws {
+        let context = try makeContext()
+        try ShareLinkImporter.importPayload(payload(days: []), into: context)
+        try ShareLinkImporter.importPayload(payload(days: []), into: context)
+
+        let clients = try context.fetch(FetchDescriptor<Client>())
+        XCTAssertEqual(clients.count, 1)
+    }
+
+    func testDayOffsetResolvesToRealDateFromR() throws {
+        let context = try makeContext()
+        let day = WireDay(k: 3, n: "Push Day", fo: "POWERLIFTING", bw: nil, st: nil, w: nil, ft: nil, f: nil)
+        try ShareLinkImporter.importPayload(payload(r: "2026-09-01", days: [day]), into: context)
+
+        let days = try context.fetch(FetchDescriptor<TrainingDay>())
+        XCTAssertEqual(days.first?.dayKey, "2026-09-04")   // 2026-09-01 + 3 days
+        XCTAssertEqual(days.first?.sessionName, "Push Day")
+    }
+
+    func testWorkoutSetsResolveExerciseNameFromDictionary() throws {
+        let context = try makeContext()
+        let entry = WireWorkoutEntry(exerciseIndex: 0, sets: [[185, 5, 8]])
+        let day = WireDay(k: 0, n: nil, fo: nil, bw: nil, st: nil, w: [entry], ft: nil, f: nil)
+        try ShareLinkImporter.importPayload(payload(days: [day]), into: context)
+
+        let sets = try context.fetch(FetchDescriptor<ExerciseSet>())
+        XCTAssertEqual(sets.count, 1)
+        XCTAssertEqual(sets.first?.exerciseName, "Back Squat")
+        XCTAssertEqual(sets.first?.equipment, "Barbell")
+        XCTAssertEqual(sets.first?.weightLb, 185)
+        XCTAssertEqual(sets.first?.reps, 5)
+        XCTAssertEqual(sets.first?.rpe, 8)
+        XCTAssertFalse(sets.first!.isWarmup)
+    }
+
+    func testShortSetTupleLeavesTrailingFieldsNil() throws {
+        let context = try makeContext()
+        // A 1-element tuple: only weight recorded, everything else implicitly absent.
+        let entry = WireWorkoutEntry(exerciseIndex: 0, sets: [[135]])
+        let day = WireDay(k: 0, n: nil, fo: nil, bw: nil, st: nil, w: [entry], ft: nil, f: nil)
+        try ShareLinkImporter.importPayload(payload(days: [day]), into: context)
+
+        let set = try XCTUnwrap(try context.fetch(FetchDescriptor<ExerciseSet>()).first)
+        XCTAssertEqual(set.weightLb, 135)
+        XCTAssertNil(set.reps)
+        XCTAssertNil(set.rpe)
+        XCTAssertFalse(set.isWarmup)
+    }
+
+    func testItemizedFoodDoesNotMultiplyByServings() throws {
+        let context = try makeContext()
+        // [foodIndex, servings(=1), kcal, protein, fat, carbs, fiber, meal]
+        let day = WireDay(k: 0, n: nil, fo: nil, bw: nil, st: nil, w: nil, ft: nil,
+                           f: [[0, 1, 201, 22, 4, 0, 0, 1]])
+        var withFoodDict = payload(days: [day])
+        withFoodDict = ShareLinkPayload(v: withFoodDict.v, c: withFoodDict.c, g: withFoodDict.g,
+                                        r: withFoodDict.r, t: withFoodDict.t, z: withFoodDict.z,
+                                        x: withFoodDict.x, fd: ["Chicken breast"], d: withFoodDict.d)
+        try ShareLinkImporter.importPayload(withFoodDict, into: context)
+
+        let food = try XCTUnwrap(try context.fetch(FetchDescriptor<FoodEntry>()).first)
+        XCTAssertEqual(food.foodName, "Chicken breast")
+        XCTAssertEqual(food.calories, 201)   // NOT 201 * servings-if-misread
+        XCTAssertEqual(food.meal, 1)
+    }
+
+    func testReimportingSameDayReplacesItEntirely() throws {
+        let context = try makeContext()
+        let firstDay = WireDay(k: 0, n: "Original", fo: nil, bw: 200, st: nil, w: nil, ft: nil, f: nil)
+        try ShareLinkImporter.importPayload(payload(days: [firstDay]), into: context)
+
+        let secondDay = WireDay(k: 0, n: "Replaced", fo: nil, bw: 198, st: nil, w: nil, ft: nil, f: nil)
+        try ShareLinkImporter.importPayload(payload(days: [secondDay]), into: context)
+
+        let days = try context.fetch(FetchDescriptor<TrainingDay>())
+        XCTAssertEqual(days.count, 1)   // not 2 — replaced, not appended
+        XCTAssertEqual(days.first?.sessionName, "Replaced")
+        XCTAssertEqual(days.first?.bodyweightLb, 198)
+    }
+
+    func testDayOutsideNewPayloadWindowIsUntouched() throws {
+        let context = try makeContext()
+        let day1 = WireDay(k: 0, n: "Day 1", fo: nil, bw: nil, st: nil, w: nil, ft: nil, f: nil)
+        try ShareLinkImporter.importPayload(payload(r: "2026-09-01", days: [day1]), into: context)
+
+        // A later import whose window doesn't include 2026-09-01 at all.
+        let day2 = WireDay(k: 0, n: "Day 2", fo: nil, bw: nil, st: nil, w: nil, ft: nil, f: nil)
+        try ShareLinkImporter.importPayload(payload(r: "2026-09-05", days: [day2]), into: context)
+
+        let days = try context.fetch(FetchDescriptor<TrainingDay>())
+        XCTAssertEqual(days.count, 2)
+        XCTAssertTrue(days.contains { $0.sessionName == "Day 1" })
+        XCTAssertTrue(days.contains { $0.sessionName == "Day 2" })
+    }
+
+    func testGoalIsImportedWhenPresent() throws {
+        let context = try makeContext()
+        var withGoal = payload(days: [])
+        withGoal = ShareLinkPayload(v: withGoal.v, c: withGoal.c,
+                                    g: WireGoal(c: 2400, p: 190, f: 70, cb: 220, fb: 34),
+                                    r: withGoal.r, t: withGoal.t, z: withGoal.z, x: withGoal.x,
+                                    fd: withGoal.fd, d: withGoal.d)
+        try ShareLinkImporter.importPayload(withGoal, into: context)
+
+        let clients = try context.fetch(FetchDescriptor<Client>())
+        XCTAssertEqual(clients.first?.goal?.calories, 2400)
+        XCTAssertEqual(clients.first?.goal?.proteinG, 190)
+    }
+}
