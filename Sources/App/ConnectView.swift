@@ -28,6 +28,20 @@ struct ConnectView: View {
             .listRowBackground(Theme.surface)
 
             Section {
+                Text(inviteText)
+                    .font(.footnote)
+                    .foregroundStyle(Theme.textSecondary)
+                ShareLink(item: inviteText) {
+                    Label("Share Invite", systemImage: "square.and.arrow.up")
+                }
+                .tint(Theme.accent)
+            } header: {
+                Text("Invite a Client")
+                    .foregroundStyle(Theme.textSecondary)
+            }
+            .listRowBackground(Theme.surface)
+
+            Section {
                 Button("Save Backup") { exportBackup() }
                     .foregroundStyle(Theme.accent)
                 Button("Restore from Backup") { showingImporter = true }
@@ -56,6 +70,16 @@ struct ConnectView: View {
         .fileImporter(isPresented: $showingImporter, allowedContentTypes: [.json]) { result in
             importBackup(result)
         }
+    }
+
+    private var inviteText: String {
+        let name = coachName.isEmpty ? "your coach" : coachName
+        let email = coachEmail.isEmpty ? "[enter your email above]" : coachEmail
+        return """
+        Hi! I'm \(name), your coach on LIFT. To share your training and \
+        nutrition log with me, open LIFT, go to Settings, and use \
+        "Send to Coach" with this email address: \(email)
+        """
     }
 
     private func exportBackup() {
