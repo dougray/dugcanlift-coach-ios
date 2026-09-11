@@ -49,8 +49,10 @@ struct ClientDetailView: View {
 
     private var fuelChart: some View {
         let points = sortedDays.compactMap { day -> (String, Double)? in
-            guard let calories = day.foodCalories else { return nil }
-            return (day.dayKey, calories)
+            if let calories = day.foodCalories { return (day.dayKey, calories) }
+            guard !day.foodEntries.isEmpty else { return nil }
+            let total = day.foodEntries.reduce(0.0) { $0 + $1.calories }
+            return (day.dayKey, total)
         }
         return LiftCard(title: "Fuel") {
             Chart {
