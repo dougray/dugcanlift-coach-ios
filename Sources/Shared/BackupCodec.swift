@@ -18,6 +18,7 @@ enum BackupCodec {
         var name: String
         var displayUnit: String
         var platform: String?
+        var lastImportedAt: Date?
         var goal: BackupGoal?
         var days: [BackupDay]
     }
@@ -60,6 +61,7 @@ enum BackupCodec {
         let backup = Backup(v: 1, clients: clients.map { client in
             BackupClient(
                 id: client.id, name: client.name, displayUnit: client.displayUnit, platform: client.platform,
+                lastImportedAt: client.lastImportedAt,
                 goal: client.goal.map { BackupGoal(calories: $0.calories, proteinG: $0.proteinG,
                                                     fatG: $0.fatG, carbsG: $0.carbsG, fiberG: $0.fiberG) },
                 days: client.trainingDays.map { day in
@@ -95,7 +97,8 @@ enum BackupCodec {
 
         for backupClient in backup.clients {
             let client = Client(id: backupClient.id, name: backupClient.name,
-                                 displayUnit: backupClient.displayUnit, platform: backupClient.platform)
+                                 displayUnit: backupClient.displayUnit, platform: backupClient.platform,
+                                 lastImportedAt: backupClient.lastImportedAt ?? .now)
             context.insert(client)
 
             if let backupGoal = backupClient.goal {

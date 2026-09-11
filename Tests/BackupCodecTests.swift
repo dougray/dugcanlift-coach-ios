@@ -57,4 +57,20 @@ final class BackupCodecTests: XCTestCase {
         let context = try! makeContext()
         XCTAssertThrowsError(try BackupCodec.restore(from: Data("not json".utf8), into: context))
     }
+
+    func testExportThenRestorePreservesLastImportedAt() throws {
+        let sourceContext = try makeContext()
+        let originalTimestamp = Date(timeIntervalSince1970: 1_700_000_000)
+        let client = Client(id: "b7f3a1c8", name: "Jordan Reyes", displayUnit: "lb",
+                             platform: "ios", lastImportedAt: originalTimestamp)
+        sourceContext.insert(client)
+        try sourceContext.save()
+
+        let data = try BackupCodec.export(from: sourceContext)
+        let destinationContext = try makeContext()
+        try BackupCodec.restore(from: data, into: destinationContext)
+
+        let restored = try destinationContext.fetch(FetchDescriptor<Client>()).first
+        XCTAssertEqual(restored?.lastImportedAt, originalTimestamp)
+    }
 }
