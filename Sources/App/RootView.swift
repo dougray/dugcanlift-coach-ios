@@ -5,5 +5,7 @@ struct RootView: View {
         NavigationStack {
             RosterView()
         }
+        .tint(Theme.accent)
+        .preferredColorScheme(.dark)
     }
 }
