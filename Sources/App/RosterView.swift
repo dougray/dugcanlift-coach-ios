@@ -17,7 +17,7 @@ struct RosterView: View {
             } else {
                 ForEach(clients) { client in
                     NavigationLink(client.name) {
-                        Text(client.name) // Replaced by ClientDetailView in Task 5.
+                        ClientDetailView(client: client)
                     }
                 }
             }
