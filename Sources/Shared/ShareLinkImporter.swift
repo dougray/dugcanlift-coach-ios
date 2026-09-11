@@ -62,7 +62,7 @@ enum ShareLinkImporter {
         client.trainingDays.append(day)
 
         for entry in wireDay.w ?? [] {
-            guard entry.exerciseIndex < exerciseDict.count else { continue }
+            guard exerciseDict.indices.contains(entry.exerciseIndex) else { continue }
             let parts = exerciseDict[entry.exerciseIndex].split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false)
             let name = String(parts.first ?? "")
             let equipment = parts.count > 1 && !parts[1].isEmpty ? String(parts[1]) : nil
@@ -94,7 +94,7 @@ enum ShareLinkImporter {
 
         for itemized in wireDay.f ?? [] where itemized.count == 8 {
             let foodIndex = Int(itemized[0])
-            guard let foodDict, foodIndex < foodDict.count else { continue }
+            guard let foodDict, foodDict.indices.contains(foodIndex) else { continue }
             // servings (itemized[1]) is always 1 from the iOS encoder and the
             // macro numbers below are already as-eaten totals — stored as-is,
             // never multiplied.
