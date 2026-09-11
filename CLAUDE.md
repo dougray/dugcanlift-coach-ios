@@ -62,6 +62,15 @@ tested behavior. Where the two disagree, match the real code, not the
 prose — see the design spec's "Decoding" section for three specific,
 already-identified discrepancies.
 
+Note on itemized-food servings: `lift-ios`'s encoder always sends
+`servings: 1` with already-multiplied totals, so "never multiply" looked
+like a safe reading of the wire format when only that encoder was
+checked. That's `lift-ios`-specific behavior, not a general wire-format
+rule — Android's real encoder sends true per-serving macros plus a real
+servings count, so the importer must multiply on decode (a no-op for
+`lift-ios` payloads, correct for Android ones). See
+`Sources/Shared/ShareLinkImporter.swift`.
+
 **Weights are pounds on the wire, always** (`SHARE-FORMAT.md`), regardless
 of what unit a client's own app displays. Don't convert on decode; store
 what the wire says and let a future display-preference feature handle

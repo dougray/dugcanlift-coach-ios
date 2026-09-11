@@ -79,7 +79,13 @@ final class ShareLinkImporterTests: XCTestCase {
         XCTAssertFalse(set.isWarmup)
     }
 
-    func testItemizedFoodDoesNotMultiplyByServings() throws {
+    /// servings: 1 here means the multiplication is a numeric no-op
+    /// (201 * 1 == 201) -- this test only locks in that a servings value
+    /// of 1 doesn't change behavior, not that multiplication never
+    /// happens (see testItemizedFoodMacrosAreMultipliedByServings for
+    /// the servings > 1 case, which is where the earlier "never
+    /// multiply" ruling was actually wrong).
+    func testItemizedFoodWithServingsOfOneIsUnaffectedByMultiplication() throws {
         let context = try makeContext()
         // [foodIndex, servings(=1), kcal, protein, fat, carbs, fiber, meal]
         let day = WireDay(k: 0, n: nil, fo: nil, bw: nil, st: nil, w: nil, ft: nil,
@@ -92,7 +98,7 @@ final class ShareLinkImporterTests: XCTestCase {
 
         let food = try XCTUnwrap(try context.fetch(FetchDescriptor<FoodEntry>()).first)
         XCTAssertEqual(food.foodName, "Chicken breast")
-        XCTAssertEqual(food.calories, 201)   // NOT 201 * servings-if-misread
+        XCTAssertEqual(food.calories, 201)   // 201 * 1 == 201
         XCTAssertEqual(food.meal, 1)
     }
 
@@ -144,7 +150,13 @@ final class ShareLinkImporterTests: XCTestCase {
     /// fixture in this file also uses `servings: 1`, which would silently
     /// pass even if the importer wrongly multiplied macros by `servings`.
     /// This uses `servings: 2` specifically to catch that mutant.
-    func testItemizedFoodMacrosAreNeverMultipliedByServings() throws {
+    /// Android's real encoder sends true per-serving macros plus a real
+    /// servings count (unlike iOS, which always sends servings=1 with
+    /// already-multiplied totals) -- the importer must multiply to read
+    /// an Android-sourced payload correctly. servings: 2 here specifically
+    /// distinguishes "multiplies correctly" from "coincidentally correct
+    /// because servings was 1."
+    func testItemizedFoodMacrosAreMultipliedByServings() throws {
         let context = try makeContext()
         let day = WireDay(k: 0, n: nil, fo: nil, bw: nil, st: nil, w: nil, ft: nil,
                            f: [[0, 2, 201, 22, 4, 0, 0, 1]])
@@ -156,7 +168,7 @@ final class ShareLinkImporterTests: XCTestCase {
 
         let food = try XCTUnwrap(try context.fetch(FetchDescriptor<FoodEntry>()).first)
         XCTAssertEqual(food.servings, 2)
-        XCTAssertEqual(food.calories, 201)   // NOT 402 — never multiplied by servings
+        XCTAssertEqual(food.calories, 402)   // 201 * 2, NOT 201
     }
 
     /// A malformed or adversarial pasted link could carry a negative index —

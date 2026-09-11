@@ -73,7 +73,7 @@ enum ShareLinkImporter {
                     exerciseName: name,
                     equipment: equipment,
                     weightLb: value(at: 0, in: tuple),
-                    reps: value(at: 1, in: tuple).map { Int($0) },
+                    reps: value(at: 1, in: tuple).flatMap { Int(exactly: $0) },
                     rpe: value(at: 2, in: tuple),
                     durationSec: value(at: 3, in: tuple),
                     distanceMeters: value(at: 4, in: tuple),
@@ -93,15 +93,27 @@ enum ShareLinkImporter {
         }
 
         for itemized in wireDay.f ?? [] where itemized.count == 8 {
-            let foodIndex = Int(itemized[0])
-            guard let foodDict, foodDict.indices.contains(foodIndex) else { continue }
-            // servings (itemized[1]) is always 1 from the iOS encoder and the
-            // macro numbers below are already as-eaten totals — stored as-is,
-            // never multiplied.
+            guard let foodIndex = Int(exactly: itemized[0]), foodIndex >= 0,
+                  let foodDict, foodDict.indices.contains(foodIndex),
+                  let meal = Int(exactly: itemized[7])
+            else { continue }
+            let servings = itemized[1]
+            // The macro numbers on the wire are PER SERVING
+            // (SHARE-FORMAT.md's documented convention, and what
+            // Android's real encoder sends). lift-ios's own encoder
+            // always sends servings=1 with as-eaten totals already in
+            // the macro slots, so multiplying is a no-op there -- but
+            // it's required to correctly read an Android-sourced
+            // payload, where servings can be any real value. (Reversed
+            // from an earlier version of this importer, which stored
+            // macros unmultiplied based on iOS-only evidence -- see the
+            // final whole-branch review that caught this against the
+            // real Android encoder.)
             let food = FoodEntry(
-                day: day, foodName: foodDict[foodIndex], servings: itemized[1],
-                calories: itemized[2], proteinG: itemized[3], fatG: itemized[4],
-                carbsG: itemized[5], fiberG: itemized[6], meal: Int(itemized[7])
+                day: day, foodName: foodDict[foodIndex], servings: servings,
+                calories: itemized[2] * servings, proteinG: itemized[3] * servings,
+                fatG: itemized[4] * servings, carbsG: itemized[5] * servings,
+                fiberG: itemized[6] * servings, meal: meal
             )
             context.insert(food)
             day.foodEntries.append(food)
