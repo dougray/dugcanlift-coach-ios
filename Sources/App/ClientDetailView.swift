@@ -31,7 +31,8 @@ struct ClientDetailView: View {
     private var volumeChart: some View {
         let points = sortedDays.map { day -> (String, Double) in
             let volume = day.sets.reduce(0.0) { total, set in
-                total + (set.weightLb ?? 0) * Double(set.reps ?? 0)
+                guard !set.isWarmup else { return total }
+                return total + (set.weightLb ?? 0) * Double(set.reps ?? 0)
             }
             return (day.dayKey, volume)
         }
