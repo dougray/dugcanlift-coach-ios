@@ -24,6 +24,17 @@ enum PlanLinkEncoder {
     /// pounds-entered weight and must store kilograms.
     static func lbToKg(_ lb: Double) -> Double { WeightUnit.pounds.toKilograms(lb) }
 
+    /// `UserDefaults.string(forKey:)` returns `nil` only when the key was
+    /// never set. `ConnectView`'s `@AppStorage` writes `""` the moment a
+    /// coach clears the Name field, and `?? "Your coach"` alone lets that
+    /// empty string straight onto the wire as `n:""`. `ConnectView` itself
+    /// already guards its own use of the same value with `.isEmpty`
+    /// (`inviteText`); this mirrors that.
+    static func coachName(_ raw: String?) -> String {
+        let name = raw ?? ""
+        return name.isEmpty ? "Your coach" : name
+    }
+
     static func fragment(routines: [Routine], sessions: [ScheduledSession],
                          lifterID: String, coachName: String) -> String {
         let workouts = routines.map { routine in

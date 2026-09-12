@@ -112,7 +112,7 @@ struct TrainPlanView: View {
         let fragment = PlanLinkEncoder.fragment(
             routines: used, sessions: mine,
             lifterID: clientID,
-            coachName: UserDefaults.standard.string(forKey: "coachName") ?? "Your coach")
+            coachName: PlanLinkEncoder.coachName(UserDefaults.standard.string(forKey: "coachName")))
         return "https://www.dugcanlift.com/lift/#" + fragment
     }
 }
