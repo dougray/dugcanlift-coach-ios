@@ -131,7 +131,7 @@ enum BackupCodec {
                 }
 
                 for backupFood in backupDay.foodEntries {
-                    let food = FoodEntry(day: day, foodName: backupFood.foodName, servings: backupFood.servings,
+                    let food = ClientFoodEntry(day: day, foodName: backupFood.foodName, servings: backupFood.servings,
                                           calories: backupFood.calories, proteinG: backupFood.proteinG,
                                           fatG: backupFood.fatG, carbsG: backupFood.carbsG,
                                           fiberG: backupFood.fiberG, meal: backupFood.meal)

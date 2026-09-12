@@ -110,7 +110,7 @@ enum ShareLinkImporter {
             // macros unmultiplied based on iOS-only evidence -- see the
             // final whole-branch review that caught this against the
             // real Android encoder.)
-            let food = FoodEntry(
+            let food = ClientFoodEntry(
                 day: day, foodName: foodDict[foodIndex], servings: servings,
                 calories: itemized[2] * servings, proteinG: itemized[3] * servings,
                 fatG: itemized[4] * servings, carbsG: itemized[5] * servings,

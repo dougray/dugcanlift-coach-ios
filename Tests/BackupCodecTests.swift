@@ -5,7 +5,7 @@ import SwiftData
 final class BackupCodecTests: XCTestCase {
 
     private func makeContext() throws -> ModelContext {
-        let schema = Schema([Client.self, Goal.self, TrainingDay.self, ExerciseSet.self, FoodEntry.self])
+        let schema = Schema([Client.self, Goal.self, TrainingDay.self, ExerciseSet.self, ClientFoodEntry.self])
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
         let container = try ModelContainer(for: schema, configurations: [config])
         return ModelContext(container)

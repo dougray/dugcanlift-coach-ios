@@ -6,7 +6,7 @@ import LiftCore
 final class ShareLinkImporterTests: XCTestCase {
 
     private func makeContext() throws -> ModelContext {
-        let schema = Schema([Client.self, Goal.self, TrainingDay.self, ExerciseSet.self, Coach.FoodEntry.self])
+        let schema = Schema([Client.self, Goal.self, TrainingDay.self, ExerciseSet.self, ClientFoodEntry.self])
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
         let container = try ModelContainer(for: schema, configurations: [config])
         return ModelContext(container)
@@ -97,7 +97,7 @@ final class ShareLinkImporterTests: XCTestCase {
                                         x: withFoodDict.x, fd: ["Chicken breast"], d: withFoodDict.d)
         try ShareLinkImporter.importPayload(withFoodDict, into: context)
 
-        let food = try XCTUnwrap(try context.fetch(FetchDescriptor<Coach.FoodEntry>()).first)
+        let food = try XCTUnwrap(try context.fetch(FetchDescriptor<ClientFoodEntry>()).first)
         XCTAssertEqual(food.foodName, "Chicken breast")
         XCTAssertEqual(food.calories, 201)   // 201 * 1 == 201
         XCTAssertEqual(food.meal, 1)
@@ -167,7 +167,7 @@ final class ShareLinkImporterTests: XCTestCase {
                                         x: withFoodDict.x, fd: ["Chicken breast"], d: withFoodDict.d)
         try ShareLinkImporter.importPayload(withFoodDict, into: context)
 
-        let food = try XCTUnwrap(try context.fetch(FetchDescriptor<Coach.FoodEntry>()).first)
+        let food = try XCTUnwrap(try context.fetch(FetchDescriptor<ClientFoodEntry>()).first)
         XCTAssertEqual(food.servings, 2)
         XCTAssertEqual(food.calories, 402)   // 201 * 2, NOT 201
     }
@@ -194,7 +194,7 @@ final class ShareLinkImporterTests: XCTestCase {
                                         x: withFoodDict.x, fd: ["Chicken breast"], d: withFoodDict.d)
         try ShareLinkImporter.importPayload(withFoodDict, into: context)
 
-        let foods = try context.fetch(FetchDescriptor<Coach.FoodEntry>())
+        let foods = try context.fetch(FetchDescriptor<ClientFoodEntry>())
         XCTAssertTrue(foods.isEmpty)
     }
 }
