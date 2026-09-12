@@ -203,6 +203,21 @@ final class PlanLinkEncoderTests: XCTestCase {
                      "a zero here becomes a zero-calorie dinner in the client's day total")
     }
 
+    func testARecipeWithAllZeroMacrosOmitsUJustLikeNilMacros() throws {
+        // MacroFields.entered() (wired in Task 7) returns non-nil the moment
+        // any one field has content, so a coach who types 0 into calories --
+        // or types a number and edits it back to 0 -- produces exactly this
+        // all-zero, non-nil struct. PLAN-FORMAT: never sent as zeros.
+        let recipe = Recipe(name: "Whatever Doug makes", servings: 2,
+                            nutritionPerServing: NutritionFacts())
+        let meal = PlannedMeal(recipe: recipe, mealType: .lunch,
+                               plannedFor: try XCTUnwrap(DayKey.date(from: "2026-09-14")))
+        let payload = try decode(PlanLinkEncoder.fragment(
+            recipes: [recipe], meals: [meal], lifterID: "a1b2c3d4", coachName: "Doug"))
+        XCTAssertNil(try XCTUnwrap(payload.r?.first).u,
+                     "an all-zero struct is 'did not enter macros' in substance")
+    }
+
     func testMealSlotsMatchThePlanFormatOrdering() throws {
         let recipe = chilli()
         let day = try XCTUnwrap(DayKey.date(from: "2026-09-14"))
