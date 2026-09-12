@@ -6,6 +6,10 @@
 
 name: Coach
 
+packages:
+  LiftKit:
+    path: ../dugcanlift-kit
+
 options:
   bundleIdPrefix: com.dugcanlift
   deploymentTarget:
@@ -38,6 +42,9 @@ targets:
       - path: Sources/Shared
       - path: Resources
         buildPhase: resources
+    dependencies:
+      - package: LiftKit
+        product: LiftCore
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.dugcanlift.coach

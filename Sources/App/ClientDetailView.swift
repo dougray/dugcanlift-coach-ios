@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import Charts
+import LiftCore
 
 struct ClientDetailView: View {
     let client: Client
