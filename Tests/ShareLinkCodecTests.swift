@@ -1,4 +1,5 @@
 import XCTest
+import LiftCore
 @testable import Coach
 
 final class ShareLinkCodecTests: XCTestCase {

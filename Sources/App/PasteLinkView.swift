@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import LiftCore
 
 struct PasteLinkView: View {
     @Environment(\.modelContext) private var context
