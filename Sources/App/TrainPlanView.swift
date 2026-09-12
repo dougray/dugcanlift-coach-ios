@@ -64,10 +64,10 @@ struct TrainPlanView: View {
             }
             .padding()
         }
-        // The floating tab bar draws over scroll content. A List or Form
-        // reserves space for it automatically; a raw ScrollView does not,
-        // so the last card sits half-covered without this.
-        .safeAreaPadding(.bottom, 72)
+        // The bottom inset for the floating tab bar is applied once, by the
+        // parent `TrainView` (which every section shares). Applying it here
+        // too nested the padding inside itself, so scrolling this section to
+        // the end landed on an empty 72pt-plus-72pt gap.
         .liftScreen()
         .task(id: RebuildKey(clientID: clientID, weekStart: weekStart,
                              sessionCount: sessions.count, routineCount: routines.count)) {
