@@ -105,9 +105,19 @@ enum PlanLinkEncoder {
     /// `u` is `[kcal, protein, carbs, fat, fibre]` PER SERVING, and is omitted
     /// entirely when the coach never entered macros. Never zeros: a zero here
     /// becomes a zero-calorie dinner in the client's day total.
+    ///
+    /// A non-nil `nutritionPerServing` with calories/protein/carbs/fat all
+    /// zero is "did not enter macros" in substance, not a real all-zero
+    /// recipe -- `MacroFields.entered()` returns exactly that struct the
+    /// moment any one field has content, including a `0` typed into
+    /// calories or edited back down to it. Fibre is excluded from this
+    /// check: a recipe can legitimately have zero fibre while carrying real
+    /// calories.
     private static func planRecipe(_ recipe: Recipe) -> PlanRecipe {
-        let macros = recipe.nutritionPerServing.map {
-            [$0.calories, $0.proteinG, $0.carbsG, $0.fatG, $0.fiberG ?? 0]
+        let macros = recipe.nutritionPerServing.flatMap { facts -> [Double]? in
+            guard facts.calories != 0 || facts.proteinG != 0
+                || facts.carbsG != 0 || facts.fatG != 0 else { return nil }
+            return [facts.calories, facts.proteinG, facts.carbsG, facts.fatG, facts.fiberG ?? 0]
         }
         return PlanRecipe(
             n: recipe.name,
