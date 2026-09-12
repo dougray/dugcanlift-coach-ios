@@ -77,18 +77,18 @@ what the wire says and let a future display-preference feature handle
 presentation, mirroring `lift-ios`'s "canonical unit, display converts at
 the view layer only" rule for its own `WeightUnit`.
 
-**Coach's UI matches LIFT's brand colors, on every platform.** `lift-ios`'s
-`Sources/App/Theme.swift` is the canonical palette — "design tokens
-extracted from the Android build of LIFT... sampled directly from app
-screenshots," already an established cross-platform token set (Android →
-iOS once; iOS → this repo now). Port `Theme.swift` verbatim (same hex
-values, same token names: `background`, `surface`, `accent`,
-`accentMuted`, `textPrimary`, `textSecondary`, `hairline`) rather than
-inventing a separate Coach palette — a trainer using both LIFT and Coach
-should never wonder if they're in a different product. When Coach Android
-or Coach Watch are built, port the same hex values there too (from
-whichever LIFT platform's own theme file is most convenient to read them
-from) rather than resampling screenshots independently.
+**Coach's UI matches LIFT's brand colors, on every platform.** `Theme` —
+"design tokens extracted from the Android build of LIFT... sampled directly
+from app screenshots," already an established cross-platform token set
+(Android → iOS once) — now lives in `dugcanlift-kit`'s `LiftCore` product,
+not a per-app file. Use that shared `Theme` (same hex values, same token
+names: `background`, `surface`, `accent`, `accentMuted`, `textPrimary`,
+`textSecondary`, `hairline`) rather than inventing a separate Coach palette
+or porting a copy — a trainer using both LIFT and Coach should never wonder
+if they're in a different product. When Coach Android or Coach Watch are
+built, port the same hex values there too (read them from `LiftCore`'s
+`Theme.swift`, the one canonical source now) rather than resampling
+screenshots independently.
 
 ## Constraints
 
