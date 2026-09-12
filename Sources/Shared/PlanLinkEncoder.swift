@@ -12,14 +12,17 @@ enum PlanLinkEncoder {
     /// `[weightLb, ...]`. Both ends of this conversion are load-bearing:
     /// `PlanImporter` converts back on the way in, and a missing conversion
     /// here ships a number 2.2x wrong to a real client with nothing failing.
-    static func kgToLb(_ kg: Double) -> Double { kg * 2.2046226218 }
+    ///
+    /// Both delegate to `LiftCore.WeightUnit` rather than carrying their own
+    /// factor. An earlier version wrote the literal twice here, which is the
+    /// same shape as the duplication these wrappers exist to prevent — one
+    /// copy in the package and one here would drift exactly as readily as
+    /// one here and one in a view.
+    static func kgToLb(_ kg: Double) -> Double { WeightUnit.pounds.fromKilograms(kg) }
 
-    /// The inverse of `kgToLb`. Not needed by this task's own tests, but a
-    /// later task takes a coach's pounds-entered weight and must store
-    /// kilograms — keeping both conversions here, sharing the one constant,
-    /// is what stops that future call site from inlining its own and
-    /// drifting from this one.
-    static func lbToKg(_ lb: Double) -> Double { lb / 2.2046226218 }
+    /// The inverse of `kgToLb`, for a call site that takes a coach's
+    /// pounds-entered weight and must store kilograms.
+    static func lbToKg(_ lb: Double) -> Double { WeightUnit.pounds.toKilograms(lb) }
 
     static func fragment(routines: [Routine], sessions: [ScheduledSession],
                          lifterID: String, coachName: String) -> String {
