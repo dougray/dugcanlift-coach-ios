@@ -139,6 +139,16 @@ final class PlanLinkEncoderTests: XCTestCase {
             try PlanLinkCodec.decode(fragment: fragment, expectedLifterID: "a1b2c3d4"))
     }
 
+    func testCoachNameFallsBackOnEmptyStringNotJustNil() {
+        // `UserDefaults` returns nil only when the key was never set;
+        // `ConnectView`'s `@AppStorage` writes "" the moment a coach clears
+        // the field. `?? "Your coach"` alone lets that empty string reach
+        // the wire as `n:""` -- the fallback must catch both.
+        XCTAssertEqual(PlanLinkEncoder.coachName(nil), "Your coach")
+        XCTAssertEqual(PlanLinkEncoder.coachName(""), "Your coach")
+        XCTAssertEqual(PlanLinkEncoder.coachName("Doug"), "Doug")
+    }
+
     func testTheEnvelopeIsVersionAndCodecPrefixed() {
         let (r, _, s) = routine(); s.targetReps = 5
         let fragment = PlanLinkEncoder.fragment(
