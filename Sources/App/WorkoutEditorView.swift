@@ -104,12 +104,12 @@ struct PrescribedSetRow: View {
     }
 
     private func optionalField(_ label: String, value: Binding<Double?>) -> some View {
+        // Format and parse both go through `OptionalNumberField`, one
+        // locale-aware pair — see its doc comment for why a `.formatted()`
+        // getter paired with a `Double(trimmed)` setter is not safe here.
         TextField(label, text: Binding(
-            get: { value.wrappedValue.map { $0.formatted() } ?? "" },
-            set: { text in
-                let trimmed = text.trimmingCharacters(in: .whitespaces)
-                value.wrappedValue = trimmed.isEmpty ? nil : Double(trimmed)
-            }))
+            get: { OptionalNumberField.string(from: value.wrappedValue) },
+            set: { value.wrappedValue = OptionalNumberField.value(from: $0) }))
         .keyboardType(.decimalPad)
     }
 }
