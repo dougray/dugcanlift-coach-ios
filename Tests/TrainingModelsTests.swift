@@ -40,7 +40,16 @@ final class TrainingModelsTests: XCTestCase {
 
     func testCoachAndPackageModelsCoexistInOneSchema() throws {
         // Train is the feature that first puts LiftCore models into Coach's
-        // store. If this throws, the rename did not hold.
+        // store, so this checks that this app's ACTUAL container list builds
+        // and saves.
+        //
+        // It is not the entity-name collision test, despite reading like one:
+        // none of these LiftCore types share a simple name with a Coach
+        // model, so they could not collide whatever the names were. The real
+        // regression test for that is
+        // EntityNameCollisionTests.testCoachAndLiftCoreFoodTypesCanShareOneSchema
+        // in ModelsTests.swift, which deliberately puts ClientFoodEntry and
+        // LiftCore.FoodEntry in one schema together.
         let ctx = try context()
         let client = Client(id: "c1", name: "Ana", displayUnit: "lb", platform: "ios")
         let food = ClientFoodEntry(day: nil, foodName: "Oats", servings: 1,
