@@ -49,16 +49,16 @@ struct MacroFields: Equatable {
     /// Loads an existing recipe's macros. A recipe that already carries them
     /// counts as typed throughout: reopening it to add one more ingredient
     /// must not throw away numbers that were already right.
-    mutating func loadExisting(_ facts: NutritionFacts?) {
+    mutating func loadExisting(_ facts: NutritionFacts?, locale: Locale = .autoupdatingCurrent) {
         guard let facts else {
             calories = ""; protein = ""; carbs = ""; fat = ""
             typed = []
             return
         }
-        calories = OptionalNumberField.string(from: facts.calories)
-        protein = OptionalNumberField.string(from: facts.proteinG)
-        carbs = OptionalNumberField.string(from: facts.carbsG)
-        fat = OptionalNumberField.string(from: facts.fatG)
+        calories = OptionalNumberField.string(from: facts.calories, locale: locale)
+        protein = OptionalNumberField.string(from: facts.proteinG, locale: locale)
+        carbs = OptionalNumberField.string(from: facts.carbsG, locale: locale)
+        fat = OptionalNumberField.string(from: facts.fatG, locale: locale)
         typed = [.calories, .protein, .carbs, .fat]
     }
 
@@ -73,8 +73,8 @@ struct MacroFields: Equatable {
 
     /// nil unless something was actually entered. An untouched form must not
     /// write zeros -- PLAN-FORMAT: "It must never be sent as zeros."
-    func entered() -> NutritionFacts? {
-        let values = [calories, protein, carbs, fat].map { OptionalNumberField.value(from: $0) }
+    func entered(locale: Locale = .autoupdatingCurrent) -> NutritionFacts? {
+        let values = [calories, protein, carbs, fat].map { OptionalNumberField.value(from: $0, locale: locale) }
         guard values.contains(where: { $0 != nil }) else { return nil }
         return NutritionFacts(calories: values[0] ?? 0, proteinG: values[1] ?? 0,
                               carbsG: values[2] ?? 0, fatG: values[3] ?? 0)

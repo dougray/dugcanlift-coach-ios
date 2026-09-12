@@ -69,21 +69,26 @@ final class MacroTallyTests: XCTestCase {
     }
 
     func testLocaleRoundTripPreservesDecimalInCommaLocale() {
-        // CookFormat.trimmed uses String(format: "%g") which always emits ".",
-        // but OptionalNumberField.value(from:) uses locale-aware NumberFormatter.
-        // In de_DE/fr_FR, it expects "," and returns nil for "12.5". The write
-        // path (loadExisting -> OptionalNumberField.string) must be the exact
-        // inverse of the read path (entered -> OptionalNumberField.value).
+        // Under the old CookFormat.trimmed write path, a recipe with 36.5g protein
+        // would write "36.5". A German parser expects "36,5" and returns nil for
+        // "36.5", which the `?? 0` fallback converts to zero — a silent data loss
+        // that would corrupt a client's day total. The write path must be the
+        // exact inverse of the read path, both using the same locale-aware formatter.
         let deDELocale = Locale(identifier: "de_DE")
         var fields = MacroFields()
 
-        // Simulate loading a recipe with 36.5g protein, round-trip it
-        fields.loadExisting(NutritionFacts(calories: 438, proteinG: 36.5, carbsG: 31, fatG: 19))
-        let entered = fields.entered()
+        // Load a recipe with fractional protein (36.5g) in German locale
+        fields.loadExisting(NutritionFacts(calories: 438, proteinG: 36.5, carbsG: 31, fatG: 19),
+                           locale: deDELocale)
 
-        // The round trip must preserve the value, not drop it to zero
+        // The stored text must be German-formatted (comma decimal, not period)
+        XCTAssertTrue(fields.protein.contains(","),
+                     "German locale must format 36.5 as \"36,5\" not \"36.5\"")
+
+        // Round-trip through entered() in the same locale must recover the value
+        let entered = fields.entered(locale: deDELocale)
         XCTAssertEqual(entered?.proteinG, 36.5,
-                       "locale-safe formatting in loadExisting must round-trip through OptionalNumberField.value")
+                       "locale round-trip in de_DE must recover 36.5, not nil or 0")
     }
 
     func testPerServingSurvivesNaN() {
