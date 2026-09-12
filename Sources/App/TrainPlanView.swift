@@ -60,11 +60,18 @@ struct TrainPlanView: View {
                     }
                 }
 
-                if !clientID.isEmpty {
+                if !mineSessions.isEmpty {
                     // `link` is computed into state, not called inline.
                     // Inline, it re-ran the filter, a JSON encode and a
                     // DEFLATE on every body evaluation -- including every
                     // unrelated redraw of this screen.
+                    //
+                    // Gated on there being at least one booking this week --
+                    // previously this appeared as soon as a client was
+                    // picked, and tapping it with nothing booked shipped an
+                    // import prompt offering nothing. A programme with no
+                    // bookings yet is still sendable, via "Send programme"
+                    // on the Workouts section instead.
                     ShareLink(item: shareLink) { Text("Send this week") }
                         .tint(Theme.accent)
                 }
