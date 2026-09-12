@@ -74,8 +74,8 @@ final class TrainingDay {
     @Relationship(deleteRule: .cascade, inverse: \ExerciseSet.day)
     var sets: [ExerciseSet] = []
 
-    @Relationship(deleteRule: .cascade, inverse: \FoodEntry.day)
-    var foodEntries: [FoodEntry] = []
+    @Relationship(deleteRule: .cascade, inverse: \ClientFoodEntry.day)
+    var foodEntries: [ClientFoodEntry] = []
 
     init(client: Client?, dayKey: String, sessionName: String? = nil, focus: String? = nil,
          bodyweightLb: Double? = nil, steps: Int? = nil) {
@@ -115,8 +115,24 @@ final class ExerciseSet {
     }
 }
 
+/// A food a **client** logged, imported from their share link. Coach never
+/// logs food itself; it reads what someone else ate.
+///
+/// Named `ClientFoodEntry` rather than `FoodEntry` on purpose, and renaming
+/// it back would break the app. `LiftCore` carries its own `FoodEntry` — the
+/// athlete-side one — and **SwiftData identifies an entity by its class
+/// name, not module-qualified**. Two `@Model` classes called `FoodEntry` in
+/// one schema do not clash loudly: the schema builds with no error, reports
+/// a single entity holding whichever type was listed last, and then fails at
+/// `save()` with a Core Data validation error naming the *other* type's
+/// properties. Measured 2026-09-12.
+///
+/// Coach reaches that state the moment Cook puts `LiftCore.PlannedMeal` into
+/// this store, because `PlannedMeal.makeFoodEntry()` returns a
+/// `LiftCore.FoodEntry`. Qualifying the Swift name as `Coach.FoodEntry` does
+/// not help — that is symbol lookup, one level above entity identity.
 @Model
-final class FoodEntry {
+final class ClientFoodEntry {
     var day: TrainingDay?
     var foodName: String
     var servings: Double
