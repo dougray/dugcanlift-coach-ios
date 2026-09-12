@@ -35,7 +35,8 @@ enum PlanLinkEncoder {
         return name.isEmpty ? "Your coach" : name
     }
 
-    static func fragment(routines: [Routine], sessions: [ScheduledSession],
+    static func fragment(routines: [Routine] = [], sessions: [ScheduledSession] = [],
+                         recipes: [Recipe] = [], meals: [PlannedMeal] = [],
                          lifterID: String, coachName: String) -> String {
         let workouts = routines.map { routine in
             PlanWorkout(n: routine.name, e: routine.orderedExercises.map { exercise in
@@ -56,8 +57,25 @@ enum PlanLinkEncoder {
             return PlanSession(d: session.dayKey, x: index)
         }
 
-        let payload = PlanPayload(v: 1, t: "plan", l: lifterID, n: coachName,
-                                  r: [], m: [], w: workouts, k: booked)
+        let inlined = recipes.map(planRecipe)
+
+        // The same rule as sessions, for the same reason: `x` indexes into
+        // `r`, and a stale index is the wrong dinner on someone's Tuesday.
+        let indexByRecipe = Dictionary(uniqueKeysWithValues:
+            recipes.enumerated().map { ($0.element.id, $0.offset) })
+        let planned = meals.compactMap { meal -> PlanMeal? in
+            guard let index = indexByRecipe[meal.recipeID] else { return nil }
+            return PlanMeal(d: meal.dayKey, s: slot(meal.mealType), x: index, q: meal.servings)
+        }
+
+        // Empty means absent, not `[]`. PLAN-FORMAT: "a coach who plans only
+        // training sends a payload with no `r` or `m` at all."
+        let payload = PlanPayload(
+            v: 1, t: "plan", l: lifterID, n: coachName,
+            r: inlined.isEmpty ? nil : inlined,
+            m: planned.isEmpty ? nil : planned,
+            w: workouts.isEmpty ? nil : workouts,
+            k: booked.isEmpty ? nil : booked)
 
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
@@ -82,5 +100,36 @@ enum PlanLinkEncoder {
         ]
         while let last = values.last, last == nil { values.removeLast() }
         return values
+    }
+
+    /// `u` is `[kcal, protein, carbs, fat, fibre]` PER SERVING, and is omitted
+    /// entirely when the coach never entered macros. Never zeros: a zero here
+    /// becomes a zero-calorie dinner in the client's day total.
+    private static func planRecipe(_ recipe: Recipe) -> PlanRecipe {
+        let macros = recipe.nutritionPerServing.map {
+            [$0.calories, $0.proteinG, $0.carbsG, $0.fatG, $0.fiberG ?? 0]
+        }
+        return PlanRecipe(
+            n: recipe.name,
+            s: recipe.servings,
+            u: macros,
+            // Raw text, never parsed. Every client runs the same parser, so
+            // parsing on the receiving side keeps one implementation of the
+            // rules rather than freezing this sender's reading into the wire.
+            i: (recipe.ingredients ?? []).sorted { $0.sortOrder < $1.sortOrder }.map(\.rawText),
+            t: recipe.steps)
+    }
+
+    /// PLAN-FORMAT's meal slots: 0 breakfast, 1 lunch, 2 dinner, 3 snack.
+    /// Written out rather than taken from `MealType.allCases.firstIndex`,
+    /// which would silently renumber every planned meal if a case were ever
+    /// reordered in the package.
+    private static func slot(_ meal: MealType) -> Int {
+        switch meal {
+        case .breakfast: return 0
+        case .lunch: return 1
+        case .dinner: return 2
+        case .snack: return 3
+        }
     }
 }
