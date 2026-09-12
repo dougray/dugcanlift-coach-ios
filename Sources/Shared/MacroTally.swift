@@ -64,11 +64,11 @@ struct MacroFields: Equatable {
 
     /// Writes a computed per-serving figure into only the fields the coach has
     /// not typed into.
-    mutating func applyComputed(_ facts: NutritionFacts) {
-        if !typed.contains(.calories) { calories = rounded(facts.calories) }
-        if !typed.contains(.protein) { protein = rounded(facts.proteinG) }
-        if !typed.contains(.carbs) { carbs = rounded(facts.carbsG) }
-        if !typed.contains(.fat) { fat = rounded(facts.fatG) }
+    mutating func applyComputed(_ facts: NutritionFacts, locale: Locale = .autoupdatingCurrent) {
+        if !typed.contains(.calories) { calories = rounded(facts.calories, locale: locale) }
+        if !typed.contains(.protein) { protein = rounded(facts.proteinG, locale: locale) }
+        if !typed.contains(.carbs) { carbs = rounded(facts.carbsG, locale: locale) }
+        if !typed.contains(.fat) { fat = rounded(facts.fatG, locale: locale) }
     }
 
     /// nil unless something was actually entered. An untouched form must not
@@ -80,7 +80,7 @@ struct MacroFields: Equatable {
                               carbsG: values[2] ?? 0, fatG: values[3] ?? 0)
     }
 
-    private func rounded(_ value: Double) -> String {
-        OptionalNumberField.string(from: value.rounded())
+    private func rounded(_ value: Double, locale: Locale = .autoupdatingCurrent) -> String {
+        OptionalNumberField.string(from: value.rounded(), locale: locale)
     }
 }

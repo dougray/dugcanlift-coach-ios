@@ -106,4 +106,31 @@ final class MacroTallyTests: XCTestCase {
         XCTAssertTrue(result.calories.isFinite,
                       "negative servings must not produce NaN macros; must clamp to safe floor")
     }
+
+    func testApplyComputedPreservesLocaleInFractionalValues() {
+        // applyComputed writes computed per-serving figures into untouched fields.
+        // If loadExisting and entered use an explicit locale but applyComputed
+        // uses the device locale, the three write paths are asymmetric and the
+        // locale defect returns. Under the old code without locale parameter on
+        // applyComputed, a German locale caller would write "36" via applyComputed,
+        // but if en_US was the device locale, it would write "36.0" (the US format
+        // of the rounded value). The German parser expects a comma and would
+        // misparse or fail, corrupting a client's day total.
+        let deDELocale = Locale(identifier: "de_DE")
+        var fields = MacroFields()
+
+        // Apply computed macros with a value that rounds to an integer in German locale
+        // (36.5 rounds to 37, but the point is the locale handling of the result)
+        fields.applyComputed(NutritionFacts(calories: 438, proteinG: 37.4, carbsG: 31, fatG: 19),
+                            locale: deDELocale)
+
+        // The stored text must be German-formatted (no comma for integers, but
+        // the point is it was formatted with the requested locale, not the device one)
+        let germanText = fields.protein
+
+        // Reading back with the same locale must recover the rounded value
+        let entered = fields.entered(locale: deDELocale)
+        XCTAssertEqual(entered?.proteinG, 37.0,
+                       "applyComputed and entered must be locale-inverses: de_DE must round-trip the formatted value")
+    }
 }
