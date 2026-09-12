@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import UniformTypeIdentifiers
+import LiftCore
 
 struct ConnectView: View {
     @Environment(\.modelContext) private var context
