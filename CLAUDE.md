@@ -114,3 +114,28 @@ property change is a schema change for both — and `lift-ios`'s
 
 Day keys are **local**, and day arithmetic goes through `Calendar`. Never
 `now - days * 86400`: it repeats a day across a DST fall-back.
+
+## `ClientFoodEntry`, and why it is not `FoodEntry`
+
+`LiftCore` carries its own `FoodEntry` — the athlete-side one — and
+**SwiftData identifies an entity by its class's simple name, not
+module-qualified**. Two `@Model` classes named `FoodEntry` in one schema do
+not clash loudly: the schema builds with no error, reports a single entity
+holding whichever type was listed last, and then fails at `save()` with a
+Core Data validation error naming the *other* type's properties.
+
+Coach reaches that state as soon as Cook stores `LiftCore.PlannedMeal` here,
+because `PlannedMeal.makeFoodEntry()` returns a `LiftCore.FoodEntry`.
+Qualifying the Swift name as `Coach.FoodEntry` does not help; that is symbol
+lookup, one level above entity identity.
+
+`EntityNameCollisionTests` pins this. Do not rename the type back.
+
+**The rename dropped existing rows, deliberately.** Renaming a `@Model`
+class renames its entity, and Coach has no migration plan — the store opens
+cleanly and the old rows are simply gone. Chosen on 2026-09-12 over writing
+a full frozen-graph migration, because Coach was days old and its data is
+re-creatable: re-paste a client's share link, or restore a backup file,
+whose JSON uses plain field names independent of the entity name. If Coach
+ever holds data that is not re-creatable, that calculation changes and a
+future rename needs a real migration.
