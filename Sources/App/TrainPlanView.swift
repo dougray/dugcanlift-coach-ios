@@ -4,15 +4,22 @@ import LiftCore
 
 /// A client's week: which template is booked on which day, and the link that
 /// sends it.
+///
+/// `clientID`/`weekStart`/`shareLink` are owned by `TrainView`, not this
+/// view, and passed down as bindings. `TrainView`'s section switch gives
+/// `.workouts` and `.plan` each their own branch, and only one branch exists
+/// in the hierarchy at a time -- `@State` living here would be torn down the
+/// moment a coach switches to Workouts and rebuilt from scratch on the way
+/// back, silently losing the picked client.
 struct TrainPlanView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \Client.name) private var clients: [Client]
     @Query private var sessions: [ScheduledSession]
     @Query(sort: \Routine.name) private var routines: [Routine]
 
-    @State private var clientID: String = ""
-    @State private var weekStart: String = DayKey.today
-    @State private var shareLink: String = ""
+    @Binding var clientID: String
+    @Binding var weekStart: String
+    @Binding var shareLink: String
 
     private var days: [String] {
         (0..<7).compactMap { DayKey.adding(days: $0, to: weekStart) }

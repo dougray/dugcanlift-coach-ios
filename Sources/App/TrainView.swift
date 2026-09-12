@@ -8,6 +8,12 @@ struct TrainView: View {
     @State private var editing: Routine?
     @State private var section: Section = .workouts
 
+    // Owned here, not by `TrainPlanView`, so switching to Workouts and back
+    // to Plan does not lose the picked client -- see that view's doc comment.
+    @State private var planClientID: String = ""
+    @State private var planWeekStart: String = DayKey.today
+    @State private var planShareLink: String = ""
+
     /// Matches how the PWA's Train tab splits the same two jobs: a library of
     /// templates to build, and a client's week to book them onto and send.
     private enum Section: String, CaseIterable, Identifiable {
@@ -28,7 +34,8 @@ struct TrainView: View {
 
                 switch section {
                 case .workouts: library
-                case .plan: TrainPlanView()
+                case .plan: TrainPlanView(clientID: $planClientID, weekStart: $planWeekStart,
+                                          shareLink: $planShareLink)
                 }
             }
             // The floating tab bar draws over scroll content. A List or Form
