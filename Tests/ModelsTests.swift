@@ -6,7 +6,7 @@ import LiftCore
 final class ModelsTests: XCTestCase {
 
     private func makeContext() throws -> ModelContext {
-        let schema = Schema([Client.self, Goal.self, TrainingDay.self, ExerciseSet.self, Coach.FoodEntry.self])
+        let schema = Schema([Client.self, Goal.self, TrainingDay.self, ExerciseSet.self, ClientFoodEntry.self])
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
         let container = try ModelContainer(for: schema, configurations: [config])
         return ModelContext(container)
@@ -98,5 +98,51 @@ final class ModelsTests: XCTestCase {
         XCTAssertEqual(DayKey.daysBetween("2026-09-11", chicago.string(from: evening)), 0)
         XCTAssertEqual(DayKey.daysBetween("2026-09-11", utc.string(from: evening)), 1,
                        "this 1 is the bug the fix removed")
+    }
+}
+
+
+/// The reason `ClientFoodEntry` is not called `FoodEntry`.
+final class EntityNameCollisionTests: XCTestCase {
+
+    func testCoachAndLiftCoreFoodTypesCanShareOneSchema() throws {
+        // SwiftData identifies an entity by its class's SIMPLE name. Before
+        // the rename both of these were "FoodEntry", and putting them in one
+        // schema silently produced a single entity carrying whichever type
+        // was listed last -- then failed at save() with a Core Data
+        // validation error naming the other type's properties.
+        //
+        // Cook reaches this state as soon as LiftCore.PlannedMeal is stored
+        // here, since makeFoodEntry() returns a LiftCore.FoodEntry.
+        let schema = Schema([
+            Client.self, Goal.self, TrainingDay.self, ExerciseSet.self,
+            ClientFoodEntry.self,
+            LiftCore.FoodEntry.self,
+        ])
+        let container = try ModelContainer(
+            for: schema,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let context = ModelContext(container)
+
+        // Two entities, not one collapsed into the other.
+        let names = Set(schema.entities.map(\.name))
+        XCTAssertTrue(names.contains("ClientFoodEntry"))
+        XCTAssertTrue(names.contains("FoodEntry"))
+
+        // And a Coach row actually saves, which is where the old collision
+        // surfaced -- the schema built fine either way.
+        let client = Client(id: "c1", name: "Ana", displayUnit: "lb", platform: "ios")
+        let day = TrainingDay(client: client, dayKey: DayKey.today)
+        let food = ClientFoodEntry(day: day, foodName: "Chicken breast", servings: 1.4,
+                                   calories: 231, proteinG: 43, fatG: 5, carbsG: 0,
+                                   fiberG: 0, meal: 2)
+        context.insert(client)
+        context.insert(day)
+        context.insert(food)
+        XCTAssertNoThrow(try context.save())
+
+        let saved = try context.fetch(FetchDescriptor<ClientFoodEntry>())
+        XCTAssertEqual(saved.count, 1)
+        XCTAssertEqual(saved.first?.foodName, "Chicken breast")
     }
 }

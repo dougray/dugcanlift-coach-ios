@@ -7,6 +7,6 @@ struct CoachApp: App {
         WindowGroup {
             RootView()
         }
-        .modelContainer(for: [Client.self, Goal.self, TrainingDay.self, ExerciseSet.self, FoodEntry.self])
+        .modelContainer(for: [Client.self, Goal.self, TrainingDay.self, ExerciseSet.self, ClientFoodEntry.self])
     }
 }
