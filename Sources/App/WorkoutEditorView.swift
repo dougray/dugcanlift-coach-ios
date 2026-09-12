@@ -37,9 +37,21 @@ struct WorkoutEditorView: View {
 
                 Section("Add an exercise") {
                     TextField("Search", text: $query)
-                        .onChange(of: query) { _, text in
-                            Task { matches = (try? await ReferenceDatabase.shared
-                                .searchExercises(text, limit: 20)) ?? [] }
+                        // `.task(id:)` cancels the previous search when the
+                        // query changes, so a slower earlier keystroke cannot
+                        // land after a faster later one and overwrite the
+                        // results with stale matches. The sleep debounces a
+                        // burst of typing into one query; it is cancelled
+                        // along with everything else.
+                        .task(id: query) {
+                            guard !query.trimmingCharacters(in: .whitespaces).isEmpty else {
+                                matches = []
+                                return
+                            }
+                            try? await Task.sleep(for: .milliseconds(200))
+                            guard !Task.isCancelled else { return }
+                            matches = (try? await ReferenceDatabase.shared
+                                .searchExercises(query, limit: 20)) ?? []
                         }
                     ForEach(matches, id: \.id) { record in
                         Button(record.name) { add(record) }
