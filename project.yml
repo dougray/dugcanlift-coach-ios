@@ -50,6 +50,8 @@ targets:
     dependencies:
       - package: LiftKit
         product: LiftCore
+      - package: LiftKit
+        product: LiftReference
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.dugcanlift.coach
@@ -69,6 +71,8 @@ targets:
     platform: iOS
     sources:
       - path: Tests
+      - path: Tests/Fixtures
+        buildPhase: resources
     dependencies:
       - target: Coach
     settings:

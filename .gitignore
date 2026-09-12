@@ -21,3 +21,6 @@ Package.resolved
 
 # Claude Code worktree scratch directories
 .claude/worktrees/
+
+# Subagent-driven-development scratch
+.superpowers/
