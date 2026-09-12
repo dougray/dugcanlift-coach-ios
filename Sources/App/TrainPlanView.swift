@@ -12,6 +12,7 @@ struct TrainPlanView: View {
 
     @State private var clientID: String = ""
     @State private var weekStart: String = DayKey.today
+    @State private var shareLink: String = ""
 
     private var days: [String] {
         (0..<7).compactMap { DayKey.adding(days: $0, to: weekStart) }
@@ -53,14 +54,35 @@ struct TrainPlanView: View {
                 }
 
                 if !clientID.isEmpty {
-                    ShareLink(item: link()) { Text("Send this week") }
+                    // `link` is computed into state, not called inline.
+                    // Inline, it re-ran the filter, a JSON encode and a
+                    // DEFLATE on every body evaluation -- including every
+                    // unrelated redraw of this screen.
+                    ShareLink(item: shareLink) { Text("Send this week") }
                         .tint(Theme.accent)
                 }
             }
             .padding()
         }
+        // The floating tab bar draws over scroll content. A List or Form
+        // reserves space for it automatically; a raw ScrollView does not,
+        // so the last card sits half-covered without this.
+        .safeAreaPadding(.bottom, 72)
         .liftScreen()
+        .task(id: RebuildKey(clientID: clientID, weekStart: weekStart,
+                             sessionCount: sessions.count, routineCount: routines.count)) {
+            shareLink = link()
+        }
         .background(Theme.background)
+    }
+
+    /// What the share link depends on. `.task(id:)` reruns when any of these
+    /// changes and not otherwise.
+    private struct RebuildKey: Equatable {
+        let clientID: String
+        let weekStart: String
+        let sessionCount: Int
+        let routineCount: Int
     }
 
     private func booked(on day: String) -> [ScheduledSession] {
