@@ -9,6 +9,9 @@ struct RootView: View {
             }
             .tabItem { Label("Roster", systemImage: "person.2") }
 
+            TrainView()
+                .tabItem { Label("Train", systemImage: "dumbbell") }
+
             NavigationStack {
                 ConnectView()
             }

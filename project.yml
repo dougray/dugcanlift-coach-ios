@@ -45,6 +45,8 @@ targets:
     dependencies:
       - package: LiftKit
         product: LiftCore
+      - package: LiftKit
+        product: LiftReference
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.dugcanlift.coach
