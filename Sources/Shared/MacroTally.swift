@@ -80,6 +80,14 @@ struct MacroFields: Equatable {
                               carbsG: values[2] ?? 0, fatG: values[3] ?? 0)
     }
 
+    /// `value.rounded()` always produces a whole number, so this is
+    /// locale-insensitive in practice today: a whole number has no decimal
+    /// separator to render differently, and `OptionalNumberField` disables
+    /// grouping, so there is no thousands separator to differ over either --
+    /// "37" comes out the same in de_DE and en_US. The `locale` parameter is
+    /// kept anyway so this stays correct if the rounding is ever removed or
+    /// softened to preserve a fraction, and so all three read/write paths
+    /// (`loadExisting`, `applyComputed`, `entered`) take the same shape.
     private func rounded(_ value: Double, locale: Locale = .autoupdatingCurrent) -> String {
         OptionalNumberField.string(from: value.rounded(), locale: locale)
     }
