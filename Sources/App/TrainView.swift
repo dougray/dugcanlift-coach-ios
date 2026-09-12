@@ -31,6 +31,10 @@ struct TrainView: View {
                 case .plan: TrainPlanView()
                 }
             }
+            // The floating tab bar draws over scroll content. A List or Form
+            // reserves space for it automatically; a raw ScrollView does not,
+            // so the last card sits half-covered without this.
+            .safeAreaPadding(.bottom, 72)
             .liftScreen()
             .background(Theme.background)
             .navigationTitle("Train")
