@@ -76,8 +76,7 @@ struct TrainPlanView: View {
         // too nested the padding inside itself, so scrolling this section to
         // the end landed on an empty 72pt-plus-72pt gap.
         .liftScreen()
-        .task(id: RebuildKey(clientID: clientID, weekStart: weekStart,
-                             sessionCount: sessions.count, routineCount: routines.count)) {
+        .task(id: rebuildKey) {
             shareLink = link()
         }
         .background(Theme.background)
@@ -85,11 +84,45 @@ struct TrainPlanView: View {
 
     /// What the share link depends on. `.task(id:)` reruns when any of these
     /// changes and not otherwise.
+    ///
+    /// Keyed on the actual content that ends up on the wire, not counts --
+    /// the old key was `sessionCount`/`routineCount`, which stayed the same
+    /// across a routine rename or a weight edit, so the link kept shipping
+    /// stale content, and `coachName` was not in the key at all, so setting
+    /// it in Connect and coming back still sent the old name. `Routine`/
+    /// `RoutinePrescribedSet` carry no modification timestamp to key on
+    /// instead, so this mirrors the exact fields `link()` encodes.
     private struct RebuildKey: Equatable {
         let clientID: String
         let weekStart: String
-        let sessionCount: Int
-        let routineCount: Int
+        let coachName: String
+        let bookings: [Booking]
+        let templates: [Template]
+
+        struct Booking: Equatable { let day: String; let routineID: UUID }
+        struct Template: Equatable { let id: UUID; let name: String; let exercises: [Exercise] }
+        struct Exercise: Equatable {
+            let name: String, equipment: String, note: String?, sets: [SetValues]
+        }
+        struct SetValues: Equatable {
+            let weightKg: Double?, reps: Int?, rpe: Double?
+            let durationSec: Int?, distanceMeters: Double?
+        }
+    }
+
+    private var rebuildKey: RebuildKey {
+        RebuildKey(
+            clientID: clientID, weekStart: weekStart, coachName: coachName,
+            bookings: mineSessions.map { .init(day: $0.dayKey, routineID: $0.routineID) },
+            templates: usedRoutines.map { routine in
+                .init(id: routine.id, name: routine.name, exercises: routine.orderedExercises.map { exercise in
+                    .init(name: exercise.name, equipment: exercise.equipment, note: exercise.note,
+                          sets: exercise.orderedSets.map { set in
+                              .init(weightKg: set.targetWeightKg, reps: set.targetReps, rpe: set.targetRPE,
+                                    durationSec: set.targetDurationSec, distanceMeters: set.targetDistanceMeters)
+                          })
+                })
+            })
     }
 
     private func booked(on day: String) -> [ScheduledSession] {
@@ -104,15 +137,25 @@ struct TrainPlanView: View {
         context.insert(ScheduledSession(clientID: clientID, dayKey: day, routineID: routine.id))
     }
 
+    private var coachName: String {
+        PlanLinkEncoder.coachName(UserDefaults.standard.string(forKey: "coachName"))
+    }
+
+    /// This week's bookings for the picked client.
+    private var mineSessions: [ScheduledSession] {
+        sessions.filter { $0.clientID == clientID && days.contains($0.dayKey) }
+    }
+
     /// Only the templates this week actually books are inlined, which is what
     /// keeps a week inside a link an email client will not mangle.
+    private var usedRoutines: [Routine] {
+        routines.filter { routine in mineSessions.contains { $0.routineID == routine.id } }
+    }
+
     private func link() -> String {
-        let mine = sessions.filter { $0.clientID == clientID && days.contains($0.dayKey) }
-        let used = routines.filter { routine in mine.contains { $0.routineID == routine.id } }
         let fragment = PlanLinkEncoder.fragment(
-            routines: used, sessions: mine,
-            lifterID: clientID,
-            coachName: PlanLinkEncoder.coachName(UserDefaults.standard.string(forKey: "coachName")))
+            routines: usedRoutines, sessions: mineSessions,
+            lifterID: clientID, coachName: coachName)
         return "https://www.dugcanlift.com/lift/#" + fragment
     }
 }
