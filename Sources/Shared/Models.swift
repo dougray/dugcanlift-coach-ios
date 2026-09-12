@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import LiftCore
 
 @Model
 final class Client {
