@@ -23,7 +23,8 @@ struct MacroTally: Equatable {
     /// The whole recipe divided by how many it feeds. Guards a servings field
     /// a coach has cleared mid-edit -- `Recipe.init` clamps the same way.
     func perServing(_ servings: Double) -> NutritionFacts {
-        total.scaled(by: 1 / max(servings, 0.0001))
+        let clampedServings = (servings.isFinite && servings > 0) ? servings : 0.0001
+        return total.scaled(by: 1 / clampedServings)
     }
 }
 
@@ -54,10 +55,10 @@ struct MacroFields: Equatable {
             typed = []
             return
         }
-        calories = CookFormat.trimmed(facts.calories)
-        protein = CookFormat.trimmed(facts.proteinG)
-        carbs = CookFormat.trimmed(facts.carbsG)
-        fat = CookFormat.trimmed(facts.fatG)
+        calories = OptionalNumberField.string(from: facts.calories)
+        protein = OptionalNumberField.string(from: facts.proteinG)
+        carbs = OptionalNumberField.string(from: facts.carbsG)
+        fat = OptionalNumberField.string(from: facts.fatG)
         typed = [.calories, .protein, .carbs, .fat]
     }
 
@@ -80,6 +81,6 @@ struct MacroFields: Equatable {
     }
 
     private func rounded(_ value: Double) -> String {
-        CookFormat.trimmed(value.rounded())
+        OptionalNumberField.string(from: value.rounded())
     }
 }

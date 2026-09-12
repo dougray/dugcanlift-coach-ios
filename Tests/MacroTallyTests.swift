@@ -67,4 +67,38 @@ final class MacroTallyTests: XCTestCase {
         XCTAssertEqual(fields.calories, "")
         XCTAssertTrue(fields.typed.isEmpty)
     }
+
+    func testLocaleRoundTripPreservesDecimalInCommaLocale() {
+        // CookFormat.trimmed uses String(format: "%g") which always emits ".",
+        // but OptionalNumberField.value(from:) uses locale-aware NumberFormatter.
+        // In de_DE/fr_FR, it expects "," and returns nil for "12.5". The write
+        // path (loadExisting -> OptionalNumberField.string) must be the exact
+        // inverse of the read path (entered -> OptionalNumberField.value).
+        let deDELocale = Locale(identifier: "de_DE")
+        var fields = MacroFields()
+
+        // Simulate loading a recipe with 36.5g protein, round-trip it
+        fields.loadExisting(NutritionFacts(calories: 438, proteinG: 36.5, carbsG: 31, fatG: 19))
+        let entered = fields.entered()
+
+        // The round trip must preserve the value, not drop it to zero
+        XCTAssertEqual(entered?.proteinG, 36.5,
+                       "locale-safe formatting in loadExisting must round-trip through OptionalNumberField.value")
+    }
+
+    func testPerServingSurvivesNaN() {
+        var tally = MacroTally()
+        tally.add(NutritionFacts(calories: 400))
+        let result = tally.perServing(.nan)
+        XCTAssertTrue(result.calories.isFinite,
+                      "NaN servings must not produce NaN macros; must clamp to safe floor")
+    }
+
+    func testPerServingSurvivesNegativeServings() {
+        var tally = MacroTally()
+        tally.add(NutritionFacts(calories: 400))
+        let result = tally.perServing(-5)
+        XCTAssertTrue(result.calories.isFinite,
+                      "negative servings must not produce NaN macros; must clamp to safe floor")
+    }
 }
