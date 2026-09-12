@@ -84,4 +84,32 @@ final class TrainingModelsTests: XCTestCase {
         try ctx.save()
         XCTAssertEqual(try ctx.fetch(FetchDescriptor<ScheduledSession>()).count, 3)
     }
+
+    func testDeletingARoutineSweepsItsOrphanedSessions() throws {
+        // `ScheduledSession.routineID` is a plain value, not a relationship
+        // (see this project's CLAUDE.md, "Train"), so deleting a `Routine`
+        // directly does not cascade -- it leaves orphaned rows behind
+        // forever. `deleteRoutineAndSessions` is the reaper; this pins that
+        // it actually removes both the routine and every session booked
+        // against it, and nothing else.
+        let ctx = try context()
+        let doomed = Routine(name: "Lower A")
+        let survivor = Routine(name: "Upper B")
+        ctx.insert(doomed); ctx.insert(survivor)
+        ctx.insert(ScheduledSession(clientID: "c1", dayKey: "2026-09-14", routineID: doomed.id))
+        ctx.insert(ScheduledSession(clientID: "c1", dayKey: "2026-09-17", routineID: doomed.id))
+        ctx.insert(ScheduledSession(clientID: "c1", dayKey: "2026-09-15", routineID: survivor.id))
+        try ctx.save()
+
+        let allSessions = try ctx.fetch(FetchDescriptor<ScheduledSession>())
+        ScheduledSession.deleteRoutineAndSessions(doomed, from: allSessions, in: ctx)
+        try ctx.save()
+
+        let remainingRoutines = try ctx.fetch(FetchDescriptor<Routine>())
+        XCTAssertEqual(remainingRoutines.map(\.name), ["Upper B"])
+
+        let remainingSessions = try ctx.fetch(FetchDescriptor<ScheduledSession>())
+        XCTAssertEqual(remainingSessions.count, 1)
+        XCTAssertEqual(remainingSessions.first?.routineID, survivor.id)
+    }
 }

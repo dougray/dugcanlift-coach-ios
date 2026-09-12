@@ -6,6 +6,7 @@ struct TrainView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \Routine.createdAt, order: .reverse) private var routines: [Routine]
     @Query(sort: \Client.name) private var clients: [Client]
+    @Query private var sessions: [ScheduledSession]
     @State private var editing: Routine?
     @State private var section: Section = .workouts
 
@@ -72,8 +73,21 @@ struct TrainView: View {
                                     .font(.caption)
                                     .foregroundStyle(Theme.textPrimary)
                             }
-                            Button("Edit") { editing = routine }
-                                .tint(Theme.accent)
+                            HStack {
+                                Button("Edit") { editing = routine }
+                                    .tint(Theme.accent)
+                                Spacer()
+                                // Sweeps this routine's `ScheduledSession`
+                                // rows in the same action -- see
+                                // `ScheduledSession.deleteRoutineAndSessions`.
+                                // Also the way to discard a "New workout"
+                                // stub left behind by dismissing the editor
+                                // without changing anything.
+                                Button("Delete", role: .destructive) {
+                                    ScheduledSession.deleteRoutineAndSessions(
+                                        routine, from: sessions, in: context)
+                                }
+                            }
                         }
                     }
                 }
