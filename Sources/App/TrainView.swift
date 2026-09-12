@@ -5,6 +5,7 @@ import LiftCore
 struct TrainView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \Routine.createdAt, order: .reverse) private var routines: [Routine]
+    @Query(sort: \Client.name) private var clients: [Client]
     @State private var editing: Routine?
     @State private var section: Section = .workouts
 
@@ -82,9 +83,40 @@ struct TrainView: View {
                     editing = routine
                 }
                 .tint(Theme.accent)
+
+                // The only route to a "here is the programme, nothing
+                // booked yet" send. `link()`/`fragment()` inline only
+                // templates a session actually books, so a coach with
+                // nothing booked yet had no way to send a library at all --
+                // PLAN-FORMAT allows it (testALibrarySendCarriesWorkouts-
+                // WithNoSessions), but no screen could reach that call.
+                // Sends every current template; the constraints allow zero,
+                // one, or many workouts with no sessions, and picking a
+                // subset is more UI than this needs.
+                if !routines.isEmpty {
+                    Menu("Send programme") {
+                        if clients.isEmpty {
+                            Text("No clients yet")
+                        } else {
+                            ForEach(clients) { client in
+                                ShareLink(item: programmeLink(for: client)) {
+                                    Text(client.name)
+                                }
+                            }
+                        }
+                    }
+                    .tint(Theme.accent)
+                }
             }
             .padding()
         }
+    }
+
+    private func programmeLink(for client: Client) -> String {
+        let fragment = PlanLinkEncoder.fragment(
+            routines: routines, sessions: [], lifterID: client.id,
+            coachName: PlanLinkEncoder.coachName(UserDefaults.standard.string(forKey: "coachName")))
+        return "https://www.dugcanlift.com/lift/#" + fragment
     }
 
     private func summary(of routine: Routine) -> String {
