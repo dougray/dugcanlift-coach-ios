@@ -139,3 +139,37 @@ re-creatable: re-paste a client's share link, or restore a backup file,
 whose JSON uses plain field names independent of the entity name. If Coach
 ever holds data that is not re-creatable, that calculation changes and a
 future rename needs a real migration.
+
+## Train
+
+Workout templates are `LiftCore`'s `Routine` / `RoutineExercise` /
+`RoutinePrescribedSet`. Scheduling is Coach's own `ScheduledSession`, which
+holds `clientID` and `routineID` as plain values rather than relationships —
+a template is reused across clients and weeks, and cascade rules do not match
+how a coach thinks about that. The cost is that deleting a `Routine` orphans
+its sessions; nothing reaps them yet, and whichever change adds routine
+deletion must. Nothing wrong reaches the wire meanwhile, because the encoder
+drops a session whose routine is not in the send.
+
+**`RoutinePrescribedSet` stores kilograms. `PLAN-FORMAT`'s set tuple is
+pounds.** `PlanLinkEncoder.kgToLb` converts on the way out, LIFT's
+`PlanImporter` converts back on the way in, and both delegate to
+`LiftCore.WeightUnit` rather than carrying their own factor. A missing
+conversion is silent and 2.2x wrong on a client's phone.
+`PlanLinkEncoderTests` pins it — removing the conversion fails four tests.
+
+`PlanLinkInteropTests` decodes `Tests/Fixtures/web-plan-link.txt`, a link the
+**Coach web app's own encoder** produced. It is the only test here that
+proves interoperability rather than agreement with itself. Do not regenerate
+it from this code; that would defeat its entire purpose.
+
+A set's fields are all optional. `[null, 5]` is "five reps, you pick the
+weight". Blank must never become zero, in the payload or on screen.
+
+Only **trailing** nulls are trimmed from a set tuple. A conditioning piece is
+`[null, null, null, 600, 1600]`, and trimming leading nulls would slide
+distance into the weight slot.
+
+Train's screens use a raw `ScrollView` and so must inset themselves for the
+floating tab bar. `List` and `Form` reserve that space automatically, which
+is why `RosterView` and `ConnectView` do not need it.
