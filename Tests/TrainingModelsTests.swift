@@ -1,0 +1,78 @@
+import XCTest
+import SwiftData
+import LiftCore
+@testable import Coach
+
+final class TrainingModelsTests: XCTestCase {
+
+    private func context() throws -> ModelContext {
+        // Routine and friends come from the package; ScheduledSession is
+        // Coach's. Both in one schema is the case the ClientFoodEntry rename
+        // made safe -- see EntityNameCollisionTests.
+        let schema = Schema([
+            Client.self, Goal.self, TrainingDay.self, ExerciseSet.self,
+            ClientFoodEntry.self,
+            Routine.self, RoutineExercise.self, RoutinePrescribedSet.self,
+            ScheduledSession.self,
+        ])
+        return ModelContext(try ModelContainer(
+            for: schema, configurations: ModelConfiguration(isStoredInMemoryOnly: true)))
+    }
+
+    func testATemplateSurvivesASaveWithItsExercisesAndSets() throws {
+        let ctx = try context()
+        let routine = Routine(name: "Lower A")
+        let squat = RoutineExercise(name: "Back Squat", equipment: "Barbell", orderIndex: 0)
+        squat.routine = routine
+        let top = RoutinePrescribedSet(orderIndex: 0)
+        top.targetWeightKg = 102.06
+        top.targetReps = 5
+        top.exercise = squat
+        ctx.insert(routine); ctx.insert(squat); ctx.insert(top)
+        try ctx.save()
+
+        let back = try XCTUnwrap(try ctx.fetch(FetchDescriptor<Routine>()).first)
+        XCTAssertEqual(back.name, "Lower A")
+        XCTAssertEqual(back.orderedExercises.count, 1)
+        XCTAssertEqual(back.orderedExercises.first?.orderedSets.count, 1)
+        XCTAssertEqual(back.orderedExercises.first?.orderedSets.first?.targetReps, 5)
+    }
+
+    func testCoachAndPackageModelsCoexistInOneSchema() throws {
+        // Train is the feature that first puts LiftCore models into Coach's
+        // store. If this throws, the rename did not hold.
+        let ctx = try context()
+        let client = Client(id: "c1", name: "Ana", displayUnit: "lb", platform: "ios")
+        let food = ClientFoodEntry(day: nil, foodName: "Oats", servings: 1,
+                                   calories: 379, proteinG: 13, fatG: 6, carbsG: 68,
+                                   fiberG: 10, meal: 0)
+        ctx.insert(client); ctx.insert(food); ctx.insert(Routine(name: "Lower A"))
+        XCTAssertNoThrow(try ctx.save())
+    }
+
+    func testASessionBooksATemplateOntoADay() throws {
+        let ctx = try context()
+        let routine = Routine(name: "Lower A")
+        ctx.insert(routine)
+        let session = ScheduledSession(clientID: "c1", dayKey: "2026-09-14", routineID: routine.id)
+        ctx.insert(session)
+        try ctx.save()
+
+        let found = try ctx.fetch(FetchDescriptor<ScheduledSession>())
+        XCTAssertEqual(found.count, 1)
+        XCTAssertEqual(found.first?.dayKey, "2026-09-14")
+        XCTAssertEqual(found.first?.routineID, routine.id)
+    }
+
+    func testOneTemplateCanBeBookedOnSeveralDays() throws {
+        // The normal case for a programme that repeats a week.
+        let ctx = try context()
+        let routine = Routine(name: "Lower A")
+        ctx.insert(routine)
+        for day in ["2026-09-14", "2026-09-17", "2026-09-21"] {
+            ctx.insert(ScheduledSession(clientID: "c1", dayKey: day, routineID: routine.id))
+        }
+        try ctx.save()
+        XCTAssertEqual(try ctx.fetch(FetchDescriptor<ScheduledSession>()).count, 3)
+    }
+}
