@@ -50,8 +50,14 @@ struct WorkoutEditorView: View {
                             }
                             try? await Task.sleep(for: .milliseconds(200))
                             guard !Task.isCancelled else { return }
-                            matches = (try? await ReferenceDatabase.shared
+                            let results = (try? await ReferenceDatabase.shared
                                 .searchExercises(query, limit: 20)) ?? []
+                            // Re-check after the await: cancellation can land
+                            // during the search itself, not just during the
+                            // debounce sleep, and a cancelled task must not
+                            // assign stale results over a newer query's.
+                            guard !Task.isCancelled else { return }
+                            matches = results
                         }
                     ForEach(matches, id: \.id) { record in
                         Button(record.name) { add(record) }
