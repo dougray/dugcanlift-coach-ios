@@ -111,8 +111,10 @@ struct RecipeEditorView: View {
     private func macroField(_ label: String, text: Binding<String>, field: MacroFields.Field) -> some View {
         TextField(label, text: text)
             .keyboardType(.decimalPad)
-            // A field the coach edits stops being ours to fill in.
-            .onChange(of: text.wrappedValue) { macros.markTyped(field) }
+            // A field the coach edits stops being ours to fill in -- but
+            // onChange also fires on applyComputed's own write, so
+            // `userEdited` (not `markTyped`) tells the two apart.
+            .onChange(of: text.wrappedValue) { macros.userEdited(field, to: text.wrappedValue) }
     }
 
     // MARK: - Lookup
@@ -125,7 +127,7 @@ struct RecipeEditorView: View {
 
         let found: [FoodRecord]
         if Self.looksLikeBarcode(trimmed) {
-            found = (try? await ReferenceDatabase.shared.food(barcode: trimmed)).flatMap { $0.map { [$0] } } ?? []
+            found = (try? await ReferenceDatabase.shared.food(barcode: trimmed)).map { [$0] } ?? []
         } else {
             found = (try? await ReferenceDatabase.shared.searchFoods(trimmed, limit: 12)) ?? []
         }
