@@ -102,9 +102,16 @@ struct CookPlanView: View {
                 VStack(alignment: .trailing, spacing: 2) {
                     ForEach(booked) { meal in
                         HStack {
-                            Text("\(meal.recipeName) · \(CookFormat.servingsLabel(meal.servings))")
+                            Text(meal.recipeName)
                                 .font(.caption)
                                 .foregroundStyle(Theme.textPrimary)
+                            Menu(CookFormat.servingsLabel(meal.servings)) {
+                                ForEach(Self.servingOptions, id: \.self) { count in
+                                    Button(CookFormat.servingsLabel(count)) { setServings(count, on: meal) }
+                                }
+                            }
+                            .font(.caption)
+                            .tint(Theme.accent)
                             Button("Remove") { remove(meal) }
                                 .font(.caption)
                                 .tint(Theme.accent)
@@ -142,6 +149,17 @@ struct CookPlanView: View {
         var mapping = owners
         mapping[meal.id.uuidString] = clientID
         owners = mapping
+        try? context.save()
+    }
+
+    /// PLAN-FORMAT's `q` and the shopping list's per-recipe scaling factor
+    /// both key off `meal.servings` -- a booking hard-coded to 1 always
+    /// shopped for one serving regardless of how many the recipe actually
+    /// yields per booking, and always sent `q:1` on the wire.
+    private static let servingOptions: [Double] = [0.5, 1, 1.5, 2, 3, 4]
+
+    private func setServings(_ count: Double, on meal: PlannedMeal) {
+        meal.servings = count
         try? context.save()
     }
 

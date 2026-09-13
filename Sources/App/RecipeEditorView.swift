@@ -53,6 +53,16 @@ struct RecipeEditorView: View {
                     macroField("Protein (g)", text: $macros.protein, field: .protein)
                     macroField("Carbs (g)", text: $macros.carbs, field: .carbs)
                     macroField("Fat (g)", text: $macros.fat, field: .fat)
+                    if recipe.nutritionIsEstimated {
+                        Text("Estimated from an import — check these before sending.")
+                            .font(.caption)
+                            .foregroundStyle(Theme.textSecondary)
+                        if let transcript = recipe.sourceTranscript {
+                            Text(transcript)
+                                .font(.caption)
+                                .foregroundStyle(Theme.textSecondary)
+                        }
+                    }
                     if !tallyNote.isEmpty {
                         Text(tallyNote).font(.caption).foregroundStyle(Theme.textSecondary)
                     }

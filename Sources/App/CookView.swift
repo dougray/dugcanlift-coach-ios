@@ -131,10 +131,11 @@ struct CookView: View {
 
     private func macroLine(_ recipe: Recipe) -> String {
         guard let n = recipe.nutritionPerServing else { return "Macros not set" }
-        return "\(CookFormat.trimmed(n.calories.rounded())) kcal  "
+        let line = "\(CookFormat.trimmed(n.calories.rounded())) kcal  "
              + "P \(CookFormat.trimmed(n.proteinG.rounded()))  "
              + "C \(CookFormat.trimmed(n.carbsG.rounded()))  "
              + "F \(CookFormat.trimmed(n.fatG.rounded()))"
+        return recipe.nutritionIsEstimated ? line + " · estimated" : line
     }
 
     private func libraryLink(for client: Client) -> String {
