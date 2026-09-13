@@ -64,6 +64,49 @@ final class PlanLinkInteropTests: XCTestCase {
         }
     }
 
+    func testTheFixtureIsNotSomethingThisCodeCouldHaveWritten() throws {
+        // Same provenance check `PlanLinkMealInteropTests` already has for its
+        // own fixture, copied here: `Codable` discards key order, so nothing
+        // downstream of `decode` can tell web JSON from Coach JSON. The one
+        // property that distinguishes a fixture the web app wrote from one
+        // this codebase wrote is upstream of decoding -- Coach's JSONEncoder
+        // sets `.sortedKeys`, so its top-level keys always come out
+        // alphabetically (`l` before `n` before `r` before `t` before `v`).
+        // The web app builds an ordinary object literal, so its keys come out
+        // in insertion order -- `v` first, per PLAN-FORMAT's field order.
+        // Without this check, this file's only "interop" test could silently
+        // be exercising a fixture regenerated from Coach's own encoder, which
+        // would prove nothing.
+        let fragment = try fixture()
+        XCTAssertTrue(fragment.hasPrefix("1z"), "expected the deflate-raw envelope, got: \(fragment.prefix(8))")
+        let payloadString = String(fragment.dropFirst(2))
+        let compressed = try XCTUnwrap(CompactEncoding.base64URLDecode(payloadString))
+        let jsonData = try XCTUnwrap(CompactEncoding.inflateRaw(compressed))
+        let json = try XCTUnwrap(String(data: jsonData, encoding: .utf8))
+
+        XCTAssertTrue(json.hasPrefix("{\"v\""),
+                      "web-app JSON preserves insertion order (v first); got: \(json.prefix(20))")
+        XCTAssertFalse(json.hasPrefix("{\"l\""),
+                       "Coach's .sortedKeys would put l first -- this shape means the fixture " +
+                       "was regenerated from Coach's own encoder and no longer proves interop")
+    }
+
+    func testTheWebAppAlwaysSendsREmptyAndMEmptyForATrainingOnlyWeek() throws {
+        // Pins the web fact from the OTHER side of the false claim corrected
+        // in PlanLinkMealInteropTests: the web app's encodePlan does NOT omit
+        // empty r/m -- it always emits them, even empty, for a training-only
+        // week. This fixture (all training, no meals) decodes with `r` and
+        // `m` present as EMPTY arrays, not nil. Coach's own encoder omits
+        // both when empty instead -- PlanLinkEncoder.swift's comment -- which
+        // is Coach's own choice, permitted by PLAN-FORMAT ("a coach who plans
+        // only training sends a payload with no r or m at all") and safe
+        // because every decoder treats all four keys as optional.
+        let payload = try PlanLinkCodec.decode(fragment: try fixture(),
+                                               expectedLifterID: lifterIDFromFixture())
+        XCTAssertEqual(payload.r, [], "the web app sends r as an empty array for a training-only week, not nil")
+        XCTAssertEqual(payload.m, [], "the web app sends m as an empty array for a training-only week, not nil")
+    }
+
     /// The fixture addresses whichever client it was built for. The brief's
     /// original helper re-decoded the fixture with `expectedLifterID: nil`,
     /// but `PlanLinkCodec.decode(fragment:expectedLifterID:)` takes a
