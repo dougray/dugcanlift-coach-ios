@@ -12,6 +12,9 @@ struct RootView: View {
             TrainView()
                 .tabItem { Label("Train", systemImage: "dumbbell") }
 
+            CookView()
+                .tabItem { Label("Cook", systemImage: "fork.knife") }
+
             NavigationStack {
                 ConnectView()
             }
