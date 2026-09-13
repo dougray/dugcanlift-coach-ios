@@ -43,8 +43,29 @@ struct MacroFields: Equatable {
     var fat = ""
     private(set) var typed: Set<Field> = []
 
+    /// The exact string `applyComputed` most recently wrote into each field.
+    /// `userEdited` compares against this to tell a person's own edit apart
+    /// from the view's `onChange` firing on `applyComputed`'s own write.
+    private var computed: [Field: String] = [:]
+
     /// A field the coach edits stops being ours to fill in.
     mutating func markTyped(_ field: Field) { typed.insert(field) }
+
+    /// Called from the view's `onChange` when a field's text changes.
+    ///
+    /// SwiftUI's `onChange` fires on ANY change to the bound text, including
+    /// the programmatic write `applyComputed` itself just made -- not only
+    /// when the coach actually types. Marking a field typed on that echo
+    /// would permanently block `applyComputed` from ever updating it again:
+    /// add one ingredient, every field gets marked typed by the echo of its
+    /// own computed value, add a second ingredient, and the per-serving
+    /// macros are frozen at the first ingredient's contribution forever.
+    /// `userEdited` only marks a field typed when the new text differs from
+    /// what `applyComputed` itself last wrote there.
+    mutating func userEdited(_ field: Field, to newValue: String) {
+        guard computed[field] != newValue else { return }
+        typed.insert(field)
+    }
 
     /// Loads an existing recipe's macros. A recipe that already carries them
     /// counts as typed throughout: reopening it to add one more ingredient
@@ -65,10 +86,22 @@ struct MacroFields: Equatable {
     /// Writes a computed per-serving figure into only the fields the coach has
     /// not typed into.
     mutating func applyComputed(_ facts: NutritionFacts, locale: Locale = .autoupdatingCurrent) {
-        if !typed.contains(.calories) { calories = rounded(facts.calories, locale: locale) }
-        if !typed.contains(.protein) { protein = rounded(facts.proteinG, locale: locale) }
-        if !typed.contains(.carbs) { carbs = rounded(facts.carbsG, locale: locale) }
-        if !typed.contains(.fat) { fat = rounded(facts.fatG, locale: locale) }
+        if !typed.contains(.calories) {
+            calories = rounded(facts.calories, locale: locale)
+            computed[.calories] = calories
+        }
+        if !typed.contains(.protein) {
+            protein = rounded(facts.proteinG, locale: locale)
+            computed[.protein] = protein
+        }
+        if !typed.contains(.carbs) {
+            carbs = rounded(facts.carbsG, locale: locale)
+            computed[.carbs] = carbs
+        }
+        if !typed.contains(.fat) {
+            fat = rounded(facts.fatG, locale: locale)
+            computed[.fat] = fat
+        }
     }
 
     /// nil unless something was actually entered. An untouched form must not
