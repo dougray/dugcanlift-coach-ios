@@ -296,3 +296,10 @@ rule. `PlanLinkMealInteropTests` checks the fixture's raw JSON key order
 (`{"v"` first, never `{"l"`) before decoding, specifically because `Codable`
 discards key order and would otherwise let a Coach-regenerated fixture pass
 as if it still proved interop.
+
+Meal ownership travels in the backup too, as `BackupMeal.clientID`, and is
+written back into `cookPlanOwners` on restore and on web import via the
+shared `MealOwners` helper: `PlannedMeal` has no client field of its own (see
+"A planned meal's client lives in `@AppStorage`, not on the model" above), so
+a restored or imported meal with no entry in that map is stored in SwiftData
+but permanently invisible to every screen that reads it.
