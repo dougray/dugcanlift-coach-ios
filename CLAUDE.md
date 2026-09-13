@@ -94,7 +94,7 @@ screenshots independently.
 
 - iOS 17.0 minimum (SwiftData).
 - No backend, no accounts, no push notifications.
-- Cook and Train are v2 (branch `cook-tab`, 2026-09-12) — see the `LIFT`
+- Cook and Train are v2 (merged 2026-09-12) — see the `LIFT`
   superproject's `docs/superpowers/specs/2026-09-11-coach-ios-v2-design.md`.
 
 ## Shared code lives in LiftKit
