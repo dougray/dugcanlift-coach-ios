@@ -194,7 +194,8 @@ anything — but it is not a unit and must never reach a screen.
 
 **Only weights get costed.** `g`, `kg`, `mg`, `oz`, `lb`, `lbs`. Pricing "2 tbsp
 olive oil" means inventing a density, and a confident wrong calorie count is
-worse than a gap the coach can see. The gap is stated in words, with a count.
+worse than a gap the coach can see. The gap is stated in words, with a count,
+in the recipe editor's macro section and on the library card.
 
 **A typed macro wins over a computed one, and blank stays blank.**
 `MacroFields` holds both rules, as a value type with no view in it, because a
@@ -291,8 +292,13 @@ conversion is silent and 2.2x wrong.
 **`PlanLinkEncoder` omits an empty `r`/`m`/`w`/`k` rather than sending `[]`.**
 PLAN-FORMAT says a training-only week carries no `r` or `m` key at all, and
 `Tests/Fixtures/web-plan-meals.txt` — captured from the web app's own
-encoder — has no `w` or `k` keys, confirming the web app follows the same
-rule. `PlanLinkMealInteropTests` checks the fixture's raw JSON key order
+encoder — has no `w` or `k` keys. That is not the same rule the web app
+follows for `r`/`m`, though: `Tests/Fixtures/web-plan-link.txt` decodes to
+`"r":[],"m":[]` — the web app's `encodePlan` always emits `r` and `m`, even
+empty, and emits `w`/`k` only when there are workouts. Coach's own
+omit-all-four-when-empty rule is Coach's own choice, permitted by
+PLAN-FORMAT and safe because every decoder treats all four keys as
+optional. `PlanLinkMealInteropTests` checks the fixture's raw JSON key order
 (`{"v"` first, never `{"l"`) before decoding, specifically because `Codable`
 discards key order and would otherwise let a Coach-regenerated fixture pass
 as if it still proved interop.
