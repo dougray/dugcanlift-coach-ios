@@ -1,5 +1,6 @@
 import XCTest
 import SwiftData
+import LiftCore
 @testable import Coach
 
 final class BackupCodecTests: XCTestCase {
@@ -9,6 +10,16 @@ final class BackupCodecTests: XCTestCase {
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
         let container = try ModelContainer(for: schema, configurations: [config])
         return ModelContext(container)
+    }
+
+    private func context() throws -> ModelContext {
+        let schema = Schema([
+            Client.self, Goal.self, TrainingDay.self, ExerciseSet.self, ClientFoodEntry.self,
+            Routine.self, RoutineExercise.self, RoutinePrescribedSet.self, ScheduledSession.self,
+            Recipe.self, RecipeIngredient.self, PlannedMeal.self, ShoppingListCheck.self,
+        ])
+        return ModelContext(try ModelContainer(
+            for: schema, configurations: ModelConfiguration(isStoredInMemoryOnly: true)))
     }
 
     func testExportThenRestoreRoundTripsAClient() throws {
@@ -72,5 +83,46 @@ final class BackupCodecTests: XCTestCase {
 
         let restored = try destinationContext.fetch(FetchDescriptor<Client>()).first
         XCTAssertEqual(restored?.lastImportedAt, originalTimestamp)
+    }
+
+    func testABackupCarriesTheWholeLibraryNotJustTheRoster() throws {
+        let ctx = try context()
+        ctx.insert(Recipe(name: "Beef Chilli", servings: 4))
+        let routine = Routine(name: "Lower A")
+        ctx.insert(routine)
+        ctx.insert(ScheduledSession(clientID: "a1b2c3d4", dayKey: "2026-09-14", routineID: routine.id))
+        try ctx.save()
+
+        let data = try BackupCodec.export(from: ctx)
+        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(json["v"] as? Int, 2)
+        XCTAssertEqual((json["recipes"] as? [Any])?.count, 1)
+        XCTAssertEqual((json["routines"] as? [Any])?.count, 1)
+        XCTAssertEqual((json["sessions"] as? [Any])?.count, 1)
+    }
+
+    func testRestoringARoundTripReturnsTheLibrary() throws {
+        let source = try context()
+        source.insert(Recipe(name: "Beef Chilli", servings: 4))
+        let routine = Routine(name: "Lower A")
+        source.insert(routine)
+        try source.save()
+
+        let data = try BackupCodec.export(from: source)
+        let target = try context()
+        try BackupCodec.restore(from: data, into: target)
+
+        XCTAssertEqual(try target.fetch(FetchDescriptor<Recipe>()).count, 1)
+        XCTAssertEqual(try target.fetch(FetchDescriptor<Routine>()).count, 1)
+    }
+
+    func testRestoringAV1FileDoesNotWipeTheLibrary() throws {
+        let ctx = try context()
+        ctx.insert(Recipe(name: "Already here", servings: 2))
+        try ctx.save()
+
+        try BackupCodec.restore(from: Data("{\"v\":1,\"clients\":[]}".utf8), into: ctx)
+        XCTAssertEqual(try ctx.fetch(FetchDescriptor<Recipe>()).count, 1,
+                       "a v1 file has no library; absent must not mean delete")
     }
 }

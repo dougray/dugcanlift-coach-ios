@@ -1,16 +1,73 @@
 import Foundation
 import SwiftData
+import LiftCore
 
 /// A flat, versioned, whole-app-state JSON blob — no compression, no
 /// dictionary interning. Unlike `ShareLinkCodec`'s links, a local file has
 /// no email-body size pressure, so there's nothing to optimize for; this
 /// mirrors `lift-ios`'s own `BackupStore.swift` in spirit (restore-by-
-/// replace, not merge).
+/// replace, not merge) for clients. The library (v2) is the one exception --
+/// see `restore` below.
 enum BackupCodec {
 
     private struct Backup: Codable {
         var v: Int
         var clients: [BackupClient]
+        // v2. Optional so a v1 file decodes, and so absent means "this file
+        // has no library", never "delete the one on this device".
+        var recipes: [BackupRecipe]?
+        var meals: [BackupMeal]?
+        var routines: [BackupRoutine]?
+        var sessions: [BackupSession]?
+    }
+
+    private struct BackupRecipe: Codable {
+        var id: UUID
+        var name: String
+        var servings: Double
+        var steps: [String]
+        var ingredients: [String]      // raw text; the parser rebuilds the rest
+        var nutritionPerServing: NutritionFacts?
+    }
+
+    private struct BackupMeal: Codable {
+        var id: UUID
+        var recipeID: UUID
+        var recipeName: String
+        var dayKey: String
+        var meal: String               // MealType.rawValue
+        var servings: Double
+        var snapshotNutrition: NutritionFacts?
+    }
+
+    private struct BackupRoutine: Codable {
+        var id: UUID
+        var name: String
+        var exercises: [BackupRoutineExercise]
+    }
+
+    private struct BackupRoutineExercise: Codable {
+        var name: String
+        var equipment: String
+        var note: String?
+        var sets: [BackupPrescribedSet]
+    }
+
+    /// Kilograms, as stored. This file is Coach's own, not the wire, so there
+    /// is no pounds conversion here -- adding one would be a silent 2.2x.
+    private struct BackupPrescribedSet: Codable {
+        var targetWeightKg: Double?
+        var targetReps: Int?
+        var targetRPE: Double?
+        var targetDurationSec: Int?
+        var targetDistanceMeters: Double?
+    }
+
+    private struct BackupSession: Codable {
+        var id: UUID
+        var clientID: String
+        var dayKey: String
+        var routineID: UUID
     }
 
     private struct BackupClient: Codable {
@@ -58,7 +115,12 @@ enum BackupCodec {
 
     static func export(from context: ModelContext) throws -> Data {
         let clients = try context.fetch(FetchDescriptor<Client>())
-        let backup = Backup(v: 1, clients: clients.map { client in
+        let recipes = try context.fetch(FetchDescriptor<Recipe>())
+        let meals = try context.fetch(FetchDescriptor<PlannedMeal>())
+        let routines = try context.fetch(FetchDescriptor<Routine>())
+        let sessions = try context.fetch(FetchDescriptor<ScheduledSession>())
+
+        let backup = Backup(v: 2, clients: clients.map { client in
             BackupClient(
                 id: client.id, name: client.name, displayUnit: client.displayUnit, platform: client.platform,
                 lastImportedAt: client.lastImportedAt,
@@ -84,6 +146,31 @@ enum BackupCodec {
                     )
                 }
             )
+        }, recipes: recipes.map { recipe in
+            BackupRecipe(id: recipe.id, name: recipe.name, servings: recipe.servings,
+                         steps: recipe.steps,
+                         ingredients: (recipe.ingredients ?? [])
+                            .sorted { $0.sortOrder < $1.sortOrder }
+                            .map(\.rawText),
+                         nutritionPerServing: recipe.nutritionPerServing)
+        }, meals: meals.map { meal in
+            BackupMeal(id: meal.id, recipeID: meal.recipeID, recipeName: meal.recipeName,
+                      dayKey: meal.dayKey, meal: meal.mealType.rawValue, servings: meal.servings,
+                      snapshotNutrition: meal.snapshotNutrition)
+        }, routines: routines.map { routine in
+            BackupRoutine(id: routine.id, name: routine.name,
+                         exercises: routine.orderedExercises.map { exercise in
+                BackupRoutineExercise(name: exercise.name, equipment: exercise.equipment,
+                                      note: exercise.note,
+                                      sets: exercise.orderedSets.map { set in
+                    BackupPrescribedSet(targetWeightKg: set.targetWeightKg, targetReps: set.targetReps,
+                                        targetRPE: set.targetRPE, targetDurationSec: set.targetDurationSec,
+                                        targetDistanceMeters: set.targetDistanceMeters)
+                })
+            })
+        }, sessions: sessions.map { session in
+            BackupSession(id: session.id, clientID: session.clientID, dayKey: session.dayKey,
+                          routineID: session.routineID)
         })
         return try JSONEncoder().encode(backup)
     }
@@ -139,6 +226,65 @@ enum BackupCodec {
                     day.foodEntries.append(food)
                 }
             }
+        }
+
+        // Clients are replace-by-restore, as they have always been. The
+        // library merges by id instead -- the same rule the web app uses --
+        // because an older backup must not delete newer work on this device.
+        // The inconsistency is deliberate and documented in CLAUDE.md.
+        let existingRecipes = Set(try context.fetch(FetchDescriptor<Recipe>()).map(\.id))
+        for row in backup.recipes ?? [] where !existingRecipes.contains(row.id) {
+            let recipe = Recipe(name: row.name, servings: row.servings, steps: row.steps,
+                                nutritionPerServing: row.nutritionPerServing)
+            recipe.id = row.id
+            context.insert(recipe)
+            for (index, line) in row.ingredients.enumerated() {
+                let ingredient = IngredientParser.parse(line, sortOrder: index)
+                ingredient.recipe = recipe
+                context.insert(ingredient)
+            }
+        }
+
+        let existingMeals = Set(try context.fetch(FetchDescriptor<PlannedMeal>()).map(\.id))
+        let recipesByID = Dictionary(uniqueKeysWithValues:
+            try context.fetch(FetchDescriptor<Recipe>()).map { ($0.id, $0) })
+        for row in backup.meals ?? [] where !existingMeals.contains(row.id) {
+            guard let recipe = recipesByID[row.recipeID],
+                  let plannedFor = DayKey.date(from: row.dayKey) else { continue }
+            let meal = PlannedMeal(recipe: recipe, mealType: MealType(rawValue: row.meal) ?? .dinner,
+                                   plannedFor: plannedFor, servings: row.servings)
+            meal.id = row.id
+            meal.recipeName = row.recipeName
+            meal.snapshotNutrition = row.snapshotNutrition
+            context.insert(meal)
+        }
+
+        let existingRoutines = Set(try context.fetch(FetchDescriptor<Routine>()).map(\.id))
+        for row in backup.routines ?? [] where !existingRoutines.contains(row.id) {
+            let routine = Routine(name: row.name)
+            routine.id = row.id
+            context.insert(routine)
+            for (index, exerciseRow) in row.exercises.enumerated() {
+                let exercise = RoutineExercise(name: exerciseRow.name, equipment: exerciseRow.equipment,
+                                               orderIndex: index, note: exerciseRow.note)
+                exercise.routine = routine
+                context.insert(exercise)
+                for (order, setRow) in exerciseRow.sets.enumerated() {
+                    let set = RoutinePrescribedSet(orderIndex: order, targetWeightKg: setRow.targetWeightKg,
+                                                   targetReps: setRow.targetReps, targetRPE: setRow.targetRPE,
+                                                   targetDurationSec: setRow.targetDurationSec,
+                                                   targetDistanceMeters: setRow.targetDistanceMeters)
+                    set.exercise = exercise
+                    context.insert(set)
+                }
+            }
+        }
+
+        let existingSessions = Set(try context.fetch(FetchDescriptor<ScheduledSession>()).map(\.id))
+        for row in backup.sessions ?? [] where !existingSessions.contains(row.id) {
+            let session = ScheduledSession(clientID: row.clientID, dayKey: row.dayKey, routineID: row.routineID)
+            session.id = row.id
+            context.insert(session)
         }
 
         try context.save()
