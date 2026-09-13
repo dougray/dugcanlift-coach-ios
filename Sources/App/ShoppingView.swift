@@ -20,9 +20,14 @@ struct ShoppingView: View {
     @AppStorage("cookPlanOwners") private var ownersData = Data()
 
     var body: some View {
-        ScrollView {
+        // Computed once per body pass -- `lines` re-derives the whole list
+        // from `meals`/`recipes`/`weekStart` on every access, and the body
+        // below was reading it twice (the emptiness check, then the
+        // ForEach).
+        let rows = lines
+        return ScrollView {
             VStack(alignment: .leading, spacing: Theme.cardSpacing) {
-                if lines.isEmpty {
+                if rows.isEmpty {
                     LiftCard(title: "Shopping") {
                         Text("Nothing planned for this client's week, so there is nothing "
                              + "to buy yet.")
@@ -38,7 +43,7 @@ struct ShoppingView: View {
                     }
                 }
 
-                ForEach(lines) { line in
+                ForEach(rows) { line in
                     let isChecked = checks.contains { $0.itemKey == line.key }
                     Button {
                         toggle(line.key, isChecked: isChecked)

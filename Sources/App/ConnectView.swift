@@ -125,6 +125,7 @@ struct ConnectView: View {
             let url = try result.get()
             guard url.startAccessingSecurityScopedResource() else {
                 errorMessage = "Couldn't access that file."
+                importNote = nil
                 return
             }
             defer { url.stopAccessingSecurityScopedResource() }
@@ -134,8 +135,10 @@ struct ConnectView: View {
                 ? "That backup had no library in it. Save a fresh one from the web app first."
                 : "Brought in \(summary.recipes) recipes, \(summary.meals) planned meals, "
                   + "\(summary.routines) workouts and \(summary.sessions) sessions."
+            errorMessage = nil
         } catch {
             errorMessage = "That doesn't look like a LIFT Coach backup."
+            importNote = nil
         }
     }
 }
