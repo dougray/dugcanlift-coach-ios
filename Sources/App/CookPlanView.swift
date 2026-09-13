@@ -27,7 +27,15 @@ struct CookPlanView: View {
     private var days: [String] { PlanWeek(startDayKey: weekStart).days }
 
     var body: some View {
-        ScrollView {
+        // `owners` decodes the AppStorage blob from JSON. Decoded once here
+        // and threaded through as a plain value rather than re-decoded by
+        // every call to `mine`/`planned`/`usedRecipes` -- `mealRow` alone is
+        // invoked 7 days x 4 meal types = 28 times per body evaluation.
+        let mapping = owners
+        let mineMeals = mine(mapping: mapping)
+        let used = usedRecipes(mine: mineMeals)
+
+        return ScrollView {
             VStack(alignment: .leading, spacing: Theme.cardSpacing) {
                 LiftCard(title: "Client") {
                     VStack(alignment: .leading, spacing: 8) {
@@ -52,16 +60,16 @@ struct CookPlanView: View {
                     LiftCard(title: "\(CookFormat.dayLabel(dayKey: day)) · \(day)") {
                         VStack(alignment: .leading, spacing: 6) {
                             ForEach(MealType.allCases) { slot in
-                                mealRow(day: day, slot: slot)
+                                mealRow(day: day, slot: slot, mapping: mapping)
                             }
                         }
                     }
                 }
 
-                if !mine.isEmpty {
+                if !mineMeals.isEmpty {
                     ShareLink(item: shareLink) { Text("Send this week") }
                         .tint(Theme.accent)
-                    Text(contentsLabel)
+                    Text(contentsLabel(mineCount: mineMeals.count))
                         .font(.caption)
                         .foregroundStyle(Theme.textSecondary)
                 }
@@ -69,17 +77,19 @@ struct CookPlanView: View {
             .padding()
         }
         .liftScreen()
-        .task(id: rebuildKey) { shareLink = link() }
+        .task(id: rebuildKey(mine: mineMeals, used: used)) {
+            shareLink = link(mine: mineMeals, used: used)
+        }
         .background(Theme.background)
     }
 
-    private func mealRow(day: String, slot: MealType) -> some View {
+    private func mealRow(day: String, slot: MealType, mapping: [String: String]) -> some View {
         HStack {
             Text(slot.displayName)
                 .font(.caption)
                 .foregroundStyle(Theme.textSecondary)
             Spacer()
-            let booked = planned(on: day, slot: slot)
+            let booked = planned(on: day, slot: slot, mapping: mapping)
             if booked.isEmpty {
                 Menu("Add") {
                     ForEach(recipes) { recipe in
@@ -112,17 +122,15 @@ struct CookPlanView: View {
         nonmutating set { ownersData = (try? JSONEncoder().encode(newValue)) ?? Data() }
     }
 
-    private func planned(on day: String, slot: MealType) -> [PlannedMeal] {
-        let mapping = owners
-        return meals.filter {
+    private func planned(on day: String, slot: MealType, mapping: [String: String]) -> [PlannedMeal] {
+        meals.filter {
             $0.dayKey == day && $0.mealType == slot
                 && mapping[$0.id.uuidString] == clientID
         }
     }
 
-    private var mine: [PlannedMeal] {
-        let mapping = owners
-        return meals.filter {
+    private func mine(mapping: [String: String]) -> [PlannedMeal] {
+        meals.filter {
             days.contains($0.dayKey) && mapping[$0.id.uuidString] == clientID
         }
     }
@@ -149,14 +157,23 @@ struct CookPlanView: View {
 
     /// Only the recipes this week actually plans are inlined, which is what
     /// keeps a week inside a link an email client will not mangle.
-    private var usedRecipes: [Recipe] {
+    private func usedRecipes(mine: [PlannedMeal]) -> [Recipe] {
         recipes.filter { recipe in mine.contains { $0.recipeID == recipe.id } }
     }
 
     /// Keyed on the content that ends up on the wire, not on counts -- a
-    /// rename or a servings edit must rebuild the link. Same discipline as
-    /// TrainPlanView's RebuildKey, and for the same bug.
-    private struct RebuildKey: Equatable {
+    /// rename or a macro edit must rebuild the link. `Inlined` mirrors every
+    /// field `PlanLinkEncoder.planRecipe` actually writes to `u`
+    /// (calories/protein/carbs/fat/fibre), not just calories -- a coach who
+    /// corrects protein with calories unchanged must still rebuild the link.
+    /// Same discipline as TrainPlanView's RebuildKey, and for the same bug.
+    ///
+    /// Internal, and `rebuildKey(clientID:weekStart:coachName:mine:used:)` is
+    /// a static function rather than an instance computed property, so
+    /// `CookPlanViewRebuildKeyTests` can pin the "protein change moves the
+    /// key" behaviour without standing up a live `@Query`/`@Environment`
+    /// view instance.
+    struct RebuildKey: Equatable {
         let clientID: String
         let weekStart: String
         let coachName: String
@@ -166,38 +183,48 @@ struct CookPlanView: View {
         struct Booking: Equatable { let day: String; let slot: String; let recipeID: UUID; let servings: Double }
         struct Inlined: Equatable {
             let id: UUID, name: String, servings: Double
-            let calories: Double?, ingredients: [String], steps: [String]
+            let calories: Double?, proteinG: Double?, carbsG: Double?, fatG: Double?, fiberG: Double?
+            let ingredients: [String], steps: [String]
         }
     }
 
-    private var rebuildKey: RebuildKey {
+    static func rebuildKey(clientID: String, weekStart: String, coachName: String,
+                           mine: [PlannedMeal], used: [Recipe]) -> RebuildKey {
         RebuildKey(
             clientID: clientID, weekStart: weekStart, coachName: coachName,
             bookings: mine.map { .init(day: $0.dayKey, slot: $0.mealType.rawValue,
                                        recipeID: $0.recipeID, servings: $0.servings) },
-            recipes: usedRecipes.map { recipe in
+            recipes: used.map { recipe in
                 .init(id: recipe.id, name: recipe.name, servings: recipe.servings,
                       calories: recipe.nutritionPerServing?.calories,
+                      proteinG: recipe.nutritionPerServing?.proteinG,
+                      carbsG: recipe.nutritionPerServing?.carbsG,
+                      fatG: recipe.nutritionPerServing?.fatG,
+                      fiberG: recipe.nutritionPerServing?.fiberG,
                       ingredients: (recipe.ingredients ?? [])
                           .sorted { $0.sortOrder < $1.sortOrder }.map(\.rawText),
                       steps: recipe.steps)
             })
     }
 
+    private func rebuildKey(mine: [PlannedMeal], used: [Recipe]) -> RebuildKey {
+        Self.rebuildKey(clientID: clientID, weekStart: weekStart, coachName: coachName,
+                        mine: mine, used: used)
+    }
+
     private var coachName: String {
         PlanLinkEncoder.coachName(UserDefaults.standard.string(forKey: "coachName"))
     }
 
-    private var contentsLabel: String {
-        let n = mine.count
-        return "\(n) meal\(n == 1 ? "" : "s") this week. "
+    private func contentsLabel(mineCount: Int) -> String {
+        "\(mineCount) meal\(mineCount == 1 ? "" : "s") this week. "
              + "Nothing in that link goes to a server — it travels in the part of the "
              + "address browsers never send."
     }
 
-    private func link() -> String {
+    private func link(mine: [PlannedMeal], used: [Recipe]) -> String {
         let fragment = PlanLinkEncoder.fragment(
-            recipes: usedRecipes, meals: mine, lifterID: clientID, coachName: coachName)
+            recipes: used, meals: mine, lifterID: clientID, coachName: coachName)
         return "https://www.dugcanlift.com/lift/#" + fragment
     }
 }
