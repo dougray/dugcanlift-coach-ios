@@ -41,6 +41,13 @@ final class PlanLinkMealInteropTests: XCTestCase {
         XCTAssertEqual(meal.s, 2)
         XCTAssertEqual(meal.x, 0)
         XCTAssertEqual(meal.q, 2)
+
+        // The web app omits empty collections rather than sending `[]` --
+        // the behaviour Coach's own encoder was changed to match in the
+        // previous task. This fixture carries no training data at all, so
+        // it is real evidence of that convention on the web side too.
+        XCTAssertNil(payload.w, "the web app omits empty collections, never sends []")
+        XCTAssertNil(payload.k, "the web app omits empty collections, never sends []")
     }
 
     func testCoachProducesTheSameMealPlanTheWebAppDoes() throws {
@@ -80,12 +87,36 @@ final class PlanLinkMealInteropTests: XCTestCase {
     }
 
     func testTheFixtureIsNotSomethingThisCodeCouldHaveWritten() throws {
-        // Coach's encoder sorts keys; the web app does not. If this fixture
-        // ever starts decoding from sorted-key JSON, someone regenerated it
-        // locally and the test stopped proving interoperability.
-        let payload = try web()
-        XCTAssertEqual(payload.t, "plan")
-        XCTAssertEqual(payload.l, Self.lifterID)
-        XCTAssertNotNil(payload.r)
+        // `PlanPayload.t`/`.l` are already enforced by `PlanLinkCodec.decode`
+        // itself -- it throws on a wrong `t` and throws
+        // `notAddressedToThisDevice` on a wrong `l` -- so asserting them here
+        // would prove nothing a passing `try web()` hadn't already proven.
+        // And `Codable` discards key order entirely: nothing downstream of
+        // `decode` can tell web JSON from Coach JSON, because both decode to
+        // the identical `PlanPayload` value regardless of what order the
+        // wire bytes had their keys in.
+        //
+        // The one property that actually distinguishes a fixture the web app
+        // wrote from one this codebase wrote is upstream of decoding:
+        // Coach's `JSONEncoder` sets `.sortedKeys`, so its top-level keys
+        // always come out alphabetically -- `l` before `n` before `r` before
+        // `t` before `v`. The web app builds an ordinary object literal, so
+        // its keys come out in insertion order -- `v` first, per
+        // PLAN-FORMAT's field order. Coach's encoder can never produce JSON
+        // starting `{"v"`; it would have to start `{"l"`. That is checked
+        // here, before decoding, because decoding is exactly the step that
+        // throws the distinction away.
+        let fragment = try fixture()
+        XCTAssertTrue(fragment.hasPrefix("1z"), "expected the deflate-raw envelope, got: \(fragment.prefix(8))")
+        let payloadString = String(fragment.dropFirst(2))
+        let compressed = try XCTUnwrap(CompactEncoding.base64URLDecode(payloadString))
+        let jsonData = try XCTUnwrap(CompactEncoding.inflateRaw(compressed))
+        let json = try XCTUnwrap(String(data: jsonData, encoding: .utf8))
+
+        XCTAssertTrue(json.hasPrefix("{\"v\""),
+                      "web-app JSON preserves insertion order (v first); got: \(json.prefix(20))")
+        XCTAssertFalse(json.hasPrefix("{\"l\""),
+                       "Coach's .sortedKeys would put l first -- this shape means the fixture " +
+                       "was regenerated from Coach's own encoder and no longer proves interop")
     }
 }
