@@ -10,6 +10,12 @@ struct CookView: View {
     @State private var importing = false
     @State private var section: Section = .recipes
 
+    /// Mirrors `CookPlanView`'s own `@AppStorage("cookPlanOwners")` --
+    /// deleting a recipe here orphans its `PlannedMeal`s (see `delete(_:)`),
+    /// and this needs write access to the same blob so a deleted meal's
+    /// ownership entry does not outlive the meal itself.
+    @AppStorage("cookPlanOwners") private var ownersData = Data()
+
     // Owned here, not by the child screens: CookView's section switch gives
     // each branch its own subtree, so @State living below would be torn down
     // and rebuilt on every section change, losing the picked client.
@@ -133,11 +139,27 @@ struct CookView: View {
 
     /// Deleting a recipe orphans the meals planned from it, the same way
     /// deleting a Routine orphans its sessions -- so sweep them here, where
-    /// the planned meals are still reachable.
+    /// the planned meals are still reachable. Also sweeps their entries out
+    /// of `cookPlanOwners`: leaving them behind doesn't break anything --
+    /// the deleted meal's UUID matches nothing once the meal itself is
+    /// gone -- but it violates the ownership contract this key is, and the
+    /// fix is a few lines.
     private func delete(_ recipe: Recipe) {
-        let orphans = (try? context.fetch(FetchDescriptor<PlannedMeal>())) ?? []
-        for meal in orphans where meal.recipeID == recipe.id { context.delete(meal) }
+        let orphans = ((try? context.fetch(FetchDescriptor<PlannedMeal>())) ?? [])
+            .filter { $0.recipeID == recipe.id }
+        for meal in orphans { context.delete(meal) }
+        ownersData = Self.sweepOwners(ownersData, removing: orphans.map(\.id))
         context.delete(recipe)
         try? context.save()
+    }
+
+    /// Removes the given meal IDs' entries from a `cookPlanOwners`-shaped
+    /// blob. A static, pure function -- rather than inline in `delete(_:)` --
+    /// so `CookViewOwnershipTests` can pin the sweep without standing up a
+    /// live `@Query`/`@Environment` view instance.
+    static func sweepOwners(_ data: Data, removing mealIDs: [UUID]) -> Data {
+        var mapping = (try? JSONDecoder().decode([String: String].self, from: data)) ?? [:]
+        for id in mealIDs { mapping.removeValue(forKey: id.uuidString) }
+        return (try? JSONEncoder().encode(mapping)) ?? Data()
     }
 }
