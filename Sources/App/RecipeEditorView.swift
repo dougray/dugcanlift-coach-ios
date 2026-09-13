@@ -13,9 +13,11 @@ import LiftReference
 /// a query that looks like a barcode is tried as one.
 struct RecipeEditorView: View {
     @Bindable var recipe: Recipe
+    var isNew: Bool = false
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
 
+    @State private var nameText = ""
     @State private var servingsText = ""
     @State private var ingredientText = ""
     @State private var stepText = ""
@@ -31,7 +33,7 @@ struct RecipeEditorView: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Name", text: $recipe.name)
+                    TextField("Name", text: $nameText)
                     TextField("Servings", text: $servingsText)
                         .keyboardType(.decimalPad)
                         .onChange(of: servingsText) { retally() }
@@ -67,7 +69,7 @@ struct RecipeEditorView: View {
             .navigationTitle("Recipe")
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { save() } }
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { cancel() } }
             }
             .onAppear(perform: load)
         }
@@ -187,6 +189,11 @@ struct RecipeEditorView: View {
     // MARK: - Load and save
 
     private func load() {
+        // Staged, like servings/ingredients/steps -- CookView inserts a new
+        // recipe into the context BEFORE presenting this sheet (autosave
+        // persists it), so binding straight to `recipe.name` would mutate
+        // the model live on every keystroke and Cancel would not cancel.
+        nameText = recipe.name
         // OptionalNumberField, NOT CookFormat.trimmed: this text is parsed
         // back by `servings` above, through OptionalNumberField's locale-aware
         // parser, and the two must be exact inverses. See the correction note
@@ -201,7 +208,16 @@ struct RecipeEditorView: View {
     }
 
     private func save() {
-        recipe.name = recipe.name.trimmingCharacters(in: .whitespaces)
+        let trimmedName = nameText.trimmingCharacters(in: .whitespaces)
+        // Done on a new recipe with an empty name is treated as Cancel: there
+        // is nothing here worth keeping, and an untitled phantom recipe is
+        // exactly the failure this fix exists to prevent.
+        if isNew, trimmedName.isEmpty {
+            Self.discard(recipe, in: context, isNew: true)
+            dismiss()
+            return
+        }
+        recipe.name = trimmedName
         recipe.servings = servings
         recipe.steps = lines(stepText)
         recipe.nutritionPerServing = macros.entered(merging: recipe.nutritionPerServing)
@@ -219,6 +235,27 @@ struct RecipeEditorView: View {
 
         try? context.save()
         dismiss()
+    }
+
+    private func cancel() {
+        Self.discard(recipe, in: context, isNew: isNew)
+        dismiss()
+    }
+
+    /// A new recipe was inserted into the context before this sheet was
+    /// presented (so autosave persists it), and every field here is staged
+    /// in `@State` rather than bound live -- so Cancel on an existing recipe
+    /// is just a dismiss (nothing live-bound remains to have mutated), and
+    /// Cancel on a new one must actually remove the phantom row, or it shows
+    /// up in every Plan menu and every "Send recipes" link forever.
+    ///
+    /// A static function, not inline in `cancel()`, so `CookModelsTests` can
+    /// pin both branches against an in-memory context without standing up a
+    /// live view instance.
+    static func discard(_ recipe: Recipe, in context: ModelContext, isNew: Bool) {
+        guard isNew else { return }
+        context.delete(recipe)
+        try? context.save()
     }
 
     private func lines(_ text: String) -> [String] {

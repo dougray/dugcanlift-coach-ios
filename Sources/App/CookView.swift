@@ -7,6 +7,12 @@ struct CookView: View {
     @Query(sort: \Recipe.name) private var recipes: [Recipe]
     @Query(sort: \Client.name) private var clients: [Client]
     @State private var editing: Recipe?
+    /// Set alongside `editing`, never independently -- see F2 in the final
+    /// fix wave. `RecipeEditorView` needs to know whether the recipe it is
+    /// presenting is new so Cancel can delete it instead of leaving a
+    /// phantom row; `editing` alone (an `Identifiable` item) has no room for
+    /// that second fact without changing its type.
+    @State private var editingIsNew = false
     @State private var importing = false
     @State private var section: Section = .recipes
 
@@ -54,7 +60,7 @@ struct CookView: View {
             .liftScreen()
             .background(Theme.background)
             .navigationTitle("Cook")
-            .sheet(item: $editing) { RecipeEditorView(recipe: $0) }
+            .sheet(item: $editing) { RecipeEditorView(recipe: $0, isNew: editingIsNew) }
             .sheet(isPresented: $importing) { RecipeImportView() }
         }
     }
@@ -81,7 +87,7 @@ struct CookView: View {
                                 .font(.caption)
                                 .foregroundStyle(Theme.textSecondary)
                             HStack {
-                                Button("Edit") { editing = recipe }
+                                Button("Edit") { editingIsNew = false; editing = recipe }
                                     .tint(Theme.accent)
                                 Spacer()
                                 Button("Delete", role: .destructive) { delete(recipe) }
@@ -94,6 +100,7 @@ struct CookView: View {
                     Button("New recipe") {
                         let recipe = Recipe(name: "New recipe")
                         context.insert(recipe)
+                        editingIsNew = true
                         editing = recipe
                     }
                     .tint(Theme.accent)
