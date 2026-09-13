@@ -1,0 +1,143 @@
+import SwiftUI
+import SwiftData
+import LiftCore
+
+struct CookView: View {
+    @Environment(\.modelContext) private var context
+    @Query(sort: \Recipe.name) private var recipes: [Recipe]
+    @Query(sort: \Client.name) private var clients: [Client]
+    @State private var editing: Recipe?
+    @State private var importing = false
+    @State private var section: Section = .recipes
+
+    // Owned here, not by the child screens: CookView's section switch gives
+    // each branch its own subtree, so @State living below would be torn down
+    // and rebuilt on every section change, losing the picked client.
+    @State private var planClientID: String = ""
+    @State private var planWeekStart: String = DayKey.today
+    @State private var planShareLink: String = ""
+
+    /// The PWA's three Cook chips, in its order.
+    private enum Section: String, CaseIterable, Identifiable {
+        case recipes = "Recipes"
+        case plan = "Plan"
+        case shopping = "Shopping"
+        var id: String { rawValue }
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                Picker("Section", selection: $section) {
+                    ForEach(Section.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .padding()
+                .tint(Theme.accent)
+
+                switch section {
+                case .recipes: library
+                case .plan: CookPlanView(clientID: $planClientID, weekStart: $planWeekStart,
+                                         shareLink: $planShareLink)
+                case .shopping: ShoppingView(clientID: $planClientID, weekStart: $planWeekStart)
+                }
+            }
+            // Applied once, by the parent every section shares -- see the
+            // note in TrainPlanView about nesting this inside itself.
+            .safeAreaPadding(.bottom, 72)
+            .liftScreen()
+            .background(Theme.background)
+            .navigationTitle("Cook")
+            .sheet(item: $editing) { RecipeEditorView(recipe: $0) }
+            .sheet(isPresented: $importing) { RecipeImportView() }
+        }
+    }
+
+    private var library: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Theme.cardSpacing) {
+                if recipes.isEmpty {
+                    LiftCard(title: "Recipes") {
+                        Text("No recipes yet. Write the ones you actually give clients — "
+                             + "the plan and their shopping list build themselves from here.")
+                            .font(.caption)
+                            .foregroundStyle(Theme.textSecondary)
+                    }
+                }
+
+                ForEach(recipes) { recipe in
+                    LiftCard(title: recipe.name) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(CookFormat.servingsLabel(recipe.servings))
+                                .font(.caption)
+                                .foregroundStyle(Theme.textSecondary)
+                            Text(macroLine(recipe))
+                                .font(.caption)
+                                .foregroundStyle(Theme.textSecondary)
+                            HStack {
+                                Button("Edit") { editing = recipe }
+                                    .tint(Theme.accent)
+                                Spacer()
+                                Button("Delete", role: .destructive) { delete(recipe) }
+                            }
+                        }
+                    }
+                }
+
+                HStack {
+                    Button("New recipe") {
+                        let recipe = Recipe(name: "New recipe")
+                        context.insert(recipe)
+                        editing = recipe
+                    }
+                    .tint(Theme.accent)
+                    Spacer()
+                    Button("Import a dish") { importing = true }
+                        .tint(Theme.accent)
+                }
+
+                if !recipes.isEmpty {
+                    // "Here is the recipe", with nothing booked into a day --
+                    // PLAN-FORMAT's library send. Scheduling is a separate
+                    // claim from possession.
+                    Menu("Send recipes") {
+                        if clients.isEmpty {
+                            Text("No clients yet")
+                        } else {
+                            ForEach(clients) { client in
+                                ShareLink(item: libraryLink(for: client)) { Text(client.name) }
+                            }
+                        }
+                    }
+                    .tint(Theme.accent)
+                }
+            }
+            .padding()
+        }
+    }
+
+    private func macroLine(_ recipe: Recipe) -> String {
+        guard let n = recipe.nutritionPerServing else { return "Macros not set" }
+        return "\(CookFormat.trimmed(n.calories.rounded())) kcal  "
+             + "P \(CookFormat.trimmed(n.proteinG.rounded()))  "
+             + "C \(CookFormat.trimmed(n.carbsG.rounded()))  "
+             + "F \(CookFormat.trimmed(n.fatG.rounded()))"
+    }
+
+    private func libraryLink(for client: Client) -> String {
+        let fragment = PlanLinkEncoder.fragment(
+            recipes: recipes, lifterID: client.id,
+            coachName: PlanLinkEncoder.coachName(UserDefaults.standard.string(forKey: "coachName")))
+        return "https://www.dugcanlift.com/lift/#" + fragment
+    }
+
+    /// Deleting a recipe orphans the meals planned from it, the same way
+    /// deleting a Routine orphans its sessions -- so sweep them here, where
+    /// the planned meals are still reachable.
+    private func delete(_ recipe: Recipe) {
+        let orphans = (try? context.fetch(FetchDescriptor<PlannedMeal>())) ?? []
+        for meal in orphans where meal.recipeID == recipe.id { context.delete(meal) }
+        context.delete(recipe)
+        try? context.save()
+    }
+}
