@@ -10,8 +10,10 @@ struct ConnectView: View {
 
     @State private var showingExporter = false
     @State private var showingImporter = false
+    @State private var showingWebImporter = false
     @State private var exportDocument: BackupDocument?
     @State private var errorMessage: String?
+    @State private var importNote: String?
 
     var body: some View {
         Form {
@@ -47,6 +49,11 @@ struct ConnectView: View {
                     .foregroundStyle(Theme.accent)
                 Button("Restore from Backup") { showingImporter = true }
                     .foregroundStyle(Theme.accent)
+                Button("Import from the web app") { showingWebImporter = true }
+                    .foregroundStyle(Theme.accent)
+                if let importNote {
+                    Text(importNote).foregroundStyle(Theme.textSecondary)
+                }
                 if let errorMessage {
                     Text(errorMessage).foregroundStyle(.red)
                 }
@@ -57,7 +64,9 @@ struct ConnectView: View {
             .listRowBackground(Theme.surface)
 
             Section {
-                Text("Everything stays on this device. There's no account and no server — a backup file is the only way to move your roster to another device.")
+                Text("Everything stays on this device. There's no account and no server — "
+                     + "a backup file is the only way to move your roster, your recipes and "
+                     + "your workouts to another device.")
                     .font(.caption)
                     .foregroundStyle(Theme.textSecondary)
             }
@@ -70,6 +79,9 @@ struct ConnectView: View {
                       contentType: .json, defaultFilename: "coach-backup") { _ in }
         .fileImporter(isPresented: $showingImporter, allowedContentTypes: [.json]) { result in
             importBackup(result)
+        }
+        .fileImporter(isPresented: $showingWebImporter, allowedContentTypes: [.json]) { result in
+            importWebLibrary(result)
         }
     }
 
@@ -105,6 +117,25 @@ struct ConnectView: View {
             try BackupCodec.restore(from: data, into: context)
         } catch {
             errorMessage = "That doesn't look like a valid backup file."
+        }
+    }
+
+    private func importWebLibrary(_ result: Result<URL, Error>) {
+        do {
+            let url = try result.get()
+            guard url.startAccessingSecurityScopedResource() else {
+                errorMessage = "Couldn't access that file."
+                return
+            }
+            defer { url.stopAccessingSecurityScopedResource() }
+            let summary = try WebLibraryImporter.importLibrary(
+                from: try Data(contentsOf: url), into: context)
+            importNote = summary.isEmpty
+                ? "That backup had no library in it. Save a fresh one from the web app first."
+                : "Brought in \(summary.recipes) recipes, \(summary.meals) planned meals, "
+                  + "\(summary.routines) workouts and \(summary.sessions) sessions."
+        } catch {
+            errorMessage = "That doesn't look like a LIFT Coach backup."
         }
     }
 }
