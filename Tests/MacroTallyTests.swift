@@ -152,4 +152,20 @@ final class MacroTallyTests: XCTestCase {
         fields.userEdited(.protein, to: "42")
         XCTAssertTrue(fields.typed.contains(.protein))
     }
+
+    // MARK: - F1: entered(merging:) must not destroy fibre/sugar/sodium
+
+    func testEnteredMergesFibreSugarSodiumFromTheExistingFactsWhenNothingChanged() {
+        // Loading an existing recipe and changing nothing, then saving, must
+        // not zero out fields the four visible text fields never touched --
+        // WebLibraryImporter and BackupCodec both populate fiberG on a real
+        // recipe, and RecipeEditorView.save() must not silently drop it.
+        let existing = NutritionFacts(calories: 438, proteinG: 36, carbsG: 31, fatG: 19, fiberG: 9)
+        var fields = MacroFields()
+        fields.loadExisting(existing)
+
+        let entered = fields.entered(merging: existing)
+
+        XCTAssertEqual(entered?.fiberG, 9, "fibre must survive a save that touched nothing")
+    }
 }
