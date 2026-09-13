@@ -10,6 +10,17 @@ struct ClientDetailView: View {
         client.trainingDays.sorted { $0.dayKey < $1.dayKey }
     }
 
+    /// Display only. Storage, the wire format and every statistic stay in
+    /// pounds — see `ClientDisplay`.
+    private var unit: String { client.displayUnit }
+
+    /// Only days that actually hold sets. A client who weighs in daily but
+    /// trains elsewhere used to produce a run of rows that expanded to
+    /// nothing.
+    private var sessionDays: [TrainingDay] {
+        ClientDisplay.sessionDays(client.trainingDays)
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.cardSpacing) {
@@ -35,11 +46,11 @@ struct ClientDetailView: View {
                 guard !set.isWarmup else { return total }
                 return total + (set.weightLb ?? 0) * Double(set.reps ?? 0)
             }
-            return (day.dayKey, volume)
+            return (day.dayKey, ClientDisplay.weightValue(lb: volume, unit: unit))
         }
         return LiftCard(title: "Training Volume") {
             Chart(points, id: \.0) { point in
-                BarMark(x: .value("Day", point.0), y: .value("Volume (lb)", point.1))
+                BarMark(x: .value("Day", point.0), y: .value("Volume (\(unit))", point.1))
                     .foregroundStyle(Theme.accent)
             }
             .frame(height: 180)
@@ -79,13 +90,13 @@ struct ClientDetailView: View {
     private var bodyweightChart: some View {
         let points = sortedDays.compactMap { day -> (String, Double)? in
             guard let weight = day.bodyweightLb else { return nil }
-            return (day.dayKey, weight)
+            return (day.dayKey, ClientDisplay.weightValue(lb: weight, unit: unit))
         }
         return LiftCard(title: "Bodyweight") {
             Chart(points, id: \.0) { point in
-                LineMark(x: .value("Day", point.0), y: .value("Weight (lb)", point.1))
+                LineMark(x: .value("Day", point.0), y: .value("Weight (\(unit))", point.1))
                     .foregroundStyle(Theme.accent)
-                PointMark(x: .value("Day", point.0), y: .value("Weight (lb)", point.1))
+                PointMark(x: .value("Day", point.0), y: .value("Weight (\(unit))", point.1))
                     .foregroundStyle(Theme.accent)
             }
             .frame(height: 180)
@@ -98,7 +109,7 @@ struct ClientDetailView: View {
         let byLift = Dictionary(grouping: sortedDays.flatMap { day in
             day.sets.filter { !$0.isWarmup && $0.weightLb != nil && $0.reps != nil && $0.reps! > 0 }
                 .map { (day.dayKey, $0) }
-        }, by: { $0.1.exerciseName })
+        }, by: { ClientDisplay.liftKey(name: $0.1.exerciseName, equipment: $0.1.equipment) })
 
         return LiftCard(title: "Estimated 1RM") {
             VStack(alignment: .leading, spacing: 12) {
@@ -107,12 +118,13 @@ struct ClientDetailView: View {
                         let weight = set.weightLb ?? 0
                         let reps = Double(set.reps ?? 0)
                         let estimate = weight * (1 + reps / 30)   // Epley
-                        return (dayKey, estimate)
+                        return (dayKey, ClientDisplay.weightValue(lb: estimate, unit: unit))
                     }
                     VStack(alignment: .leading) {
-                        Text(lift).font(.subheadline).foregroundStyle(Theme.textSecondary)
+                        Text(ClientDisplay.liftDisplayName(key: lift))
+                            .font(.subheadline).foregroundStyle(Theme.textSecondary)
                         Chart(points, id: \.0) { point in
-                            LineMark(x: .value("Day", point.0), y: .value("Est. 1RM (lb)", point.1))
+                            LineMark(x: .value("Day", point.0), y: .value("Est. 1RM (\(unit))", point.1))
                                 .foregroundStyle(Theme.accent)
                         }
                         .frame(height: 100)
@@ -144,16 +156,22 @@ struct ClientDetailView: View {
     private var sessionLog: some View {
         LiftCard(title: "Sessions") {
             VStack(alignment: .leading, spacing: 8) {
-                ForEach(sortedDays.reversed()) { day in
-                    DisclosureGroup(day.sessionName ?? day.dayKey) {
+                ForEach(sessionDays.reversed()) { day in
+                    // The date leads, always. A day named "Push Day" used to
+                    // lose its date entirely, leaving no way to tell when it
+                    // happened without expanding it.
+                    DisclosureGroup {
                         ForEach(day.sets) { set in
-                            // `Int(Double)` traps on an out-of-range value, and
-                            // `weightLb` comes straight off a pasted link with
-                            // no bound -- same crash class already fixed in
-                            // `ShareLinkImporter`, reachable here on display.
-                            Text("\(set.exerciseName): \(Int(exactly: (set.weightLb ?? 0).rounded()) ?? 0) lb × \(set.reps ?? 0)")
+                            Text("\(set.exerciseName): \(ClientDisplay.weightWithUnit(lb: set.weightLb, unit: unit)) × \(set.reps ?? 0)")
                                 .font(.caption)
                                 .foregroundStyle(Theme.textSecondary)
+                        }
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(day.dayKey)
+                            if let name = day.sessionName {
+                                Text(name).font(.caption).foregroundStyle(Theme.textSecondary)
+                            }
                         }
                     }
                     .foregroundStyle(Theme.textPrimary)
