@@ -94,7 +94,7 @@ screenshots independently.
 
 - iOS 17.0 minimum (SwiftData).
 - No backend, no accounts, no push notifications.
-- Cook and Train both shipped, in v2, on 2026-09-12/13 — see the `LIFT`
+- Cook and Train are v2 (branch `cook-tab`, 2026-09-12) — see the `LIFT`
   superproject's `docs/superpowers/specs/2026-09-11-coach-ios-v2-design.md`.
 
 ## Shared code lives in LiftKit
@@ -242,9 +242,11 @@ person on the device. Adding one is a schema change for two shipped apps, so
 Coach keeps a UUID→clientID map under `cookPlanOwners` instead. It is the
 smaller of two bad options and it is reversible: if Cook ever needs to query
 meals by client at scale, the fix is a Coach-owned `MealBooking` model, not a
-package change. The map is a contract between `CookPlanView` (writes),
-`ShoppingView` (reads) and `CookView.delete` (sweeps entries for the meals it
-deletes, via `sweepOwners`). Decode it once per body evaluation and thread the
+package change. The map is a contract between five participants, not three:
+`CookPlanView` (writes), `ShoppingView` (reads), `CookView.delete` (sweeps
+entries for the meals it deletes, via `sweepOwners`), and `BackupCodec.restore`
+and `WebLibraryImporter.importLibrary` (both write it via the shared
+`MealOwners` helper). Decode it once per body evaluation and thread the
 result down — `CookPlanView`'s `mealRow` alone is called 7 days x 4 meal
 types = 28 times per render, and the map was being decoded on every one of
 those calls before review.
