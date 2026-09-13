@@ -21,19 +21,20 @@ struct TrainPlanView: View {
     @Binding var weekStart: String
     @Binding var shareLink: String
 
-    private var days: [String] {
-        (0..<7).compactMap { DayKey.adding(days: $0, to: weekStart) }
-    }
+    private var days: [String] { PlanWeek(startDayKey: weekStart).days }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.cardSpacing) {
                 LiftCard(title: "Client") {
-                    Picker("Client", selection: $clientID) {
-                        Text("Pick a client").tag("")
-                        ForEach(clients) { Text($0.name).tag($0.id) }
+                    VStack(alignment: .leading, spacing: 8) {
+                        Picker("Client", selection: $clientID) {
+                            Text("Pick a client").tag("")
+                            ForEach(clients) { Text($0.name).tag($0.id) }
+                        }
+                        .tint(Theme.accent)
+                        WeekHeader(startDayKey: $weekStart)
                     }
-                    .tint(Theme.accent)
                 }
 
                 ForEach(days, id: \.self) { day in
