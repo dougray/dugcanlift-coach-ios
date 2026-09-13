@@ -71,4 +71,30 @@ final class CookModelsTests: XCTestCase {
         XCTAssertEqual(back.scaledNutrition?.calories, 876, "scaling happens at the point of use")
         XCTAssertEqual(back.dayKey, "2026-09-14")
     }
+
+    // MARK: - F2: Cancel on a new recipe must delete it, not just dismiss
+
+    func testCancellingANewRecipeDeletesIt() throws {
+        let ctx = try context()
+        let recipe = Recipe(name: "Beef Chilli")
+        ctx.insert(recipe)
+        try ctx.save()
+
+        RecipeEditorView.discard(recipe, in: ctx, isNew: true)
+
+        XCTAssertEqual(try ctx.fetch(FetchDescriptor<Recipe>()).count, 0,
+                       "a coach who types a name then cancels must not leave a phantom recipe behind")
+    }
+
+    func testCancellingAnExistingRecipeLeavesItInPlace() throws {
+        let ctx = try context()
+        let recipe = Recipe(name: "Beef Chilli")
+        ctx.insert(recipe)
+        try ctx.save()
+
+        RecipeEditorView.discard(recipe, in: ctx, isNew: false)
+
+        XCTAssertEqual(try ctx.fetch(FetchDescriptor<Recipe>()).count, 1,
+                       "cancelling an edit to an existing recipe must not delete it")
+    }
 }
