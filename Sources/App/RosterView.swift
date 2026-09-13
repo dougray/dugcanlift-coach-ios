@@ -4,7 +4,11 @@ import LiftCore
 
 struct RosterView: View {
     @Environment(\.modelContext) private var context
-    @Query(sort: \Client.lastImportedAt) private var clients: [Client]
+    /// Unsorted from SwiftData on purpose: the order the roster shows is
+    /// quietest-first (see `orderedClients`), which `lastImportedAt` -- when
+    /// the coach happened to tap a link -- has nothing to do with. Sorting
+    /// here as well would just be a sort the view throws away.
+    @Query private var clients: [Client]
     @State private var showingPasteLink = false
 
     var body: some View {
@@ -27,7 +31,7 @@ struct RosterView: View {
                     }
                     .listRowBackground(Theme.background)
                 }
-                ForEach(clients) { client in
+                ForEach(orderedClients) { client in
                     NavigationLink {
                         ClientDetailView(client: client)
                     } label: {
@@ -65,7 +69,19 @@ struct RosterView: View {
         return "Logged \(days) days ago"
     }
 
+    /// Quietest first, so the person who most needs attention is at the top
+    /// and the list agrees with the silence banner directly above it. Ordering
+    /// by `lastImportedAt` reflected when the coach happened to tap a link and
+    /// disagreed with that banner outright.
+    private var orderedClients: [Client] {
+        ClientDisplay.orderedBySilence(clients,
+                                       rank: { $0.daysSinceLastLoggedDay },
+                                       name: { $0.name })
+    }
+
+    /// Same order as the list, so the banner names them in the order they
+    /// appear rather than in a second, unrelated one.
     private var silentClients: [Client] {
-        clients.filter { ($0.daysSinceLastLoggedDay ?? Int.max) >= 7 }
+        orderedClients.filter { ($0.daysSinceLastLoggedDay ?? Int.max) >= 7 }
     }
 }

@@ -73,9 +73,21 @@ servings count, so the importer must multiply on decode (a no-op for
 
 **Weights are pounds on the wire, always** (`SHARE-FORMAT.md`), regardless
 of what unit a client's own app displays. Don't convert on decode; store
-what the wire says and let a future display-preference feature handle
-presentation, mirroring `lift-ios`'s "canonical unit, display converts at
-the view layer only" rule for its own `WeightUnit`.
+what the wire says, mirroring `lift-ios`'s "canonical unit, display
+converts at the view layer only" rule for its own `WeightUnit`.
+
+`Client.displayUnit` is that view-layer conversion, and it is wired as of
+issue #7 — `ClientDisplay.weightValue` / `weightText` / `weightWithUnit`,
+dividing by 2.2046226218 for a "kg" client. It was decoded, stored and
+round-tripped for weeks while no view read it, so a client who logs in
+kilograms saw 209.4 where Android showed 95. A converted value must never
+reach storage, a statistic or a comparison: convert at the point of
+display and nowhere else.
+
+**A lift's identity is name *and* equipment.** The exercise dictionary is
+keyed `"name|equipment"` because a cable pulldown and a machine pulldown
+are not the same lift. Grouping the e1RM chart on `exerciseName` alone
+merged them into one zig-zagging trend line — use `ClientDisplay.liftKey`.
 
 **Coach's UI matches LIFT's brand colors, on every platform.** `Theme` —
 "design tokens extracted from the Android build of LIFT... sampled directly
