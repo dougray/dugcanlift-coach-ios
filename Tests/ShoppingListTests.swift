@@ -58,14 +58,32 @@ final class ShoppingListTests: XCTestCase {
     }
 
     func testCheckOffStateSurvivesTheListBeingRederived() throws {
+        // The old version of this test inserted a ShoppingListCheck and
+        // fetched it back -- true regardless of whether ShoppingList.build
+        // ever ran again, so it could not fail no matter how rebuilding the
+        // list behaved. Made real: derive the list, tick a line, derive the
+        // list AGAIN from the same meals (nothing here is cached -- build()
+        // recomputes from scratch every call), and assert the second build's
+        // key still matches the tick.
         let schema = Schema([ShoppingListCheck.self])
         let ctx = ModelContext(try ModelContainer(
             for: schema, configurations: ModelConfiguration(isStoredInMemoryOnly: true)))
-        ctx.insert(ShoppingListCheck(itemKey: "lean beef mince"))
+
+        let chilli = recipe("Beef Chilli", servings: 4, lines: ["500 g lean beef mince"])
+        let meal = PlannedMeal(recipe: chilli, mealType: .dinner,
+                               plannedFor: try XCTUnwrap(DayKey.date(from: "2026-09-14")), servings: 2)
+
+        let firstBuild = ShoppingList.build(from: [meal], recipes: [chilli.id: chilli])
+        let mince = try XCTUnwrap(firstBuild.first { $0.key.contains("mince") })
+        ctx.insert(ShoppingListCheck(itemKey: mince.key))
         try ctx.save()
 
+        let secondBuild = ShoppingList.build(from: [meal], recipes: [chilli.id: chilli])
+        let minceAgain = try XCTUnwrap(secondBuild.first { $0.key.contains("mince") })
+        XCTAssertEqual(minceAgain.key, mince.key, "the derived key must be stable across rebuilds")
+
         let checks = try ctx.fetch(FetchDescriptor<ShoppingListCheck>())
-        XCTAssertTrue(checks.contains { $0.itemKey == "lean beef mince" },
-                      "the tick is keyed by item name, not by a line's identity")
+        XCTAssertTrue(checks.contains { $0.itemKey == minceAgain.key },
+                      "the tick made against the first build must still match the key the second build derives")
     }
 }
