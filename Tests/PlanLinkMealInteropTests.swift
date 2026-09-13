@@ -87,9 +87,10 @@ final class PlanLinkMealInteropTests: XCTestCase {
         XCTAssertEqual(a.s, b.s)
         XCTAssertEqual(a.i, b.i, "ingredient lines must survive verbatim on both sides")
         XCTAssertEqual(a.t, b.t)
+        // Exact, not approximate: the encoder passes these values through
+        // untouched, so any difference is a real defect rather than drift.
         let mineU = try XCTUnwrap(a.u), webU = try XCTUnwrap(b.u)
-        XCTAssertEqual(mineU.count, webU.count)
-        for (x, y) in zip(mineU, webU) { XCTAssertEqual(x, y, accuracy: 0.5) }
+        XCTAssertEqual(mineU, webU)
 
         XCTAssertEqual(mine.m, web.m, "day, slot, index and servings must all agree")
     }
