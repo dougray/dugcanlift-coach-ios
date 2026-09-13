@@ -94,8 +94,8 @@ screenshots independently.
 
 - iOS 17.0 minimum (SwiftData).
 - No backend, no accounts, no push notifications.
-- No Cook/Train (recipe/workout authoring) in v1 — that's a v2, per the
-  design spec's explicit scope cut.
+- Cook and Train both shipped, in v2, on 2026-09-12/13 — see the `LIFT`
+  superproject's `docs/superpowers/specs/2026-09-11-coach-ios-v2-design.md`.
 
 ## Shared code lives in LiftKit
 
@@ -173,3 +173,126 @@ distance into the weight slot.
 Train's screens use a raw `ScrollView` and so must inset themselves for the
 floating tab bar. `List` and `Form` reserve that space automatically, which
 is why `RosterView` and `ConnectView` do not need it.
+
+## Cook
+
+Recipes, ingredients, planned meals and shopping ticks are `LiftCore`'s
+`Recipe` / `RecipeIngredient` / `PlannedMeal` / `ShoppingListCheck`. Coach adds
+no recipe models of its own. `LiftCore.FoodEntry` is deliberately **not** in the
+schema: `PlannedMeal.makeFoodEntry()` can build one, but a coach plans meals
+rather than logging them.
+
+**`IngredientParser` and `CookFormat` live in `LiftCore`** as of 1.1.0. The
+parsing rules exist in four places — the package, `coach/parser.js`, and the
+Android and web builds of LIFT — and `parser.js` says plainly that all four must
+give the same answer for the same line. Do not add a local copy.
+
+**The count sentinel is `"\u{0000}count"`.** An ingredient with no unit ("2
+eggs") still needs a grouping key, so two eggs are never added to two cups of
+anything — but it is not a unit and must never reach a screen.
+`CookFormat.amountsLabel` drops it.
+
+**Only weights get costed.** `g`, `kg`, `mg`, `oz`, `lb`, `lbs`. Pricing "2 tbsp
+olive oil" means inventing a density, and a confident wrong calorie count is
+worse than a gap the coach can see. The gap is stated in words, with a count.
+
+**A typed macro wins over a computed one, and blank stays blank.**
+`MacroFields` holds both rules, as a value type with no view in it, because a
+rule living in a view's `@State` cannot be tested. A zero written by an
+untouched form becomes a zero-calorie dinner in a client's day total.
+
+**Match the formatter to the parser that reads the text back.** There are two
+parsers with opposite locale behaviour in Cook, and pairing either with the
+other's formatter is a silent corruption, not a crash. `OptionalNumberField
+.value(from:)` is locale-aware (a `NumberFormatter`, grouping off) — pair it
+with `OptionalNumberField.string(from:)`, and nothing else: `CookFormat
+.trimmed` emits a `.` decimal that a German parser reads as a thousands
+separator, so a reopened recipe's 36.5 g of protein comes back nil and the
+`?? 0` fallback writes a zero into a client's day. `IngredientParser.parse` is
+locale-invariant and reads digits and `.` only — pair it with `CookFormat
+.trimmed`, and never `OptionalNumberField.string`, which would write
+"600,5 g" in `de_DE` and be read back as 600. `RecipeEditorView.load()` is the
+servings field, the first kind; `ingredientLine(for:grams:)` is an ingredient
+line, the second. Both defects were found in code the plan supplied;
+`MacroTallyTests` pins the first under an explicit `de_DE` locale.
+
+**`onChange` fires on programmatic writes, not just on typing.**
+`MacroFields.applyComputed` records the exact string it wrote to each field,
+and `macroField`'s `onChange` calls `userEdited(_:to:)`, which marks a field
+typed only when the new text differs from that record. Calling `markTyped`
+from `onChange` directly froze every macro at the first looked-up
+ingredient's contribution, because the first `applyComputed` marked all four
+fields as typed before a second ingredient's numbers could ever land. Do not
+"simplify" it back to `markTyped`.
+
+**`u` is omitted from the wire when macros are nil or all-zero.**
+`MacroFields.entered()` returns non-nil the moment any field has content, so a
+coach typing `0` into calories would otherwise ship `u:[0,0,0,0,0]` — a
+zero-calorie dinner in a client's day total. `PlanLinkEncoder.planRecipe`
+guards it explicitly rather than trusting `entered()` alone.
+
+**`PlannedMeal.snapshotNutrition` is per serving, never pre-scaled.** Scaling
+happens at the point of use. This is the invariant the 2026-09-10 half-calories
+bug came from breaking.
+
+**A planned meal's client lives in `@AppStorage`, not on the model.**
+`LiftCore.PlannedMeal` has no client field — on LIFT it belongs to the only
+person on the device. Adding one is a schema change for two shipped apps, so
+Coach keeps a UUID→clientID map under `cookPlanOwners` instead. It is the
+smaller of two bad options and it is reversible: if Cook ever needs to query
+meals by client at scale, the fix is a Coach-owned `MealBooking` model, not a
+package change. The map is a contract between `CookPlanView` (writes),
+`ShoppingView` (reads) and `CookView.delete` (sweeps entries for the meals it
+deletes, via `sweepOwners`). Decode it once per body evaluation and thread the
+result down — `CookPlanView`'s `mealRow` alone is called 7 days x 4 meal
+types = 28 times per render, and the map was being decoded on every one of
+those calls before review.
+
+**Shopping ticks are shared across clients; the list itself is not.**
+`ShoppingListCheck` is `LiftCore`'s single-user model, keyed by item name
+alone. In Coach, ticking "lean beef mince" for one client shows it ticked for
+every client, and "Clear ticks" is global. The fix, when it matters, is a
+Coach-owned check model carrying `clientID` — not a package change, which
+would reach LIFT.
+
+**`LiftReference.FoodRecord` has no public initializer.** Its stored
+properties are `public`, but Swift's synthesized memberwise init is
+`internal`, so `FoodRecord(id:name:...)` does not compile outside the
+package. Tests build one by decoding JSON instead — see
+`RecipeEditingTests.record(...)`. A public init belongs in a future kit
+release; don't work around the gap with `@testable import` tricks that would
+stop working the day the package adds one.
+
+**TheMealDB is the only network call in Coach.** It has explicit offline and
+failure states, and an imported dish carries no nutrition of its own — servings
+stays at 1, because TheMealDB does not say how many a dish feeds and guessing
+four would divide every macro by a number nobody chose.
+
+## Backups
+
+`BackupCodec` is **v2** and carries the whole library. v1 carried only clients,
+which meant every workout template written since Train shipped was absent from
+every backup — silently, while Connect said a backup was the only way to move a
+coach's work.
+
+**Clients restore by replace; the library merges by id.** The inconsistency is
+deliberate. Replace is what Coach has always done for the roster and its tests
+pin it. The library follows the web app's rule instead — "an older backup must
+never delete newer work sitting on this device" — and a v1 file, which has no
+library at all, must leave the phone's library alone rather than emptying it.
+
+`WebLibraryImporter` reads the **web Coach** backup, which is a different file:
+the two apps store a client's days differently, so only the library halves line
+up. Ingredient lines are **reparsed** on the way in rather than field-mapped —
+the raw text is the contract, and reparsing is how both sides stay in agreement
+about what a line means. Set weights in that file are **pounds**; a missing
+conversion is silent and 2.2x wrong.
+
+**`PlanLinkEncoder` omits an empty `r`/`m`/`w`/`k` rather than sending `[]`.**
+PLAN-FORMAT says a training-only week carries no `r` or `m` key at all, and
+`Tests/Fixtures/web-plan-meals.txt` — captured from the web app's own
+encoder — has no `w` or `k` keys, confirming the web app follows the same
+rule. `PlanLinkMealInteropTests` checks the fixture's raw JSON key order
+(`{"v"` first, never `{"l"`) before decoding, specifically because `Codable`
+discards key order and would otherwise let a Coach-regenerated fixture pass
+as if it still proved interop.
