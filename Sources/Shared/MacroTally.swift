@@ -106,11 +106,23 @@ struct MacroFields: Equatable {
 
     /// nil unless something was actually entered. An untouched form must not
     /// write zeros -- PLAN-FORMAT: "It must never be sent as zeros."
-    func entered(locale: Locale = .autoupdatingCurrent) -> NutritionFacts? {
+    ///
+    /// `merging existing:` carries `fiberG`/`sugarG`/`sodiumMg` from a
+    /// recipe's current facts onto the result, because the four visible text
+    /// fields here never represent those three -- there is no fibre/sugar/
+    /// sodium TextField in `RecipeEditorView`. Without this, saving a recipe
+    /// that already has fibre (imported via `WebLibraryImporter`, or restored
+    /// via `BackupCodec`) silently zeroes it the first time the coach taps
+    /// Done. A nil result (blank form) carries nothing, unaffected.
+    func entered(locale: Locale = .autoupdatingCurrent, merging existing: NutritionFacts? = nil) -> NutritionFacts? {
         let values = [calories, protein, carbs, fat].map { OptionalNumberField.value(from: $0, locale: locale) }
         guard values.contains(where: { $0 != nil }) else { return nil }
-        return NutritionFacts(calories: values[0] ?? 0, proteinG: values[1] ?? 0,
+        var result = NutritionFacts(calories: values[0] ?? 0, proteinG: values[1] ?? 0,
                               carbsG: values[2] ?? 0, fatG: values[3] ?? 0)
+        result.fiberG = existing?.fiberG
+        result.sugarG = existing?.sugarG
+        result.sodiumMg = existing?.sodiumMg
+        return result
     }
 
     /// `value.rounded()` always produces a whole number, so this is
