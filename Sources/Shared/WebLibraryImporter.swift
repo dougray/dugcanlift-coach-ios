@@ -24,11 +24,18 @@ enum WebLibraryImporter {
 
     enum ImportError: Error { case notACoachBackup }
 
-    static func importLibrary(from data: Data, into context: ModelContext) throws -> ImportSummary {
+    static func importLibrary(from data: Data, into context: ModelContext,
+                              defaults: UserDefaults = .standard) throws -> ImportSummary {
         guard let file = try? JSONDecoder().decode(WebBackup.self, from: data) else {
             throw ImportError.notACoachBackup
         }
         var summary = ImportSummary()
+        // `WebPlan.clientId` was decoded and then discarded -- the imported
+        // meal landed in SwiftData with no `cookPlanOwners` entry, which
+        // every client-facing screen treats as "belongs to nobody." Recorded
+        // below and saved once at the end instead.
+        var owners = MealOwners.load(from: defaults)
+        var ownersChanged = false
 
         let haveRecipes = Set(try context.fetch(FetchDescriptor<Recipe>()).map(\.id))
         var recipeIDByWebID: [String: UUID] = [:]
@@ -67,6 +74,8 @@ enum WebLibraryImporter {
                                    plannedFor: date, servings: row.servings)
             meal.id = id
             context.insert(meal)
+            owners[meal.id.uuidString] = row.clientId
+            ownersChanged = true
             summary.meals += 1
         }
 
@@ -116,6 +125,8 @@ enum WebLibraryImporter {
             context.insert(session)
             summary.sessions += 1
         }
+
+        if ownersChanged { MealOwners.save(owners, to: defaults) }
 
         try context.save()
         return summary
