@@ -204,7 +204,7 @@ struct RecipeEditorView: View {
         recipe.name = recipe.name.trimmingCharacters(in: .whitespaces)
         recipe.servings = servings
         recipe.steps = lines(stepText)
-        recipe.nutritionPerServing = macros.entered()
+        recipe.nutritionPerServing = macros.entered(merging: recipe.nutritionPerServing)
 
         // Replace rather than diff. Ingredients have no identity the user can
         // see -- they typed a block of text -- so matching old rows to new
