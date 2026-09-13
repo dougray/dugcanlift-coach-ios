@@ -42,12 +42,20 @@ final class PlanLinkMealInteropTests: XCTestCase {
         XCTAssertEqual(meal.x, 0)
         XCTAssertEqual(meal.q, 2)
 
-        // The web app omits empty collections rather than sending `[]` --
-        // the behaviour Coach's own encoder was changed to match in the
-        // previous task. This fixture carries no training data at all, so
-        // it is real evidence of that convention on the web side too.
-        XCTAssertNil(payload.w, "the web app omits empty collections, never sends []")
-        XCTAssertNil(payload.k, "the web app omits empty collections, never sends []")
+        // This fixture carries no training data, and the web app's
+        // encodePlan omits `w`/`k` here -- but that is NOT because the web
+        // app "omits empty collections, never sends []" in general. Decoding
+        // `Tests/Fixtures/web-plan-link.txt` (PlanLinkInteropTests) shows the
+        // opposite for `r`/`m`: that fixture, a training-only week, carries
+        // `"r":[],"m":[]` -- real empty arrays, not omitted keys. The web
+        // app's encodePlan ALWAYS emits `r` and `m`, even empty, and emits
+        // `w`/`k` only when there are workouts. Coach's own encoder omits
+        // all four when empty instead (see PlanLinkEncoder.swift) -- Coach's
+        // own choice, permitted by PLAN-FORMAT ("a coach who plans only
+        // training sends a payload with no r or m at all") and safe because
+        // every decoder treats all four keys as optional.
+        XCTAssertNil(payload.w, "this fixture has no training data, so the web app omits w here")
+        XCTAssertNil(payload.k, "this fixture has no training data, so the web app omits k here")
     }
 
     func testCoachProducesTheSameMealPlanTheWebAppDoes() throws {

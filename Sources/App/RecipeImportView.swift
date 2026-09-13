@@ -53,6 +53,7 @@ struct RecipeImportView: View {
                                 .foregroundStyle(Theme.textSecondary)
                         }
                     }
+                    .disabled(busy)
                 }
             }
             .navigationTitle("Import a dish")
@@ -78,6 +79,12 @@ struct RecipeImportView: View {
     }
 
     private func take(_ hit: ImportedRecipe) async {
+        // `take` awaits a full costing pass before it inserts anything, with
+        // nothing disabling the result row in between -- a second tap during
+        // that await (an impatient double-tap, or a slow lookup) re-entered
+        // this function and inserted the recipe twice.
+        busy = true
+        defer { busy = false }
         note = "Costing the ingredients…"
         let costed = await RecipeCosting.cost(lines: hit.ingredients,
                                               lookup: RecipeCosting.databaseLookup)
