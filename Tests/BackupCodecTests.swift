@@ -125,4 +125,72 @@ final class BackupCodecTests: XCTestCase {
         XCTAssertEqual(try ctx.fetch(FetchDescriptor<Recipe>()).count, 1,
                        "a v1 file has no library; absent must not mean delete")
     }
+
+    // MARK: - Meal ownership (fix round 1, Finding 1)
+
+    /// A fresh, isolated `UserDefaults` suite per call -- never `.standard` --
+    /// cleared before use so a previous test's leftovers (or a previous run's,
+    /// if a suite name were ever reused) can never leak in.
+    private func isolatedDefaults(_ name: String) -> UserDefaults {
+        let suite = UserDefaults(suiteName: name)!
+        suite.removePersistentDomain(forName: name)
+        return suite
+    }
+
+    func testMealRoundTripPreservesIdSnapshotAndOwner() throws {
+        let sourceDefaults = isolatedDefaults("BackupCodecTests.meal.source")
+        defer { sourceDefaults.removePersistentDomain(forName: "BackupCodecTests.meal.source") }
+
+        let source = try context()
+        let recipe = Recipe(name: "Beef Chilli", servings: 4,
+                            nutritionPerServing: NutritionFacts(calories: 438, proteinG: 36,
+                                                                carbsG: 31, fatG: 19, fiberG: 9))
+        source.insert(recipe)
+        let plannedFor = try XCTUnwrap(DayKey.date(from: "2026-09-14"))
+        let meal = PlannedMeal(recipe: recipe, mealType: .dinner, plannedFor: plannedFor, servings: 2)
+        source.insert(meal)
+        try source.save()
+        MealOwners.save([meal.id.uuidString: "a1b2c3d4"], to: sourceDefaults)
+
+        // Mutate the recipe's macros *after* the meal snapshotted them, so a
+        // restore that recomputed `snapshotNutrition` from the restored
+        // recipe (999 cal) rather than carrying the backup's own snapshot
+        // (438 cal) would be caught red-handed.
+        recipe.nutritionPerServing = NutritionFacts(calories: 999, proteinG: 1, carbsG: 1, fatG: 1, fiberG: 1)
+        try source.save()
+
+        let data = try BackupCodec.export(from: source, defaults: sourceDefaults)
+        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual((json["meals"] as? [Any])?.count, 1)
+
+        let targetDefaults = isolatedDefaults("BackupCodecTests.meal.target")
+        defer { targetDefaults.removePersistentDomain(forName: "BackupCodecTests.meal.target") }
+
+        let target = try context()
+        try BackupCodec.restore(from: data, into: target, defaults: targetDefaults)
+
+        let meals = try target.fetch(FetchDescriptor<PlannedMeal>())
+        XCTAssertEqual(meals.count, 1)
+        let restored = try XCTUnwrap(meals.first)
+        XCTAssertEqual(restored.id, meal.id)
+        XCTAssertEqual(restored.snapshotNutrition?.calories, 438,
+                       "the restored meal must carry the backup's own snapshot, not a recomputation")
+
+        let restoredOwners = MealOwners.load(from: targetDefaults)
+        XCTAssertEqual(restoredOwners[meal.id.uuidString], "a1b2c3d4",
+                       "a restored meal with no owner entry is stored but invisible to every client")
+    }
+
+    func testAMealWhoseRecipeIsAbsentFromTheFileIsSkipped() throws {
+        let ctx = try context()
+        let body = """
+        { "v": 2, "clients": [],
+          "meals": [ { "id": "\(UUID().uuidString)", "recipeID": "\(UUID().uuidString)",
+                       "recipeName": "Ghost", "dayKey": "2026-09-14", "meal": "DINNER",
+                       "servings": 1, "snapshotNutrition": null, "clientID": "a1b2c3d4" } ] }
+        """
+        try BackupCodec.restore(from: Data(body.utf8), into: ctx, defaults: isolatedDefaults("BackupCodecTests.meal.ghost"))
+        XCTAssertEqual(try ctx.fetch(FetchDescriptor<PlannedMeal>()).count, 0,
+                       "a meal whose recipe never arrived cannot be shown; it must not be inserted orphaned")
+    }
 }

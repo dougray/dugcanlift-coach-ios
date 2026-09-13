@@ -38,6 +38,13 @@ enum BackupCodec {
         var meal: String               // MealType.rawValue
         var servings: Double
         var snapshotNutrition: NutritionFacts?
+        /// `PlannedMeal` carries no client field of its own (see this
+        /// project's CLAUDE.md, "A planned meal's client lives in
+        /// `@AppStorage`, not on the model"); this is that ownership
+        /// travelling with the meal instead of being left behind in
+        /// `cookPlanOwners`, where a restore could never reach it. `nil` for
+        /// a meal that was never booked to a client on this device.
+        var clientID: String?
     }
 
     private struct BackupRoutine: Codable {
@@ -113,12 +120,13 @@ enum BackupCodec {
         var meal: Int
     }
 
-    static func export(from context: ModelContext) throws -> Data {
+    static func export(from context: ModelContext, defaults: UserDefaults = .standard) throws -> Data {
         let clients = try context.fetch(FetchDescriptor<Client>())
         let recipes = try context.fetch(FetchDescriptor<Recipe>())
         let meals = try context.fetch(FetchDescriptor<PlannedMeal>())
         let routines = try context.fetch(FetchDescriptor<Routine>())
         let sessions = try context.fetch(FetchDescriptor<ScheduledSession>())
+        let owners = MealOwners.load(from: defaults)
 
         let backup = Backup(v: 2, clients: clients.map { client in
             BackupClient(
@@ -156,7 +164,8 @@ enum BackupCodec {
         }, meals: meals.map { meal in
             BackupMeal(id: meal.id, recipeID: meal.recipeID, recipeName: meal.recipeName,
                       dayKey: meal.dayKey, meal: meal.mealType.rawValue, servings: meal.servings,
-                      snapshotNutrition: meal.snapshotNutrition)
+                      snapshotNutrition: meal.snapshotNutrition,
+                      clientID: owners[meal.id.uuidString])
         }, routines: routines.map { routine in
             BackupRoutine(id: routine.id, name: routine.name,
                          exercises: routine.orderedExercises.map { exercise in
@@ -175,7 +184,7 @@ enum BackupCodec {
         return try JSONEncoder().encode(backup)
     }
 
-    static func restore(from data: Data, into context: ModelContext) throws {
+    static func restore(from data: Data, into context: ModelContext, defaults: UserDefaults = .standard) throws {
         let backup = try JSONDecoder().decode(Backup.self, from: data)
 
         for existing in try context.fetch(FetchDescriptor<Client>()) {
@@ -248,6 +257,12 @@ enum BackupCodec {
         let existingMeals = Set(try context.fetch(FetchDescriptor<PlannedMeal>()).map(\.id))
         let recipesByID = Dictionary(uniqueKeysWithValues:
             try context.fetch(FetchDescriptor<Recipe>()).map { ($0.id, $0) })
+        // Ownership travels with the meal in `row.clientID` and is written
+        // back into `cookPlanOwners` below -- otherwise a restored meal is
+        // stored but invisible to every client-facing screen (see
+        // `MealOwners`).
+        var owners = MealOwners.load(from: defaults)
+        var ownersChanged = false
         for row in backup.meals ?? [] where !existingMeals.contains(row.id) {
             guard let recipe = recipesByID[row.recipeID],
                   let plannedFor = DayKey.date(from: row.dayKey) else { continue }
@@ -257,7 +272,12 @@ enum BackupCodec {
             meal.recipeName = row.recipeName
             meal.snapshotNutrition = row.snapshotNutrition
             context.insert(meal)
+            if let clientID = row.clientID {
+                owners[meal.id.uuidString] = clientID
+                ownersChanged = true
+            }
         }
+        if ownersChanged { MealOwners.save(owners, to: defaults) }
 
         let existingRoutines = Set(try context.fetch(FetchDescriptor<Routine>()).map(\.id))
         for row in backup.routines ?? [] where !existingRoutines.contains(row.id) {

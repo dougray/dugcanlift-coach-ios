@@ -101,4 +101,45 @@ final class WebLibraryImporterTests: XCTestCase {
         XCTAssertThrowsError(try WebLibraryImporter.importLibrary(
             from: Data("{\"hello\":true}".utf8), into: try context()))
     }
+
+    // MARK: - Meal ownership (fix round 1, Finding 1)
+
+    /// A fresh, isolated `UserDefaults` suite per call -- never `.standard` --
+    /// cleared before use so nothing leaks between test runs.
+    private func isolatedDefaults(_ name: String) -> UserDefaults {
+        let suite = UserDefaults(suiteName: name)!
+        suite.removePersistentDomain(forName: name)
+        return suite
+    }
+
+    func testImportingPlannedMealsRecordsTheirOwner() throws {
+        let name = "WebLibraryImporterTests.owner"
+        let defaults = isolatedDefaults(name)
+        defer { defaults.removePersistentDomain(forName: name) }
+
+        let ctx = try context()
+        let summary = try WebLibraryImporter.importLibrary(from: Data(v2.utf8), into: ctx, defaults: defaults)
+        XCTAssertEqual(summary.meals, 1)
+
+        let meal = try XCTUnwrap(try ctx.fetch(FetchDescriptor<PlannedMeal>()).first)
+        let owners = MealOwners.load(from: defaults)
+        XCTAssertEqual(owners[meal.id.uuidString], "a1b2c3d4",
+                       "an imported meal with no owner entry is stored but invisible to every client")
+    }
+
+    func testReimportingTheSameFileDoesNotDuplicateMealOwnership() throws {
+        let name = "WebLibraryImporterTests.owner.reimport"
+        let defaults = isolatedDefaults(name)
+        defer { defaults.removePersistentDomain(forName: name) }
+
+        let ctx = try context()
+        _ = try WebLibraryImporter.importLibrary(from: Data(v2.utf8), into: ctx, defaults: defaults)
+        let second = try WebLibraryImporter.importLibrary(from: Data(v2.utf8), into: ctx, defaults: defaults)
+        XCTAssertEqual(second.meals, 0, "merge is by id, additively")
+
+        let meal = try XCTUnwrap(try ctx.fetch(FetchDescriptor<PlannedMeal>()).first)
+        let owners = MealOwners.load(from: defaults)
+        XCTAssertEqual(owners.count, 1)
+        XCTAssertEqual(owners[meal.id.uuidString], "a1b2c3d4")
+    }
 }
