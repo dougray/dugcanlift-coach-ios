@@ -106,4 +106,50 @@ final class MacroTallyTests: XCTestCase {
         XCTAssertTrue(result.calories.isFinite,
                       "negative servings must not produce NaN macros; must clamp to safe floor")
     }
+
+    // MARK: - userEdited vs. applyComputed's own writes
+    //
+    // `.onChange` fires on a PROGRAMMATIC write too, not just a person typing.
+    // Regression: add one ingredient -> applyComputed writes all four fields
+    // -> the view's onChange sees each field change and (with the old
+    // `markTyped`) marks all four typed -> add a second ingredient ->
+    // applyComputed is now blocked on every field -> the per-serving macros
+    // freeze at the first ingredient's contribution forever.
+
+    func testApplyComputedsOwnWriteIsNotMistakenForAUserEdit() {
+        var fields = MacroFields()
+        fields.applyComputed(NutritionFacts(calories: 100, proteinG: 10, carbsG: 5, fatG: 2))
+
+        // The view's onChange fires with the exact string applyComputed just
+        // wrote -- an echo, not a person typing.
+        fields.userEdited(.calories, to: fields.calories)
+        XCTAssertTrue(fields.typed.isEmpty,
+                      "an onChange firing on applyComputed's own write must not count as typed")
+
+        // A second ingredient recomputes -- this must not be frozen out.
+        fields.applyComputed(NutritionFacts(calories: 300, proteinG: 30, carbsG: 15, fatG: 6))
+        XCTAssertEqual(fields.calories, "300",
+                      "a second ingredient's contribution must update the field, not freeze at the first")
+    }
+
+    func testUserEditedWithADifferentValueMarksTypedAndSticks() {
+        var fields = MacroFields()
+        fields.applyComputed(NutritionFacts(calories: 100, proteinG: 10, carbsG: 5, fatG: 2))
+
+        // The TextField's own binding writes the new text to the field
+        // directly; `userEdited` only decides whether that write counts as
+        // typed. Simulate both halves, as the view does.
+        fields.calories = "500"
+        fields.userEdited(.calories, to: "500")
+        XCTAssertTrue(fields.typed.contains(.calories))
+
+        fields.applyComputed(NutritionFacts(calories: 300, proteinG: 30, carbsG: 15, fatG: 6))
+        XCTAssertEqual(fields.calories, "500", "a real edit must not be overwritten by a later computation")
+    }
+
+    func testUserEditedOnAFieldNeverComputedMarksTyped() {
+        var fields = MacroFields()
+        fields.userEdited(.protein, to: "42")
+        XCTAssertTrue(fields.typed.contains(.protein))
+    }
 }
