@@ -46,7 +46,9 @@ struct TrainView: View {
             .safeAreaPadding(.bottom, 72)
             .liftScreen()
             .background(Theme.background)
-            .navigationTitle("Train")
+            // The tab row above already names this screen, and the browser build
+            // goes straight from its tabs into the content.
+            .navigationBarTitleDisplayMode(.inline)
             .sheet(item: $editing) { WorkoutEditorView(routine: $0) }
         }
     }
