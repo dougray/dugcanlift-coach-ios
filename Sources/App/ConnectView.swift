@@ -74,7 +74,9 @@ struct ConnectView: View {
         }
         .scrollContentBackground(.hidden)
         .background(Theme.background)
-        .navigationTitle("Connect")
+        // The tab row above already names this screen, and the browser build
+        // goes straight from its tabs into the content.
+        .navigationBarTitleDisplayMode(.inline)
         .fileExporter(isPresented: $showingExporter, document: exportDocument,
                       contentType: .json, defaultFilename: "coach-backup") { _ in }
         .fileImporter(isPresented: $showingImporter, allowedContentTypes: [.json]) { result in
