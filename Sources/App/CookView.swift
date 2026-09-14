@@ -59,7 +59,9 @@ struct CookView: View {
             .safeAreaPadding(.bottom, 72)
             .liftScreen()
             .background(Theme.background)
-            .navigationTitle("Cook")
+            // The tab row above already names this screen, and the browser build
+            // goes straight from its tabs into the content.
+            .navigationBarTitleDisplayMode(.inline)
             .sheet(item: $editing) { RecipeEditorView(recipe: $0, isNew: editingIsNew) }
             .sheet(isPresented: $importing) { RecipeImportView() }
         }
