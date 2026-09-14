@@ -52,7 +52,10 @@ struct RosterView: View {
         }
         .scrollContentBackground(.hidden)
         .background(Theme.background)
-        .navigationTitle("Roster")
+        // No navigation title: the tab row above already says Roster, and the
+        // browser build goes straight from its tabs into the content. Keeping
+        // it meant the word appeared twice, one above the other.
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             Button("Paste a Link") { showingPasteLink = true }
                 .foregroundStyle(Theme.accent)
