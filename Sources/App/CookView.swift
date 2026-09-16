@@ -15,6 +15,7 @@ struct CookView: View {
     @State private var editingIsNew = false
     @State private var importing = false
     @State private var importingLink = false
+    @State private var browsingCatalogue = false
     @State private var section: Section = .recipes
 
     /// Mirrors `CookPlanView`'s own `@AppStorage("cookPlanOwners")` --
@@ -66,6 +67,7 @@ struct CookView: View {
             .sheet(item: $editing) { RecipeEditorView(recipe: $0, isNew: editingIsNew) }
             .sheet(isPresented: $importing) { RecipeImportView() }
             .sheet(isPresented: $importingLink) { RecipeLinkImportView() }
+            .sheet(isPresented: $browsingCatalogue) { RecipeCatalogView() }
         }
     }
 
@@ -113,6 +115,9 @@ struct CookView: View {
                     // import sources already crowd the line at iPhone width,
                     // and "Send recipes" below is the same shape.
                     Menu("Import") {
+                        // First: it needs no connection at all, and the other
+                        // two both do.
+                        Button("From the catalogue") { browsingCatalogue = true }
                         Button("From a link") { importingLink = true }
                         Button("A dish by name") { importing = true }
                     }
