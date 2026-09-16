@@ -6,7 +6,7 @@ import LiftCore
 final class BackupCodecTests: XCTestCase {
 
     // v1 schema, deliberately: no Recipe/RecipeIngredient/PlannedMeal/
-    // ShoppingListCheck here, matching a real v1 backup file. BackupCodec.export
+    // ClientShoppingCheck here, matching a real v1 backup file. BackupCodec.export
     // still unconditionally fetches FetchDescriptor<Recipe>() etc. against
     // whatever context it's given, which only works against this narrower
     // schema because SwiftData returns empty for a type absent from a
@@ -19,11 +19,7 @@ final class BackupCodecTests: XCTestCase {
     }
 
     private func context() throws -> ModelContext {
-        let schema = Schema([
-            Client.self, Goal.self, TrainingDay.self, ExerciseSet.self, ClientFoodEntry.self,
-            Routine.self, RoutineExercise.self, RoutinePrescribedSet.self, ScheduledSession.self,
-            Recipe.self, RecipeIngredient.self, PlannedMeal.self, ShoppingListCheck.self,
-        ])
+        let schema = Schema(CoachSchema.models)
         return ModelContext(try ModelContainer(
             for: schema, configurations: ModelConfiguration(isStoredInMemoryOnly: true)))
     }

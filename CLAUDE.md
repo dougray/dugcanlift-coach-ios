@@ -116,6 +116,16 @@ cards need `Theme.cardBorder`, which a bare background leaves off.
 - Cook and Train are v2 (merged 2026-09-12) — see the `LIFT`
   superproject's `docs/superpowers/specs/2026-09-11-coach-ios-v2-design.md`.
 
+## App Store
+
+`Resources/PrivacyInfo.xcprivacy` declares no tracking and no collected data,
+which stays true only while nothing reaches the developer — see "Coach makes
+exactly two network calls". Adding any request, SDK or required-reason API
+(`UserDefaults` is CA92.1; file timestamps C617.1, for SQLite) means revisiting
+it. `ITSAppUsesNonExemptEncryption` is `false` in `project.yml`: HTTPS only.
+Listing text is in `fastlane/metadata/en-US`, screenshots (6.9", sample data) in
+`fastlane/screenshots/en-US`. Keep the description to what the app does.
+
 ## Shared code lives in LiftKit
 
 Domain models, wire codecs, the theme and day keys live in
@@ -165,10 +175,18 @@ Workout templates are `LiftCore`'s `Routine` / `RoutineExercise` /
 `RoutinePrescribedSet`. Scheduling is Coach's own `ScheduledSession`, which
 holds `clientID` and `routineID` as plain values rather than relationships —
 a template is reused across clients and weeks, and cascade rules do not match
-how a coach thinks about that. The cost is that deleting a `Routine` orphans
-its sessions; nothing reaps them yet, and whichever change adds routine
-deletion must. Nothing wrong reaches the wire meanwhile, because the encoder
-drops a session whose routine is not in the send.
+how a coach thinks about that. The cost is that SwiftData's delete rules never
+reach a session, so deleting a `Routine` directly would orphan its bookings.
+`ScheduledSession.deleteRoutineAndSessions` deletes the routine and every
+session booked against it in one action; call it from anywhere a `Routine` is
+deleted, never `context.delete(routine)` alone. `TrainView` confirms first and
+says how many booked days the delete empties, across every client
+(`bookingCount` / `deleteWarning`), matching Coach web and Coach Android.
+
+An orphan can still exist in a store written before the reaper, or restored
+from such a backup. It shows in the week as "Removed workout"
+(`TrainPlanView.name(of:)`), where the coach can remove it, and the encoder
+drops it from a send, because `x` must index a workout that is in `w`.
 
 **`RoutinePrescribedSet` stores kilograms. `PLAN-FORMAT`'s set tuple is
 pounds.** `PlanLinkEncoder.kgToLb` converts on the way out, LIFT's
@@ -280,12 +298,25 @@ result down — `CookPlanView`'s `mealRow` alone is called 7 days x 4 meal
 types = 28 times per render, and the map was being decoded on every one of
 those calls before review.
 
-**Shopping ticks are shared across clients; the list itself is not.**
-`ShoppingListCheck` is `LiftCore`'s single-user model, keyed by item name
-alone. In Coach, ticking "lean beef mince" for one client shows it ticked for
-every client, and "Clear ticks" is global. The fix, when it matters, is a
-Coach-owned check model carrying `clientID` — not a package change, which
-would reach LIFT.
+**Shopping ticks belong to one client.** `LiftCore.ShoppingListCheck` is keyed
+by item name alone, because on LIFT the list has one owner; in Coach that made a
+tick for one client a tick for all of them. Coach stores `ClientShoppingCheck`
+instead — its own `@Model`, `clientID` plus `itemKey` — and `ShoppingListCheck`
+is not in Coach's schema. The name is chosen so it cannot collide with a
+`LiftCore` entity (see "`ClientFoodEntry`, and why it is not `FoodEntry`").
+"Clear ticks" clears the selected client's only.
+
+`itemKey` is `ShoppingListLine.key`, stored exactly as `ShoppingList.build`
+derived it. The normalisation (lowercase, trimmed) lives inline in that package
+function with no public helper, so Coach never re-derives a key — a second copy
+of the rule could only drift. `ShoppingListTests` pins the per-client rules.
+
+Dropping `ShoppingListCheck` from the schema dropped whatever shared ticks an
+older build had stored. That was checked, not assumed: a store written by main
+with clients, meals and two ticks opened under the new schema with everything
+but the ticks intact. Ticks are one week's shop, so losing them was accepted
+over a migration. The schema list itself is `CoachSchema.models`, which
+`CoachApp` and the tests both read, so the two cannot drift.
 
 **`LiftReference.FoodRecord` has no public initializer.** Its stored
 properties are `public`, but Swift's synthesized memberwise init is
