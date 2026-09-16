@@ -54,6 +54,31 @@ final class WebLibraryImporterTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(try ctx.fetch(FetchDescriptor<Recipe>()).first).totalWeightGrams, 1200)
     }
 
+    /// BACKUP-FORMAT.md `nutritionPerServing` carries saturated fat, sugar and
+    /// sodium per serving. A value that is not a number is unknown, and must
+    /// not refuse a library that imported fine before these fields existed.
+    func testAWebRecipesSaturatedFatSugarAndSodiumImport() throws {
+        let body = """
+        { "v": 2, "clients": [], "recipes": [
+          { "id": "r6", "name": "Salty", "servings": 2, "ingredients": [], "steps": [],
+            "nutritionPerServing": { "calories": 300, "proteinG": 20, "carbsG": 30, "fatG": 10,
+                                     "saturatedFatG": 4.5, "sugarG": 6, "sodiumMg": 900 } },
+          { "id": "r7", "name": "Hand edited", "servings": 1, "ingredients": [], "steps": [],
+            "nutritionPerServing": { "calories": 300, "proteinG": 20, "carbsG": 30, "fatG": 10,
+                                     "sodiumMg": "540 mg" } } ] }
+        """
+        let ctx = try context()
+        _ = try WebLibraryImporter.importLibrary(from: Data(body.utf8), into: ctx)
+        let byName = Dictionary(uniqueKeysWithValues: try ctx.fetch(FetchDescriptor<Recipe>()).map { ($0.name, $0) })
+        let salty = try XCTUnwrap(byName["Salty"]?.nutritionPerServing)
+        XCTAssertEqual(salty.saturatedFatG, 4.5)
+        XCTAssertEqual(salty.sugarG, 6)
+        XCTAssertEqual(salty.sodiumMg, 900)
+        let edited = try XCTUnwrap(byName["Hand edited"]?.nutritionPerServing)
+        XCTAssertNil(edited.sodiumMg)
+        XCTAssertEqual(edited.calories, 300)
+    }
+
     func testARecipeWithNoMacrosImportsAsNilNotZero() throws {
         let body = """
         { "v": 2, "clients": [], "recipes": [ { "id": "r9", "name": "Mystery", "servings": 1,

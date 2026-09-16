@@ -192,10 +192,33 @@ enum WebLibraryImporter {
         let carbsG: Double?
         let fatG: Double?
         let fiberG: Double?
+        // BACKUP-FORMAT.md `nutritionPerServing`, per serving; absent is nil.
+        // Read leniently: a hand-edited "540 mg" is unknown, not a reason to
+        // refuse a whole library that imported fine before these existed.
+        let saturatedFatG: Double?
+        let sugarG: Double?
+        let sodiumMg: Double?
+
+        private enum CodingKeys: String, CodingKey {
+            case calories, proteinG, carbsG, fatG, fiberG, saturatedFatG, sugarG, sodiumMg
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            calories = try c.decodeIfPresent(Double.self, forKey: .calories)
+            proteinG = try c.decodeIfPresent(Double.self, forKey: .proteinG)
+            carbsG = try c.decodeIfPresent(Double.self, forKey: .carbsG)
+            fatG = try c.decodeIfPresent(Double.self, forKey: .fatG)
+            fiberG = try c.decodeIfPresent(Double.self, forKey: .fiberG)
+            saturatedFatG = (try? c.decodeIfPresent(Double.self, forKey: .saturatedFatG)) ?? nil
+            sugarG = (try? c.decodeIfPresent(Double.self, forKey: .sugarG)) ?? nil
+            sodiumMg = (try? c.decodeIfPresent(Double.self, forKey: .sodiumMg)) ?? nil
+        }
 
         var facts: NutritionFacts {
             NutritionFacts(calories: calories ?? 0, proteinG: proteinG ?? 0,
-                           carbsG: carbsG ?? 0, fatG: fatG ?? 0, fiberG: fiberG)
+                           carbsG: carbsG ?? 0, fatG: fatG ?? 0, fiberG: fiberG,
+                           sugarG: sugarG, sodiumMg: sodiumMg, saturatedFatG: saturatedFatG)
         }
     }
 

@@ -155,7 +155,12 @@ struct CookView: View {
     }
 
     private func macroLine(_ recipe: Recipe) -> String {
-        guard let n = recipe.nutritionPerServing else { return "Macros not set" }
+        // A recipe with only saturated fat, sugar or sodium entered carries
+        // zeros in the four macros -- "not entered", as `PlanLinkEncoder`
+        // reads it, never a zero-calorie dish.
+        guard let n = recipe.nutritionPerServing,
+              n.calories != 0 || n.proteinG != 0 || n.carbsG != 0 || n.fatG != 0
+        else { return "Macros not set" }
         let line = "\(CookFormat.trimmed(n.calories.rounded())) kcal  "
              + "P \(CookFormat.trimmed(n.proteinG.rounded()))  "
              + "C \(CookFormat.trimmed(n.carbsG.rounded()))  "
