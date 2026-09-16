@@ -21,6 +21,15 @@ enum BackupCodec {
         var sessions: [BackupSession]?
     }
 
+    /// A weight read from a file, or nil when it is absent, zero, negative or
+    /// not finite. A dish that weighs nothing is not a measurement; it is a
+    /// field nobody filled in, and treating it as grams would divide a
+    /// serving's weight down to zero.
+    static func weighed(_ grams: Double?) -> Double? {
+        guard let grams, grams.isFinite, grams > 0 else { return nil }
+        return grams
+    }
+
     private struct BackupRecipe: Codable {
         var id: UUID
         var name: String
@@ -28,6 +37,12 @@ enum BackupCodec {
         var steps: [String]
         var ingredients: [String]      // raw text; the parser rebuilds the rest
         var nutritionPerServing: NutritionFacts?
+        /// The whole finished dish, in grams. Optional so a backup written
+        /// before this field existed still decodes; absent there means "not
+        /// weighed", which is also what it meant at the time. Same name and
+        /// spelling as `Recipe.totalWeightGrams`, Coach web and Coach Android,
+        /// so a weight survives moving between any of them.
+        var totalWeightGrams: Double?
     }
 
     private struct BackupMeal: Codable {
@@ -160,7 +175,8 @@ enum BackupCodec {
                          ingredients: (recipe.ingredients ?? [])
                             .sorted { $0.sortOrder < $1.sortOrder }
                             .map(\.rawText),
-                         nutritionPerServing: recipe.nutritionPerServing)
+                         nutritionPerServing: recipe.nutritionPerServing,
+                         totalWeightGrams: recipe.totalWeightGrams)
         }, meals: meals.map { meal in
             BackupMeal(id: meal.id, recipeID: meal.recipeID, recipeName: meal.recipeName,
                       dayKey: meal.dayKey, meal: meal.mealType.rawValue, servings: meal.servings,
@@ -246,6 +262,7 @@ enum BackupCodec {
             let recipe = Recipe(name: row.name, servings: row.servings, steps: row.steps,
                                 nutritionPerServing: row.nutritionPerServing)
             recipe.id = row.id
+            recipe.totalWeightGrams = BackupCodec.weighed(row.totalWeightGrams)
             context.insert(recipe)
             for (index, line) in row.ingredients.enumerated() {
                 let ingredient = IngredientParser.parse(line, sortOrder: index)
