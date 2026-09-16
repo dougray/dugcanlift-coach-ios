@@ -412,6 +412,10 @@ frozen at the last one they sent. An older link changes neither, or pasting a
 stale link late would bring an old route back. Profile and goal do not follow
 this rule yet — they are still overwritten by any import. `exportedAtEpochSec`
 travels in backups, or a restore would let the next stale link win.
+In a backup these are `outdoor`, `outdoorBests`, `lastRoute` and
+`exportedAtEpochSec`, as **objects with named fields, not the wire's tuples** —
+Coach Android's names and shapes exactly, so one file moves between the two
+apps. `lastRoute.polyline` is the encoded string as received.
 
 **The route is already trimmed by the sender.** Its first and last 200 m are
 cut off by the client's app, so a client's front door never leaves their

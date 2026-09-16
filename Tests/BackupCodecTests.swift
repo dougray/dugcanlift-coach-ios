@@ -281,4 +281,70 @@ final class BackupCodecTests: XCTestCase {
         XCTAssertNil(restored.exportedAtEpochSec)
         XCTAssertEqual(restored.trainingDays.first?.outdoor, [])
     }
+
+    /// The names and object shapes Coach Android's backup writes, so a file
+    /// moves between the two apps.
+    func testRestoresOutdoorInCoachAndroidsBackupShape() throws {
+        let body = """
+        { "v": 2, "clients": [ { "id": "runner", "name": "Runner", "displayUnit": "kg",
+            "exportedAtEpochSec": 1789500000,
+            "outdoorBests": [
+              { "type": 0, "count": 2, "farthestMeters": 10001, "longestSec": 3000, "fastestSecPerKm": 300 },
+              { "type": 1, "count": 1, "farthestMeters": 300, "longestSec": 240, "fastestSecPerKm": null } ],
+            "lastRoute": { "type": 0, "startedAtEpochSec": 1789259200, "durationSec": 1720,
+                           "distanceMeters": 2795, "climbMeters": 37, "polyline": "_p~iF~ps|U_ulLnnqC" },
+            "days": [
+              { "dayKey": "2026-09-13", "sets": [], "foodEntries": [],
+                "outdoor": [ { "type": 0, "durationSec": 1720, "distanceMeters": 2795, "climbMeters": 37 } ] },
+              { "dayKey": "2026-09-14", "sets": [], "foodEntries": [], "outdoor": [] } ] } ] }
+        """
+        let ctx = try makeContext()
+        try BackupCodec.restore(from: Data(body.utf8), into: ctx)
+
+        let client = try XCTUnwrap(try ctx.fetch(FetchDescriptor<Client>()).first)
+        XCTAssertEqual(client.exportedAtEpochSec, 1_789_500_000)
+        XCTAssertEqual(client.outdoorBests, [
+            WireOutdoorBest(type: 0, count: 2, farthestMeters: 10001, longestSec: 3000, fastestSecPerKm: 300),
+            WireOutdoorBest(type: 1, count: 1, farthestMeters: 300, longestSec: 240, fastestSecPerKm: nil)])
+        XCTAssertEqual(client.lastRoute, WireLastRoute(type: 0, startedAtEpochSec: 1_789_259_200, durationSec: 1720,
+                                                       distanceMeters: 2795, climbMeters: 37,
+                                                       polyline: "_p~iF~ps|U_ulLnnqC"))
+        let days = client.trainingDays.sorted { $0.dayKey < $1.dayKey }
+        XCTAssertEqual(days[0].outdoor, [WireOutdoorActivity(type: 0, durationSec: 1720, distanceMeters: 2795, climbMeters: 37)])
+        XCTAssertEqual(days[1].outdoor, [])
+    }
+
+    func testWritesOutdoorInCoachAndroidsBackupShape() throws {
+        let ctx = try makeContext()
+        let client = Client(id: "runner", name: "Runner", displayUnit: "lb", platform: "and")
+        client.outdoorBests = [WireOutdoorBest(type: 1, count: 1, farthestMeters: 300, longestSec: 240, fastestSecPerKm: nil)]
+        client.lastRoute = WireLastRoute(type: 0, startedAtEpochSec: 5, durationSec: 6, distanceMeters: 7,
+                                         climbMeters: 8, polyline: "_p~iF~ps|U_ulLnnqC")
+        client.exportedAtEpochSec = 9
+        ctx.insert(client)
+        let day = TrainingDay(client: client, dayKey: "2026-09-13")
+        day.outdoor = [WireOutdoorActivity(type: 2, durationSec: 1, distanceMeters: 2, climbMeters: 3)]
+        ctx.insert(day)
+        client.trainingDays.append(day)
+        let empty = TrainingDay(client: client, dayKey: "2026-09-14")
+        ctx.insert(empty)
+        client.trainingDays.append(empty)
+        try ctx.save()
+
+        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: BackupCodec.export(from: ctx)) as? [String: Any])
+        let written = try XCTUnwrap((json["clients"] as? [[String: Any]])?.first)
+        XCTAssertEqual(written["exportedAtEpochSec"] as? Int, 9)
+        let best = try XCTUnwrap((written["outdoorBests"] as? [[String: Any]])?.first)
+        XCTAssertEqual(best["farthestMeters"] as? Int, 300)
+        XCTAssertEqual(best["count"] as? Int, 1)
+        let route = try XCTUnwrap(written["lastRoute"] as? [String: Any])
+        XCTAssertEqual(route["polyline"] as? String, "_p~iF~ps|U_ulLnnqC", "the polyline as received, not points")
+        XCTAssertEqual(route["startedAtEpochSec"] as? Int, 5)
+        let days = try XCTUnwrap(written["days"] as? [[String: Any]])
+        let outdoor = days.first { $0["dayKey"] as? String == "2026-09-13" }?["outdoor"] as? [[String: Any]]
+        XCTAssertEqual(outdoor?.first?["type"] as? Int, 2)
+        XCTAssertEqual(outdoor?.first?["climbMeters"] as? Int, 3)
+        let none = days.first { $0["dayKey"] as? String == "2026-09-14" }?["outdoor"] as? [Any]
+        XCTAssertEqual(none?.count, 0, "an empty array when none, as Coach Android writes")
+    }
 }

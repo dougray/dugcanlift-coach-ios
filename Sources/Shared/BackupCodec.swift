@@ -101,10 +101,29 @@ enum BackupCodec {
         var goal: BackupGoal?
         var days: [BackupDay]
         // Outdoor. Optional so a backup written before them still decodes,
-        // and absent there means the client had none, which it did.
+        // and absent there means the client had none, which it did. Names and
+        // object shapes are Coach Android's, so a backup moves between the
+        // two apps; the wire's tuples stay on the wire.
+        /// The link's `z`, which decides whether a later link is newer.
         var exportedAtEpochSec: Int?
-        var outdoorBests: [WireOutdoorBest]?
-        var lastRoute: WireLastRoute?
+        var outdoorBests: [BackupOutdoorBest]?
+        var lastRoute: BackupLastRoute?
+    }
+
+    private struct BackupOutdoorActivity: Codable {
+        var type, durationSec, distanceMeters, climbMeters: Int
+    }
+
+    /// Null bests stay null. A best of 0 would read as a real record.
+    private struct BackupOutdoorBest: Codable {
+        var type, count: Int
+        var farthestMeters, longestSec, fastestSecPerKm: Int?
+    }
+
+    /// The encoded polyline as received, never decoded points.
+    private struct BackupLastRoute: Codable {
+        var type, startedAtEpochSec, durationSec, distanceMeters, climbMeters: Int
+        var polyline: String
     }
 
     private struct BackupGoal: Codable {
@@ -120,8 +139,8 @@ enum BackupCodec {
         var foodCalories, foodProteinG, foodFatG, foodCarbsG, foodFiberG: Double?
         var sets: [BackupSet]
         var foodEntries: [BackupFood]
-        /// The day's `o` in its wire shape. Optional, as above.
-        var outdoor: [WireOutdoorActivity]?
+        /// The day's activities; `[]` when none. Optional on read, as above.
+        var outdoor: [BackupOutdoorActivity]?
     }
 
     private struct BackupSet: Codable {
@@ -173,12 +192,22 @@ enum BackupCodec {
                                        calories: food.calories, proteinG: food.proteinG, fatG: food.fatG,
                                        carbsG: food.carbsG, fiberG: food.fiberG, meal: food.meal)
                         },
-                        outdoor: day.outdoor.isEmpty ? nil : day.outdoor
+                        outdoor: day.outdoor.map {
+                            BackupOutdoorActivity(type: $0.type, durationSec: $0.durationSec,
+                                                  distanceMeters: $0.distanceMeters, climbMeters: $0.climbMeters)
+                        }
                     )
                 },
                 exportedAtEpochSec: client.exportedAtEpochSec,
-                outdoorBests: client.outdoorBests,
-                lastRoute: client.lastRoute
+                outdoorBests: client.outdoorBests?.map {
+                    BackupOutdoorBest(type: $0.type, count: $0.count, farthestMeters: $0.farthestMeters,
+                                      longestSec: $0.longestSec, fastestSecPerKm: $0.fastestSecPerKm)
+                },
+                lastRoute: client.lastRoute.map {
+                    BackupLastRoute(type: $0.type, startedAtEpochSec: $0.startedAtEpochSec,
+                                    durationSec: $0.durationSec, distanceMeters: $0.distanceMeters,
+                                    climbMeters: $0.climbMeters, polyline: $0.polyline)
+                }
             )
         }, recipes: recipes.map { recipe in
             BackupRecipe(id: recipe.id, name: recipe.name, servings: recipe.servings,
@@ -223,8 +252,14 @@ enum BackupCodec {
                                  displayUnit: backupClient.displayUnit, platform: backupClient.platform,
                                  lastImportedAt: backupClient.lastImportedAt ?? .now)
             client.exportedAtEpochSec = backupClient.exportedAtEpochSec
-            client.outdoorBests = backupClient.outdoorBests
-            client.lastRoute = backupClient.lastRoute
+            client.outdoorBests = backupClient.outdoorBests?.map {
+                WireOutdoorBest(type: $0.type, count: $0.count, farthestMeters: $0.farthestMeters,
+                                longestSec: $0.longestSec, fastestSecPerKm: $0.fastestSecPerKm)
+            }
+            client.lastRoute = backupClient.lastRoute.map {
+                WireLastRoute(type: $0.type, startedAtEpochSec: $0.startedAtEpochSec, durationSec: $0.durationSec,
+                              distanceMeters: $0.distanceMeters, climbMeters: $0.climbMeters, polyline: $0.polyline)
+            }
             context.insert(client)
 
             if let backupGoal = backupClient.goal {
@@ -243,7 +278,10 @@ enum BackupCodec {
                 day.foodFatG = backupDay.foodFatG
                 day.foodCarbsG = backupDay.foodCarbsG
                 day.foodFiberG = backupDay.foodFiberG
-                day.outdoor = backupDay.outdoor ?? []
+                day.outdoor = (backupDay.outdoor ?? []).map {
+                    WireOutdoorActivity(type: $0.type, durationSec: $0.durationSec,
+                                        distanceMeters: $0.distanceMeters, climbMeters: $0.climbMeters)
+                }
                 context.insert(day)
                 client.trainingDays.append(day)
 
