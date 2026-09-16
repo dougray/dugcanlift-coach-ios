@@ -8,7 +8,22 @@ enum ShareLinkImporter {
         let client = try findOrCreateClient(for: payload.c, in: context)
         client.lastImportedAt = .now
 
-        if let wireGoal = payload.g {
+        // Everything that describes the client rather than a day -- name, unit,
+        // platform, goal, outdoor bests, last route -- follows the newest send,
+        // as the web Coach's `absorb` does. A client who changed their goal last
+        // week must not have it undone by an older link pasted late. Days are
+        // different: each link is the truth for the days it covers, whenever it
+        // arrives. A client imported before `z` was recorded has no stamp, so
+        // the first link after the update counts as newest.
+        let isNewest = client.exportedAtEpochSec.map { payload.z >= $0 } ?? true
+
+        if isNewest {
+            client.name = payload.c.n
+            client.displayUnit = payload.c.u
+            client.platform = payload.c.p
+        }
+
+        if isNewest, let wireGoal = payload.g {
             if let existingGoal = client.goal {
                 existingGoal.calories = wireGoal.c
                 existingGoal.proteinG = wireGoal.p
@@ -23,11 +38,9 @@ enum ShareLinkImporter {
             }
         }
 
-        // Outdoor bests and the last route follow the newest send, as the web
-        // Coach's `absorb` does: a stale link pasted late must not bring back
-        // an old route. Within that, absent clears -- a client who turned
-        // route sharing off expects the route gone, not frozen.
-        if client.exportedAtEpochSec.map({ payload.z >= $0 }) ?? true {
+        // Within the newest-send rule, absent clears for outdoor -- a client who
+        // turned route sharing off expects the route gone, not frozen.
+        if isNewest {
             client.outdoorBests = payload.ob
             client.lastRoute = payload.lr
             client.exportedAtEpochSec = payload.z
@@ -46,9 +59,6 @@ enum ShareLinkImporter {
         let id = wireClient.i
         let descriptor = FetchDescriptor<Client>(predicate: #Predicate { $0.id == id })
         if let existing = try context.fetch(descriptor).first {
-            existing.name = wireClient.n
-            existing.displayUnit = wireClient.u
-            existing.platform = wireClient.p
             return existing
         }
         let client = Client(id: wireClient.i, name: wireClient.n, displayUnit: wireClient.u, platform: wireClient.p)
