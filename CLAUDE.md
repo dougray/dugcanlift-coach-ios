@@ -102,6 +102,13 @@ built, port the same hex values there too (read them from `LiftCore`'s
 `Theme.swift`, the one canonical source now) rather than resampling
 screenshots independently.
 
+**Light and dark both exist, and System is the default.** `Theme`'s tokens
+resolve per interface style (LiftKit 1.7.0), so use them rather than any fixed
+colour. Apply `.liftAppearance()` — never `.preferredColorScheme(.dark)` — on
+the root and on any sheet that needs it, and draw a card with `LiftCard` or
+`.liftCardBackground()` rather than `.background(Theme.surface, ...)`: light
+cards need `Theme.cardBorder`, which a bare background leaves off.
+
 ## Constraints
 
 - iOS 17.0 minimum (SwiftData).
