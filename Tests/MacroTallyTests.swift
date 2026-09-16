@@ -169,3 +169,96 @@ final class MacroTallyTests: XCTestCase {
         XCTAssertEqual(entered?.fiberG, 9, "fibre must survive a save that touched nothing")
     }
 }
+
+// MARK: - Fibre
+
+extension MacroTallyTests {
+
+    /// The defect this field exists to fix: the food database carries fibre,
+    /// `RecipeCosting` tallied it, and the editor then dropped it on the floor
+    /// for any recipe that did not already have some.
+    func testComputedFibreSurvivesTheEditor() {
+        var fields = MacroFields()
+        fields.applyComputed(NutritionFacts(calories: 400, proteinG: 30, carbsG: 40,
+                                            fatG: 10, fiberG: 6),
+                             locale: Locale(identifier: "en_US"))
+
+        XCTAssertEqual(fields.fiber, "6")
+        let saved = fields.entered(locale: Locale(identifier: "en_US"))
+        XCTAssertEqual(saved?.fiberG, 6)
+    }
+
+    /// Ingredients with no fibre data must not produce a measured zero. The
+    /// reason `NutritionFacts.fiberG` is optional and the other four are not.
+    func testNoFibreDataLeavesTheFieldBlankRatherThanZero() {
+        var fields = MacroFields()
+        fields.applyComputed(NutritionFacts(calories: 400, proteinG: 30, carbsG: 40, fatG: 10),
+                             locale: Locale(identifier: "en_US"))
+
+        XCTAssertEqual(fields.fiber, "")
+        XCTAssertNil(fields.entered(locale: Locale(identifier: "en_US"))?.fiberG)
+    }
+
+    func testTypedFibreWinsOverAComputedOne() {
+        var fields = MacroFields()
+        fields.fiber = "9"
+        fields.markTyped(.fiber)
+        fields.applyComputed(NutritionFacts(calories: 400, proteinG: 30, carbsG: 40,
+                                            fatG: 10, fiberG: 6),
+                             locale: Locale(identifier: "en_US"))
+
+        XCTAssertEqual(fields.fiber, "9")
+        XCTAssertEqual(fields.entered(locale: Locale(identifier: "en_US"))?.fiberG, 9)
+    }
+
+    /// A recipe carrying fibre counts as typed throughout, so reopening it to
+    /// add one more ingredient cannot overwrite a figure that was already
+    /// right -- the rule the other four fields already followed.
+    func testLoadingARecipeWithFibreMarksItTyped() {
+        var fields = MacroFields()
+        fields.loadExisting(NutritionFacts(calories: 400, proteinG: 30, carbsG: 40,
+                                           fatG: 10, fiberG: 6),
+                            locale: Locale(identifier: "en_US"))
+        XCTAssertEqual(fields.fiber, "6")
+
+        fields.applyComputed(NutritionFacts(calories: 800, proteinG: 60, carbsG: 80,
+                                            fatG: 20, fiberG: 12),
+                             locale: Locale(identifier: "en_US"))
+        XCTAssertEqual(fields.fiber, "6", "a loaded fibre figure must not be recomputed over")
+    }
+
+    /// A recipe with no fibre must leave the field open to a later costing
+    /// pass rather than pinning it to a blank nobody chose.
+    func testLoadingARecipeWithoutFibreLeavesItOpenToComputation() {
+        var fields = MacroFields()
+        fields.loadExisting(NutritionFacts(calories: 400, proteinG: 30, carbsG: 40, fatG: 10),
+                            locale: Locale(identifier: "en_US"))
+        XCTAssertEqual(fields.fiber, "")
+
+        fields.applyComputed(NutritionFacts(calories: 400, proteinG: 30, carbsG: 40,
+                                            fatG: 10, fiberG: 6),
+                             locale: Locale(identifier: "en_US"))
+        XCTAssertEqual(fields.fiber, "6")
+    }
+
+    /// Sugar and sodium still have no field of their own, so they must still
+    /// be carried forward rather than zeroed on save.
+    func testSugarAndSodiumAreStillMergedFromTheExistingRecipe() {
+        var fields = MacroFields()
+        fields.loadExisting(NutritionFacts(calories: 400, proteinG: 30, carbsG: 40,
+                                           fatG: 10, fiberG: 6, sugarG: 12, sodiumMg: 300),
+                            locale: Locale(identifier: "en_US"))
+
+        let existing = NutritionFacts(calories: 400, proteinG: 30, carbsG: 40,
+                                      fatG: 10, fiberG: 6, sugarG: 12, sodiumMg: 300)
+        let saved = fields.entered(locale: Locale(identifier: "en_US"), merging: existing)
+        XCTAssertEqual(saved?.sugarG, 12)
+        XCTAssertEqual(saved?.sodiumMg, 300)
+        XCTAssertEqual(saved?.fiberG, 6)
+    }
+
+    /// An untouched form still writes nothing at all.
+    func testABlankFormStillEntersNothing() {
+        XCTAssertNil(MacroFields().entered(locale: Locale(identifier: "en_US")))
+    }
+}
