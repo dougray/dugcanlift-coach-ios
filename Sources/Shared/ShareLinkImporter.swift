@@ -23,6 +23,16 @@ enum ShareLinkImporter {
             }
         }
 
+        // Outdoor bests and the last route follow the newest send, as the web
+        // Coach's `absorb` does: a stale link pasted late must not bring back
+        // an old route. Within that, absent clears -- a client who turned
+        // route sharing off expects the route gone, not frozen.
+        if client.exportedAtEpochSec.map({ payload.z >= $0 }) ?? true {
+            client.outdoorBests = payload.ob
+            client.lastRoute = payload.lr
+            client.exportedAtEpochSec = payload.z
+        }
+
         for wireDay in payload.d {
             guard let dayKey = DayKey.adding(days: wireDay.k, to: payload.r) else { continue }
             try replaceDay(wireDay, dayKey: dayKey, exerciseDict: payload.x, foodDict: payload.fd,
@@ -59,6 +69,7 @@ enum ShareLinkImporter {
 
         let day = TrainingDay(client: client, dayKey: dayKey, sessionName: wireDay.n, focus: wireDay.fo,
                                bodyweightLb: wireDay.bw, steps: wireDay.st)
+        day.outdoor = wireDay.o ?? []
         context.insert(day)
         client.trainingDays.append(day)
 

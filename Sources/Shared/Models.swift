@@ -10,6 +10,18 @@ final class Client {
     var platform: String?         // "and" | "ios" | "web"
     var lastImportedAt: Date
 
+    // Outdoor (SHARE-FORMAT.md "Outdoor"). Each is the wire value as JSON,
+    // read through `outdoorBests` / `lastRoute` below. Optional with no
+    // default, so a store written before outdoor opens with them nil -- a
+    // lightweight migration, verified against a real on-disk store.
+    /// `ob`, the client's all-time bests.
+    var outdoorBestsData: Data?
+    /// `lr`, the newest route, already trimmed by the client's app.
+    var lastRouteData: Data?
+    /// `z` of the newest payload whose `ob`/`lr` are stored. Nil before the
+    /// first outdoor-aware import, which any payload then counts as newer.
+    var exportedAtEpochSec: Int?
+
     @Relationship(deleteRule: .cascade, inverse: \Goal.client)
     var goal: Goal?
 
@@ -35,6 +47,42 @@ extension Client {
     var daysSinceLastLoggedDay: Int? {
         guard let mostRecentDayKey = trainingDays.map(\.dayKey).max() else { return nil }
         return DayKey.daysBetween(mostRecentDayKey, DayKey.string(from: .now))
+    }
+}
+
+extension Client {
+    var outdoorBests: [WireOutdoorBest]? {
+        get { InlineJSON.decode([WireOutdoorBest].self, from: outdoorBestsData) }
+        set { outdoorBestsData = InlineJSON.encode(newValue) }
+    }
+
+    var lastRoute: WireLastRoute? {
+        get { InlineJSON.decode(WireLastRoute.self, from: lastRouteData) }
+        set { lastRouteData = InlineJSON.encode(newValue) }
+    }
+}
+
+extension TrainingDay {
+    /// Empty when the day has none. An empty list is stored as nil.
+    var outdoor: [WireOutdoorActivity] {
+        get { InlineJSON.decode([WireOutdoorActivity].self, from: outdoorData) ?? [] }
+        set { outdoorData = newValue.isEmpty ? nil : InlineJSON.encode(newValue) }
+    }
+}
+
+/// Small wire values kept inline on a model as JSON `Data`, rather than as
+/// new `@Model` types (a schema change with relationships to migrate) or as
+/// SwiftData composite attributes (which flatten a struct into columns and
+/// cannot hold an array of tuples). Unreadable data reads as absent.
+enum InlineJSON {
+    static func encode<T: Encodable>(_ value: T?) -> Data? {
+        guard let value else { return nil }
+        return try? JSONEncoder().encode(value)
+    }
+
+    static func decode<T: Decodable>(_ type: T.Type, from data: Data?) -> T? {
+        guard let data else { return nil }
+        return try? JSONDecoder().decode(type, from: data)
     }
 }
 
@@ -70,6 +118,9 @@ final class TrainingDay {
     var foodFatG: Double?
     var foodCarbsG: Double?
     var foodFiberG: Double?
+    /// The day's `o` as JSON; read it through `outdoor`. Travels with the
+    /// day, so replacing a day replaces its outdoor activities too.
+    var outdoorData: Data?
 
     @Relationship(deleteRule: .cascade, inverse: \ExerciseSet.day)
     var sets: [ExerciseSet] = []
