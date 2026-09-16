@@ -48,6 +48,9 @@ enum WebLibraryImporter {
                                 steps: row.steps ?? [],
                                 nutritionPerServing: row.nutritionPerServing?.facts)
             recipe.id = id
+            // Coach web writes the same field; dropping it here would lose a
+            // weight a coach entered in the browser the moment they moved to iOS.
+            recipe.totalWeightGrams = BackupCodec.weighed(row.totalWeightGrams)
             context.insert(recipe)
             for (index, ingredient) in (row.ingredients ?? []).enumerated() {
                 // Reparsed rather than field-mapped: the parser is shared, so
@@ -178,6 +181,7 @@ enum WebLibraryImporter {
         let ingredients: [WebIngredient]?
         let steps: [String]?
         let nutritionPerServing: WebNutrition?
+        let totalWeightGrams: Double?
     }
 
     private struct WebIngredient: Decodable { let rawText: String }

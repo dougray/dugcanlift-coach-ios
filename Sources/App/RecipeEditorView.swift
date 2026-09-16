@@ -29,14 +29,71 @@ struct RecipeEditorView: View {
     @State private var searchNote = ""
     @State private var amounts: [String: String] = [:]
 
+    /// Total finished weight of the dish, in whichever unit the coach prefers.
+    /// Stored canonically as grams on `Recipe.totalWeightGrams`; this is the
+    /// display value only.
+    @State private var totalWeightText = ""
+
+    /// The coach's own preference, not a client's. Grams or ounces -- never a
+    /// volume, because a cup of oil and a cup of flour are not the same mass
+    /// and `IngredientParser` refuses to pretend otherwise.
+    @AppStorage("recipeWeightUnit") private var weightUnitRaw = ServingUnit.grams.rawValue
+    private var weightUnit: ServingUnit { ServingUnit(rawValue: weightUnitRaw) ?? .grams }
+
+    /// The unit `totalWeightText` is currently written in.
+    ///
+    /// Needed because the text is a display value and the picker can change
+    /// underneath it. Without this, switching grams to ounces relabelled 1200 g
+    /// as 1200 oz -- the number stayed put and the dish got 28 times heavier,
+    /// which is exactly the silent unit error `ClientDisplay` exists to stop on
+    /// the bodyweight side.
+    @State private var displayedUnit: ServingUnit = .grams
+
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Name", text: $nameText)
-                    TextField("Servings", text: $servingsText)
-                        .keyboardType(.decimalPad)
-                        .onChange(of: servingsText) { retally() }
+                    // Labelled rows, not placeholders. A placeholder vanishes
+                    // once the field has a value, which left the top of this
+                    // form reading as an untitled name and a bare number.
+                    LabeledContent("Name") {
+                        TextField("Beef chilli", text: $nameText)
+                            .multilineTextAlignment(.trailing)
+                    }
+                    LabeledContent("Servings") {
+                        TextField("4", text: $servingsText)
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(.trailing)
+                            .onChange(of: servingsText) { retally() }
+                    }
+                }
+
+                Section {
+                    Picker("Weigh in", selection: $weightUnitRaw) {
+                        Text("Grams").tag(ServingUnit.grams.rawValue)
+                        Text("Ounces").tag(ServingUnit.ounces.rawValue)
+                    }
+                    .onChange(of: weightUnitRaw) { reweigh() }
+                    LabeledContent("Total weight") {
+                        HStack(spacing: 4) {
+                            TextField("—", text: $totalWeightText)
+                                .keyboardType(.decimalPad)
+                                .multilineTextAlignment(.trailing)
+                            Text(weightUnit.abbreviation)
+                                .font(.caption)
+                                .foregroundStyle(Theme.textSecondary)
+                        }
+                    }
+                    if let each = perServingWeight {
+                        Text(each).font(.caption).foregroundStyle(Theme.textSecondary)
+                    }
+                } header: {
+                    Text("Weight")
+                } footer: {
+                    Text("The whole finished dish. Optional — a recipe without it plans by "
+                         + "servings as before. With it, a serving has a weight a client can "
+                         + "put on a scale, which a count never gives them.")
+                        .font(.caption)
                 }
 
                 Section("Ingredients") {
@@ -49,10 +106,11 @@ struct RecipeEditorView: View {
                 ingredientSearch
 
                 Section("Macros, per serving") {
-                    macroField("Calories", text: $macros.calories, field: .calories)
-                    macroField("Protein (g)", text: $macros.protein, field: .protein)
-                    macroField("Carbs (g)", text: $macros.carbs, field: .carbs)
-                    macroField("Fat (g)", text: $macros.fat, field: .fat)
+                    macroField("Calories", unit: "kcal", text: $macros.calories, field: .calories)
+                    macroField("Protein", unit: "g", text: $macros.protein, field: .protein)
+                    macroField("Carbs", unit: "g", text: $macros.carbs, field: .carbs)
+                    macroField("Fat", unit: "g", text: $macros.fat, field: .fat)
+                    macroField("Fibre", unit: "g", text: $macros.fiber, field: .fiber)
                     if recipe.nutritionIsEstimated {
                         Text("Estimated from an import — check these before sending.")
                             .font(.caption)
@@ -120,13 +178,38 @@ struct RecipeEditorView: View {
         }
     }
 
-    private func macroField(_ label: String, text: Binding<String>, field: MacroFields.Field) -> some View {
-        TextField(label, text: text)
-            .keyboardType(.decimalPad)
-            // A field the coach edits stops being ours to fill in -- but
-            // onChange also fires on applyComputed's own write, so
-            // `userEdited` (not `markTyped`) tells the two apart.
-            .onChange(of: text.wrappedValue) { macros.userEdited(field, to: text.wrappedValue) }
+    /// A labelled macro row: name on the left, value and unit on the right.
+    ///
+    /// The label is a `Text`, not the `TextField`'s placeholder. A placeholder
+    /// disappears the moment the field has a value, so the macro section read
+    /// as a column of bare numbers -- 352, 25, 63, 1, 11 -- exactly when it
+    /// mattered most, with nothing to say which was protein and which was
+    /// fibre. A coach sends these to a client to eat against; an unlabelled
+    /// number is worse than a blank one.
+    ///
+    /// The unit is shown too, because "Calories" and the four gram figures are
+    /// not in the same units and a column of numbers does not say so.
+    private func macroField(_ label: String,
+                            unit: String,
+                            text: Binding<String>,
+                            field: MacroFields.Field) -> some View {
+        HStack {
+            Text(label)
+                .foregroundStyle(Theme.textPrimary)
+            Spacer(minLength: 12)
+            TextField("—", text: text)
+                .keyboardType(.decimalPad)
+                .multilineTextAlignment(.trailing)
+                .foregroundStyle(Theme.textPrimary)
+                // A field the coach edits stops being ours to fill in -- but
+                // onChange also fires on applyComputed's own write, so
+                // `userEdited` (not `markTyped`) tells the two apart.
+                .onChange(of: text.wrappedValue) { macros.userEdited(field, to: text.wrappedValue) }
+            Text(unit)
+                .font(.caption)
+                .foregroundStyle(Theme.textSecondary)
+                .frame(width: 34, alignment: .leading)
+        }
     }
 
     // MARK: - Lookup
@@ -215,6 +298,37 @@ struct RecipeEditorView: View {
             .joined(separator: "\n")
         stepText = recipe.steps.joined(separator: "\n")
         macros.loadExisting(recipe.nutritionPerServing)
+        // Canonical grams on the model, converted for display only -- the same
+        // "convert at the view layer and nowhere else" rule `ClientDisplay`
+        // follows for a client's bodyweight.
+        totalWeightText = recipe.totalWeightGrams
+            .map { OptionalNumberField.string(from: (weightUnit.fromGrams($0) * 10).rounded() / 10) } ?? ""
+        displayedUnit = weightUnit
+    }
+
+    /// Rewrites the displayed weight into the newly chosen unit.
+    ///
+    /// Converts through grams rather than editing the string, so the dish keeps
+    /// the mass the coach entered and only its spelling changes.
+    private func reweigh() {
+        defer { displayedUnit = weightUnit }
+        guard let shown = OptionalNumberField.value(from: totalWeightText), shown > 0 else { return }
+        let grams = displayedUnit.toGrams(shown)
+        let converted = weightUnit.fromGrams(grams)
+        totalWeightText = OptionalNumberField.string(from: (converted * 10).rounded() / 10)
+    }
+
+    /// "4 servings · 250 g each", when both numbers are known.
+    ///
+    /// The point of the weight field: a count tells a client how many portions
+    /// exist, not how much to put on a scale.
+    private var perServingWeight: String? {
+        guard let entered = OptionalNumberField.value(from: totalWeightText), entered > 0,
+              let count = OptionalNumberField.value(from: servingsText), count > 0
+        else { return nil }
+        let each = entered / count
+        return "\(CookFormat.servingsLabel(count)) · "
+            + "\(CookFormat.trimmed((each * 10).rounded() / 10)) \(weightUnit.abbreviation) each"
     }
 
     private func save() {
@@ -231,6 +345,11 @@ struct RecipeEditorView: View {
         recipe.servings = servings
         recipe.steps = lines(stepText)
         recipe.nutritionPerServing = macros.entered(merging: recipe.nutritionPerServing)
+        // Blank or unparseable stays nil: a recipe without a total weight keeps
+        // planning by servings exactly as before. Stored as grams whatever the
+        // coach typed in, so a converted value never reaches the model.
+        recipe.totalWeightGrams = OptionalNumberField.value(from: totalWeightText)
+            .flatMap { $0 > 0 ? weightUnit.toGrams($0) : nil }
 
         // Replace rather than diff. Ingredients have no identity the user can
         // see -- they typed a block of text -- so matching old rows to new
