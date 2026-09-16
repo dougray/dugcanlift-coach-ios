@@ -127,7 +127,12 @@ enum PlanLinkEncoder {
             // parsing on the receiving side keeps one implementation of the
             // rules rather than freezing this sender's reading into the wire.
             i: (recipe.ingredients ?? []).sorted { $0.sortOrder < $1.sortOrder }.map(\.rawText),
-            t: recipe.steps)
+            t: recipe.steps,
+            // `ux`: saturated fat, sugar and sodium per serving, rounded and
+            // trailing-null-trimmed by the kit. nil -- so no key at all -- when
+            // none is known, `u`'s blank-stays-blank rule. It can travel
+            // without `u`: a coach may know a dish's sodium and not its calories.
+            ux: ShareNutrients.itemRow(perServing: recipe.nutritionPerServing))
     }
 
     /// PLAN-FORMAT's meal slots: 0 breakfast, 1 lunch, 2 dinner, 3 snack.

@@ -28,14 +28,15 @@ struct MacroTally: Equatable {
     }
 }
 
-/// The five macro text fields, and which of them the coach has typed into.
+/// The five macro text fields plus saturated fat, sugar and sodium, and which
+/// of them the coach has typed into.
 ///
 /// Text rather than `Double?` because these bind to text fields, and the
 /// round trip goes through `OptionalNumberField` -- a `.formatted()` getter
 /// paired with a `Double()` setter clears the field in en_US and turns 1000
 /// into 1.0 in de_DE.
 struct MacroFields: Equatable {
-    enum Field: Hashable { case calories, protein, carbs, fat, fiber }
+    enum Field: Hashable { case calories, protein, carbs, fat, fiber, saturatedFat, sugar, sodium }
 
     var calories = ""
     var protein = ""
@@ -46,6 +47,14 @@ struct MacroFields: Equatable {
     /// for any recipe that did not already carry some -- `entered(merging:)`
     /// could only carry fibre forward, never accept a newly computed figure.
     var fiber = ""
+    /// Saturated fat, sugar (grams) and sodium (milligrams), per serving. They
+    /// follow fibre's rules, not the four macros': optional on
+    /// `NutritionFacts`, so blank loads blank and untyped, a costing pass fills
+    /// them only when the ingredients actually carried a figure, and blank
+    /// saves as nil. Tracked, never targeted -- there is no goal for them.
+    var saturatedFat = ""
+    var sugar = ""
+    var sodium = ""
     private(set) var typed: Set<Field> = []
 
     /// The exact string `applyComputed` most recently wrote into each field.
@@ -78,6 +87,7 @@ struct MacroFields: Equatable {
     mutating func loadExisting(_ facts: NutritionFacts?, locale: Locale = .autoupdatingCurrent) {
         guard let facts else {
             calories = ""; protein = ""; carbs = ""; fat = ""; fiber = ""
+            saturatedFat = ""; sugar = ""; sodium = ""
             typed = []
             return
         }
@@ -95,6 +105,32 @@ struct MacroFields: Equatable {
         } else {
             fiber = ""
             typed = [.calories, .protein, .carbs, .fat]
+        }
+        // The same rule as fibre, for each of the three on its own.
+        for (field, value) in [(Field.saturatedFat, facts.saturatedFatG), (.sugar, facts.sugarG), (.sodium, facts.sodiumMg)] {
+            self[text: field] = OptionalNumberField.string(from: value, locale: locale)
+            if value != nil { typed.insert(field) }
+        }
+    }
+
+    /// The three optional detail fields by name, so `loadExisting` and
+    /// `applyComputed` treat them identically.
+    private subscript(text field: Field) -> String {
+        get {
+            switch field {
+            case .saturatedFat: return saturatedFat
+            case .sugar: return sugar
+            case .sodium: return sodium
+            default: return ""
+            }
+        }
+        set {
+            switch field {
+            case .saturatedFat: saturatedFat = newValue
+            case .sugar: sugar = newValue
+            case .sodium: sodium = newValue
+            default: break
+            }
         }
     }
 
@@ -125,6 +161,19 @@ struct MacroFields: Equatable {
             fiber = rounded(fiberG, locale: locale)
             computed[.fiber] = fiber
         }
+        // Grams to one decimal -- a whole-gram saturated fat turns 2.4 into 2
+        // -- and sodium in whole milligrams. Only when the tally has a figure,
+        // for fibre's reason: the food database lacks saturated fat for some
+        // foods, and a zero would be a measurement nobody made.
+        for (field, value, places) in [(Field.saturatedFat, facts.saturatedFatG, 1.0),
+                                       (.sugar, facts.sugarG, 1.0),
+                                       (.sodium, facts.sodiumMg, 0.0)] {
+            guard !typed.contains(field), let value, value.isFinite else { continue }
+            let scale = pow(10, places)
+            let text = OptionalNumberField.string(from: (value * scale).rounded() / scale, locale: locale)
+            self[text: field] = text
+            computed[field] = text
+        }
     }
 
     /// nil unless something was actually entered. An untouched form must not
@@ -133,21 +182,23 @@ struct MacroFields: Equatable {
     /// Fibre comes from its own field now, and stays `nil` when that field is
     /// blank rather than becoming a measured zero.
     ///
-    /// `merging existing:` still carries `sugarG`/`sodiumMg`, because there is
-    /// no sugar or sodium TextField in `RecipeEditorView` and those two would
-    /// otherwise be zeroed the first time a coach opened a recipe that had
-    /// them (imported via `WebLibraryImporter`, or restored via
-    /// `BackupCodec`) and tapped Done. A nil result (blank form) carries
-    /// nothing, unaffected.
-    func entered(locale: Locale = .autoupdatingCurrent, merging existing: NutritionFacts? = nil) -> NutritionFacts? {
-        let values = [calories, protein, carbs, fat, fiber].map { OptionalNumberField.value(from: $0, locale: locale) }
+    /// Saturated fat, sugar and sodium come from their own fields too, blank as
+    /// nil. They used to be carried forward from the recipe being edited
+    /// (`merging:`) because the editor had no field for them; with fields, a
+    /// merge would bring back a value the coach had just cleared.
+    ///
+    /// A form holding only, say, sodium still returns facts, with the four
+    /// macros at zero -- the only shape `NutritionFacts` allows.
+    /// `PlanLinkEncoder` omits `u` for exactly that shape, so those zeros never
+    /// reach a client as a zero-calorie dinner.
+    func entered(locale: Locale = .autoupdatingCurrent) -> NutritionFacts? {
+        let values = [calories, protein, carbs, fat, fiber, saturatedFat, sugar, sodium]
+            .map { OptionalNumberField.value(from: $0, locale: locale) }
         guard values.contains(where: { $0 != nil }) else { return nil }
-        var result = NutritionFacts(calories: values[0] ?? 0, proteinG: values[1] ?? 0,
-                              carbsG: values[2] ?? 0, fatG: values[3] ?? 0)
-        result.fiberG = values[4]
-        result.sugarG = existing?.sugarG
-        result.sodiumMg = existing?.sodiumMg
-        return result
+        return NutritionFacts(calories: values[0] ?? 0, proteinG: values[1] ?? 0,
+                              carbsG: values[2] ?? 0, fatG: values[3] ?? 0,
+                              fiberG: values[4], sugarG: values[6], sodiumMg: values[7],
+                              saturatedFatG: values[5])
     }
 
     /// `value.rounded()` always produces a whole number, so this is

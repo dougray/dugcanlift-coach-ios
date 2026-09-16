@@ -80,6 +80,9 @@ enum ShareLinkImporter {
         let day = TrainingDay(client: client, dayKey: dayKey, sessionName: wireDay.n, focus: wireDay.fo,
                                bodyweightLb: wireDay.bw, steps: wireDay.st)
         day.outdoor = wireDay.o ?? []
+        // `fx` as sent: the sender already multiplied by servings and counted
+        // coverage, so nothing here re-adds it. Null totals stay null.
+        day.nutrientTotals = wireDay.fx
         context.insert(day)
         client.trainingDays.append(day)
 
@@ -114,7 +117,12 @@ enum ShareLinkImporter {
             day.foodFiberG = totals[4]
         }
 
-        for itemized in wireDay.f ?? [] where itemized.count == 8 {
+        // `fe` is aligned with `f` by position, so it is indexed by the
+        // position in `f` -- not by the count of entries kept, or one
+        // malformed food would pin every later food's sodium on its neighbour.
+        // The kit already drops an `fe` whose length differs from `f`'s.
+        let details = wireDay.fe
+        for (position, itemized) in (wireDay.f ?? []).enumerated() where itemized.count == 8 {
             guard let foodIndex = Int(exactly: itemized[0]), foodIndex >= 0,
                   let foodDict, foodDict.indices.contains(foodIndex),
                   let meal = Int(exactly: itemized[7])
@@ -137,6 +145,14 @@ enum ShareLinkImporter {
                 fatG: itemized[4] * servings, carbsG: itemized[5] * servings,
                 fiberG: itemized[6] * servings, meal: meal
             )
+            // `fe` is per serving too, so it is multiplied the same way. A
+            // value the food did not record stays nil, never zero.
+            if let details, details.indices.contains(position), let perServing = details[position] {
+                food.nutrientDetails = WireNutrientDetails(
+                    saturatedFatG: perServing.saturatedFatG.map { $0 * servings },
+                    sugarG: perServing.sugarG.map { $0 * servings },
+                    sodiumMg: perServing.sodiumMg.map { $0 * servings })
+            }
             context.insert(food)
             day.foodEntries.append(food)
         }
