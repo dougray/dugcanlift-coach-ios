@@ -184,6 +184,7 @@ struct CookPlanView: View {
     /// field `PlanLinkEncoder.planRecipe` actually writes to `u`
     /// (calories/protein/carbs/fat/fibre), not just calories -- a coach who
     /// corrects protein with calories unchanged must still rebuild the link.
+    /// `ux` too: the three detail values ride in `details`.
     /// Same discipline as TrainPlanView's RebuildKey, and for the same bug.
     ///
     /// Internal, and `rebuildKey(clientID:weekStart:coachName:mine:used:)` is
@@ -202,6 +203,7 @@ struct CookPlanView: View {
         struct Inlined: Equatable {
             let id: UUID, name: String, servings: Double
             let calories: Double?, proteinG: Double?, carbsG: Double?, fatG: Double?, fiberG: Double?
+            let details: WireNutrientDetails?
             let ingredients: [String], steps: [String]
         }
     }
@@ -219,6 +221,7 @@ struct CookPlanView: View {
                       carbsG: recipe.nutritionPerServing?.carbsG,
                       fatG: recipe.nutritionPerServing?.fatG,
                       fiberG: recipe.nutritionPerServing?.fiberG,
+                      details: recipe.nutritionPerServing.map(WireNutrientDetails.init),
                       ingredients: (recipe.ingredients ?? [])
                           .sorted { $0.sortOrder < $1.sortOrder }.map(\.rawText),
                       steps: recipe.steps)
