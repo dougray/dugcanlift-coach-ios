@@ -244,6 +244,16 @@ coach typing `0` into calories would otherwise ship `u:[0,0,0,0,0]` — a
 zero-calorie dinner in a client's day total. `PlanLinkEncoder.planRecipe`
 guards it explicitly rather than trusting `entered()` alone.
 
+**A recipe's weight is `totalWeightGrams`, always grams.** The editor shows
+grams or ounces as the coach's `@AppStorage("recipeWeightUnit")` preference —
+never a volume, for the reason only weights get costed. **Switching the unit
+converts through grams; it never relabels the number.** Relabelling turned
+1200 g into 1200 oz, a dish 28 times heavier, before `reweigh()` existed. Do not
+"simplify" the picker's `onChange` away. Zero, negative or non-finite is "not
+weighed" (`BackupCodec.weighed`), never a dish that weighs nothing. The field
+travels in `BackupCodec` and `WebLibraryImporter` under the same spelling Coach
+web and Coach Android write, so a weight survives moving between any of them.
+
 **`PlannedMeal.snapshotNutrition` is per serving, never pre-scaled.** Scaling
 happens at the point of use. This is the invariant the 2026-09-10 half-calories
 bug came from breaking.
