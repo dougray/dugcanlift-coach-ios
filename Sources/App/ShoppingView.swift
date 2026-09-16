@@ -90,7 +90,7 @@ struct ShoppingView: View {
             }
             .padding()
         }
-        .liftScreen()
+        .coachScreen()
         .background(Theme.background)
     }
 
