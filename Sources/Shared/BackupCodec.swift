@@ -100,6 +100,11 @@ enum BackupCodec {
         var lastImportedAt: Date?
         var goal: BackupGoal?
         var days: [BackupDay]
+        // Outdoor. Optional so a backup written before them still decodes,
+        // and absent there means the client had none, which it did.
+        var exportedAtEpochSec: Int?
+        var outdoorBests: [WireOutdoorBest]?
+        var lastRoute: WireLastRoute?
     }
 
     private struct BackupGoal: Codable {
@@ -115,6 +120,8 @@ enum BackupCodec {
         var foodCalories, foodProteinG, foodFatG, foodCarbsG, foodFiberG: Double?
         var sets: [BackupSet]
         var foodEntries: [BackupFood]
+        /// The day's `o` in its wire shape. Optional, as above.
+        var outdoor: [WireOutdoorActivity]?
     }
 
     private struct BackupSet: Codable {
@@ -165,9 +172,13 @@ enum BackupCodec {
                             BackupFood(foodName: food.foodName, servings: food.servings,
                                        calories: food.calories, proteinG: food.proteinG, fatG: food.fatG,
                                        carbsG: food.carbsG, fiberG: food.fiberG, meal: food.meal)
-                        }
+                        },
+                        outdoor: day.outdoor.isEmpty ? nil : day.outdoor
                     )
-                }
+                },
+                exportedAtEpochSec: client.exportedAtEpochSec,
+                outdoorBests: client.outdoorBests,
+                lastRoute: client.lastRoute
             )
         }, recipes: recipes.map { recipe in
             BackupRecipe(id: recipe.id, name: recipe.name, servings: recipe.servings,
@@ -211,6 +222,9 @@ enum BackupCodec {
             let client = Client(id: backupClient.id, name: backupClient.name,
                                  displayUnit: backupClient.displayUnit, platform: backupClient.platform,
                                  lastImportedAt: backupClient.lastImportedAt ?? .now)
+            client.exportedAtEpochSec = backupClient.exportedAtEpochSec
+            client.outdoorBests = backupClient.outdoorBests
+            client.lastRoute = backupClient.lastRoute
             context.insert(client)
 
             if let backupGoal = backupClient.goal {
@@ -229,6 +243,7 @@ enum BackupCodec {
                 day.foodFatG = backupDay.foodFatG
                 day.foodCarbsG = backupDay.foodCarbsG
                 day.foodFiberG = backupDay.foodFiberG
+                day.outdoor = backupDay.outdoor ?? []
                 context.insert(day)
                 client.trainingDays.append(day)
 

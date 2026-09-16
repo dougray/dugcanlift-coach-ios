@@ -390,3 +390,48 @@ shared `MealOwners` helper: `PlannedMeal` has no client field of its own (see
 "A planned meal's client lives in `@AppStorage`, not on the model" above), so
 a restored or imported meal with no entry in that map is stored in SwiftData
 but permanently invisible to every screen that reads it.
+
+## Outdoor
+
+A client's runs, walks and hikes arrive in the share link (SHARE-FORMAT.md
+"Outdoor", decoded by `LiftCore` 1.8.0): a day's `o` tuples, all-time bests
+`ob`, and `lr`, the newest route — sent only when the client opted in. They are
+stored as the wire's own JSON in optional `Data` properties
+(`TrainingDay.outdoorData`, `Client.outdoorBestsData` / `lastRouteData`), read
+through typed accessors. No new `@Model` types, so adding them was a
+lightweight migration; it was checked by installing over a real store holding
+an imported client, not assumed.
+
+**`o` goes with its day.** Days are replaced whole, so a run deleted at home
+disappears here too.
+
+**`ob` and `lr` follow the newest send, and absent clears them.** A payload
+whose `z` is at least `Client.exportedAtEpochSec` replaces both, including with
+nothing: a client who turns route sharing off expects the route gone, not
+frozen at the last one they sent. An older link changes neither, or pasting a
+stale link late would bring an old route back. Profile and goal do not follow
+this rule yet — they are still overwritten by any import. `exportedAtEpochSec`
+travels in backups, or a restore would let the next stale link win.
+
+**The route is already trimmed by the sender.** Its first and last 200 m are
+cut off by the client's app, so a client's front door never leaves their
+phone. Coach draws exactly what arrives and never trims, extends or smooths it;
+the card says so in words.
+
+**Formatting is `OutdoorDisplay`**, a port of Coach web's `coach/route.js`:
+miles for a client whose unit is `lb`, kilometres for `kg`; a pace only from
+1 km up; a best that is null or zero shows "—", never a zero. Distances keep
+`toFixed`'s rounding of the binary value (2795 m is "2.79 km"), which
+`OutdoorShareTests` pins against the web app's own output.
+
+**The map is MapKit, as LIFT iOS's Last route card draws it**: a non-interactive
+`Map(initialPosition: .automatic, interactionModes: [])` with
+`.allowsHitTesting(false)`, so scrolling the client screen scrolls it. Unlike
+the web Coach, which draws on a canvas so no tile server learns where a client
+runs, MapKit fetches Apple's map tiles for that area. That is the system
+framework's request, not one Coach makes, so the two-network-call count in Cook
+is unchanged — but it is a deliberate trade, and a reason not to add a second
+map anywhere casually.
+
+`Tests/Fixtures/outdoor-share-link.txt` and `outdoor-share-expected.json` were
+written by LIFT web. Do not regenerate them from Swift.

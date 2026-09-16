@@ -234,4 +234,51 @@ final class BackupCodecTests: XCTestCase {
         XCTAssertEqual(try ctx.fetch(FetchDescriptor<PlannedMeal>()).count, 0,
                        "a meal whose recipe never arrived cannot be shown; it must not be inserted orphaned")
     }
+
+    // MARK: - Outdoor
+
+    func testOutdoorRoundTripsThroughABackup() throws {
+        let source = try makeContext()
+        let client = Client(id: "outdoor-fixture", name: "Runner", displayUnit: "kg", platform: "web")
+        let bests = [WireOutdoorBest(type: 0, count: 2, farthestMeters: 10001, longestSec: 3000, fastestSecPerKm: 300),
+                     WireOutdoorBest(type: 1, count: 1, farthestMeters: 300, longestSec: 240, fastestSecPerKm: nil)]
+        let route = WireLastRoute(type: 0, startedAtEpochSec: 1_789_259_200, durationSec: 1720,
+                                  distanceMeters: 2795, climbMeters: 37, polyline: "_p~iF~ps|U_ulLnnqC_mqNvxq`@")
+        client.outdoorBests = bests
+        client.lastRoute = route
+        client.exportedAtEpochSec = 1_789_500_000
+        source.insert(client)
+        let day = TrainingDay(client: client, dayKey: "2026-09-13")
+        let activities = [WireOutdoorActivity(type: 0, durationSec: 1720, distanceMeters: 2795, climbMeters: 37)]
+        day.outdoor = activities
+        source.insert(day)
+        client.trainingDays.append(day)
+        try source.save()
+
+        let data = try BackupCodec.export(from: source)
+        let target = try makeContext()
+        try BackupCodec.restore(from: data, into: target)
+
+        let restored = try XCTUnwrap(try target.fetch(FetchDescriptor<Client>()).first)
+        XCTAssertEqual(restored.outdoorBests, bests)
+        XCTAssertNil(restored.outdoorBests?[1].fastestSecPerKm, "a null best must come back null, not 0")
+        XCTAssertEqual(restored.lastRoute, route)
+        XCTAssertEqual(restored.exportedAtEpochSec, 1_789_500_000,
+                       "without it, a stale link after a restore would replace the route")
+        XCTAssertEqual(restored.trainingDays.first?.outdoor, activities)
+    }
+
+    func testABackupWrittenBeforeOutdoorStillRestores() throws {
+        let body = """
+        { "v": 2, "clients": [ { "id": "old", "name": "Old", "displayUnit": "lb",
+            "days": [ { "dayKey": "2026-09-01", "sets": [], "foodEntries": [] } ] } ] }
+        """
+        let ctx = try makeContext()
+        try BackupCodec.restore(from: Data(body.utf8), into: ctx)
+        let restored = try XCTUnwrap(try ctx.fetch(FetchDescriptor<Client>()).first)
+        XCTAssertNil(restored.outdoorBests)
+        XCTAssertNil(restored.lastRoute)
+        XCTAssertNil(restored.exportedAtEpochSec)
+        XCTAssertEqual(restored.trainingDays.first?.outdoor, [])
+    }
 }
