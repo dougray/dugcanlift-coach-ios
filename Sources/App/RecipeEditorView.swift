@@ -49,11 +49,11 @@ struct RecipeEditorView: View {
                 ingredientSearch
 
                 Section("Macros, per serving") {
-                    macroField("Calories", text: $macros.calories, field: .calories)
-                    macroField("Protein (g)", text: $macros.protein, field: .protein)
-                    macroField("Carbs (g)", text: $macros.carbs, field: .carbs)
-                    macroField("Fat (g)", text: $macros.fat, field: .fat)
-                    macroField("Fibre (g)", text: $macros.fiber, field: .fiber)
+                    macroField("Calories", unit: "kcal", text: $macros.calories, field: .calories)
+                    macroField("Protein", unit: "g", text: $macros.protein, field: .protein)
+                    macroField("Carbs", unit: "g", text: $macros.carbs, field: .carbs)
+                    macroField("Fat", unit: "g", text: $macros.fat, field: .fat)
+                    macroField("Fibre", unit: "g", text: $macros.fiber, field: .fiber)
                     if recipe.nutritionIsEstimated {
                         Text("Estimated from an import — check these before sending.")
                             .font(.caption)
@@ -121,13 +121,38 @@ struct RecipeEditorView: View {
         }
     }
 
-    private func macroField(_ label: String, text: Binding<String>, field: MacroFields.Field) -> some View {
-        TextField(label, text: text)
-            .keyboardType(.decimalPad)
-            // A field the coach edits stops being ours to fill in -- but
-            // onChange also fires on applyComputed's own write, so
-            // `userEdited` (not `markTyped`) tells the two apart.
-            .onChange(of: text.wrappedValue) { macros.userEdited(field, to: text.wrappedValue) }
+    /// A labelled macro row: name on the left, value and unit on the right.
+    ///
+    /// The label is a `Text`, not the `TextField`'s placeholder. A placeholder
+    /// disappears the moment the field has a value, so the macro section read
+    /// as a column of bare numbers -- 352, 25, 63, 1, 11 -- exactly when it
+    /// mattered most, with nothing to say which was protein and which was
+    /// fibre. A coach sends these to a client to eat against; an unlabelled
+    /// number is worse than a blank one.
+    ///
+    /// The unit is shown too, because "Calories" and the four gram figures are
+    /// not in the same units and a column of numbers does not say so.
+    private func macroField(_ label: String,
+                            unit: String,
+                            text: Binding<String>,
+                            field: MacroFields.Field) -> some View {
+        HStack {
+            Text(label)
+                .foregroundStyle(Theme.textPrimary)
+            Spacer(minLength: 12)
+            TextField("—", text: text)
+                .keyboardType(.decimalPad)
+                .multilineTextAlignment(.trailing)
+                .foregroundStyle(Theme.textPrimary)
+                // A field the coach edits stops being ours to fill in -- but
+                // onChange also fires on applyComputed's own write, so
+                // `userEdited` (not `markTyped`) tells the two apart.
+                .onChange(of: text.wrappedValue) { macros.userEdited(field, to: text.wrappedValue) }
+            Text(unit)
+                .font(.caption)
+                .foregroundStyle(Theme.textSecondary)
+                .frame(width: 34, alignment: .leading)
+        }
     }
 
     // MARK: - Lookup
