@@ -111,6 +111,9 @@ struct RecipeEditorView: View {
                     macroField("Carbs", unit: "g", text: $macros.carbs, field: .carbs)
                     macroField("Fat", unit: "g", text: $macros.fat, field: .fat)
                     macroField("Fibre", unit: "g", text: $macros.fiber, field: .fiber)
+                    macroField("Saturated fat", unit: "g", text: $macros.saturatedFat, field: .saturatedFat)
+                    macroField("Sugar", unit: "g", text: $macros.sugar, field: .sugar)
+                    macroField("Sodium", unit: "mg", text: $macros.sodium, field: .sodium)
                     if recipe.nutritionIsEstimated {
                         Text("Estimated from an import — check these before sending.")
                             .font(.caption)
@@ -344,7 +347,7 @@ struct RecipeEditorView: View {
         recipe.name = trimmedName
         recipe.servings = servings
         recipe.steps = lines(stepText)
-        recipe.nutritionPerServing = macros.entered(merging: recipe.nutritionPerServing)
+        recipe.nutritionPerServing = macros.entered()
         // Blank or unparseable stays nil: a recipe without a total weight keeps
         // planning by servings exactly as before. Stored as grams whatever the
         // coach typed in, so a converted value never reaches the model.

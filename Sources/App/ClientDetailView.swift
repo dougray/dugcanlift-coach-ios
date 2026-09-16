@@ -69,21 +69,65 @@ struct ClientDetailView: View {
             return (day.dayKey, total)
         }
         return LiftCard(title: "Fuel") {
-            Chart {
-                ForEach(points, id: \.0) { point in
-                    LineMark(x: .value("Day", point.0), y: .value("Calories", point.1))
-                        .foregroundStyle(Theme.accent)
+            VStack(alignment: .leading, spacing: 12) {
+                Chart {
+                    ForEach(points, id: \.0) { point in
+                        LineMark(x: .value("Day", point.0), y: .value("Calories", point.1))
+                            .foregroundStyle(Theme.accent)
+                    }
+                    if let goal = client.goal {
+                        // Reference line, not the data itself: hairline keeps it
+                        // legible as "the goal" without competing with the
+                        // accent-colored data line, matching how MacroProgressRow
+                        // uses hairline for its background track.
+                        RuleMark(y: .value("Goal", goal.calories))
+                            .foregroundStyle(Theme.hairline)
+                    }
                 }
-                if let goal = client.goal {
-                    // Reference line, not the data itself: hairline keeps it
-                    // legible as "the goal" without competing with the
-                    // accent-colored data line, matching how MacroProgressRow
-                    // uses hairline for its background track.
-                    RuleMark(y: .value("Goal", goal.calories))
-                        .foregroundStyle(Theme.hairline)
+                .frame(height: 180)
+                nutrientSummary
+            }
+        }
+    }
+
+    // MARK: - Saturated fat, sugar and sodium
+
+    /// The newest day that recorded any of the three, and the week and four-week
+    /// averages. Tracked, never targeted: no goal line, no bar, no colour. Absent
+    /// entirely for a client who has never recorded one.
+    @ViewBuilder
+    private var nutrientSummary: some View {
+        let latest = sortedDays.last { $0.nutrientTotals != nil }
+        let days = sortedDays.map { (dayKey: $0.dayKey, totals: $0.nutrientTotals) }
+        let today = DayKey.string(from: .now)
+        let week = NutrientDisplay.averages(days, windowDays: 7, endKey: today)
+        let month = NutrientDisplay.averages(days, windowDays: 28, endKey: today)
+
+        if let latest {
+            VStack(alignment: .leading, spacing: 10) {
+                Divider().overlay(Theme.hairline)
+                nutrientBlock(title: latest.dayKey,
+                              lines: NutrientDisplay.dayLines(latest.nutrientTotals))
+                if !week.isEmpty {
+                    nutrientBlock(title: "Last 7 days", lines: week.map { NutrientDisplay.averageLine($0) })
+                }
+                if !month.isEmpty {
+                    nutrientBlock(title: "Last 4 weeks", lines: month.map { NutrientDisplay.averageLine($0) })
                 }
             }
-            .frame(height: 180)
+        }
+    }
+
+    private func nutrientBlock(title: String, lines: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Theme.textSecondary)
+            ForEach(lines, id: \.self) { line in
+                Text(line)
+                    .font(.subheadline.monospacedDigit())
+                    .foregroundStyle(Theme.textPrimary)
+            }
         }
     }
 
@@ -284,6 +328,11 @@ struct ClientDetailView: View {
                         }
                         ForEach(Array(outdoor.enumerated()), id: \.offset) { _, activity in
                             Text("\(OutdoorDisplay.typeLabel(activity.type) ?? ""): \(OutdoorDisplay.activityLine(activity, unit: distanceUnit))")
+                                .font(.caption)
+                                .foregroundStyle(Theme.textSecondary)
+                        }
+                        ForEach(NutrientDisplay.dayLines(day.nutrientTotals), id: \.self) { line in
+                            Text(line)
                                 .font(.caption)
                                 .foregroundStyle(Theme.textSecondary)
                         }
