@@ -9,12 +9,7 @@ final class TrainingModelsTests: XCTestCase {
         // Routine and friends come from the package; ScheduledSession is
         // Coach's. Both in one schema is the case the ClientFoodEntry rename
         // made safe -- see EntityNameCollisionTests.
-        let schema = Schema([
-            Client.self, Goal.self, TrainingDay.self, ExerciseSet.self,
-            ClientFoodEntry.self,
-            Routine.self, RoutineExercise.self, RoutinePrescribedSet.self,
-            ScheduledSession.self,
-        ])
+        let schema = Schema(CoachSchema.models)
         return ModelContext(try ModelContainer(
             for: schema, configurations: ModelConfiguration(isStoredInMemoryOnly: true)))
     }
@@ -111,5 +106,25 @@ final class TrainingModelsTests: XCTestCase {
         let remainingSessions = try ctx.fetch(FetchDescriptor<ScheduledSession>())
         XCTAssertEqual(remainingSessions.count, 1)
         XCTAssertEqual(remainingSessions.first?.routineID, survivor.id)
+    }
+
+    func testTheDeleteConfirmationCountsEveryClientsBookings() throws {
+        // Coach web and Android both say how many booked days a delete
+        // empties. The count spans clients: a template is shared, so deleting
+        // it empties Ben's Tuesday as well as Ana's.
+        let doomed = Routine(name: "Lower A")
+        let other = Routine(name: "Upper B")
+        let sessions = [
+            ScheduledSession(clientID: "ana", dayKey: "2026-09-14", routineID: doomed.id),
+            ScheduledSession(clientID: "ben", dayKey: "2026-09-15", routineID: doomed.id),
+            ScheduledSession(clientID: "ana", dayKey: "2026-09-16", routineID: other.id),
+        ]
+        XCTAssertEqual(ScheduledSession.bookingCount(of: doomed, in: sessions), 2)
+        XCTAssertEqual(ScheduledSession.bookingCount(of: Routine(name: "Unbooked"), in: sessions), 0)
+
+        XCTAssertTrue(ScheduledSession.deleteWarning(bookings: 2).contains("2 times"))
+        XCTAssertTrue(ScheduledSession.deleteWarning(bookings: 2).contains("emptied"))
+        XCTAssertTrue(ScheduledSession.deleteWarning(bookings: 1).contains("once"))
+        XCTAssertEqual(ScheduledSession.deleteWarning(bookings: 0), "This cannot be undone.")
     }
 }
