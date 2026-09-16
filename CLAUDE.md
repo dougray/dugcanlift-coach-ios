@@ -296,8 +296,35 @@ Several large recipe sites answer 403 regardless — measured, and they refuse a
 browser string identically, so the block is not about the agent — and an
 honest refusal the coach can read beats a disguise.
 
+Cook has **four** import sources; the other two need no connection. The
+catalogue (`RecipeCatalogView`) reads bundled data, and a pasted caption
+(`RecipePasteImportView`) reads text the coach supplies. The network count is
+the one to keep at two.
+
+**A pasted caption is edited, not reviewed.** `RecipeLinkImportView` can review
+because JSON-LD is labelled — the publisher already said which strings are
+ingredients. A caption is prose, so `LiftCore.CaptionRecipe` only ever
+*proposes* a split and `RecipePasteImportView` is an editor. That is what makes
+the feature safe: a wrong split costs the coach an edit, never a number,
+because `IngredientParser` still reads the quantities on save from the text
+finally approved. Do not turn it into a review screen, and do not let the
+parser infer past what the text states — its title rule (the first line or
+none) and its yield rule (a line must open with a yield word and carry a
+number) are both pinned, and both exist because the looser version silently
+removed a real line or halved every macro in a dish.
+
+The two boxes are deliberate. A per-line Ingredient/Step picker is a day of UI
+to solve what cut-and-paste solves, and reparsing the boxes on save is the rule
+`WebLibraryImporter` already follows: the raw text is the contract.
+
+**Social video is out of reach and that is not a bug to fix.** TikTok, Instagram
+and Reels publish no schema.org `Recipe`; YouTube publishes a `VideoObject`.
+They also serve a JavaScript shell to a plain fetch and several 403 outright.
+Pasting the caption is the supported path, not a workaround waiting on a better
+scraper.
+
 **Where an imported recipe's macros come from is a tested rule, not view
-code.** `LinkImportMacros` decides it: the page's own figures win, and costing
+code.** `LinkImportMacros` decides it: a source's own figures win, and costing
 only fills a gap, because a site publishing nutrition has measured a whole
 dish while costing can only price what converts to a weight. Nothing costable
 leaves the macros nil rather than zero — the same "blank stays blank" rule
