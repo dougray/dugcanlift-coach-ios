@@ -109,10 +109,11 @@ struct ConnectView: View {
     private enum ImportKind { case backup, webLibrary }
 
     private var inviteText: String {
-        let name = coachName.isEmpty ? "your coach" : coachName
+        // With no name set, "I'm your coach, your coach on LIFT" said it twice.
+        let intro = coachName.isEmpty ? "I'm your coach on LIFT" : "I'm \(coachName), your coach on LIFT"
         let email = coachEmail.isEmpty ? "[enter your email above]" : coachEmail
         return """
-        Hi! I'm \(name), your coach on LIFT. To share your training and \
+        Hi! \(intro). To share your training and \
         nutrition log with me, open LIFT, go to Settings, and use \
         "Send to Coach" with this email address: \(email)
         """
