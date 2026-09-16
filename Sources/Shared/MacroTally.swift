@@ -28,19 +28,24 @@ struct MacroTally: Equatable {
     }
 }
 
-/// The four macro text fields, and which of them the coach has typed into.
+/// The five macro text fields, and which of them the coach has typed into.
 ///
 /// Text rather than `Double?` because these bind to text fields, and the
 /// round trip goes through `OptionalNumberField` -- a `.formatted()` getter
 /// paired with a `Double()` setter clears the field in en_US and turns 1000
 /// into 1.0 in de_DE.
 struct MacroFields: Equatable {
-    enum Field: Hashable { case calories, protein, carbs, fat }
+    enum Field: Hashable { case calories, protein, carbs, fat, fiber }
 
     var calories = ""
     var protein = ""
     var carbs = ""
     var fat = ""
+    /// Fibre is a field like the other four as of this change. Before it, the
+    /// food database's fibre was costed, tallied, and then silently discarded
+    /// for any recipe that did not already carry some -- `entered(merging:)`
+    /// could only carry fibre forward, never accept a newly computed figure.
+    var fiber = ""
     private(set) var typed: Set<Field> = []
 
     /// The exact string `applyComputed` most recently wrote into each field.
@@ -72,7 +77,7 @@ struct MacroFields: Equatable {
     /// must not throw away numbers that were already right.
     mutating func loadExisting(_ facts: NutritionFacts?, locale: Locale = .autoupdatingCurrent) {
         guard let facts else {
-            calories = ""; protein = ""; carbs = ""; fat = ""
+            calories = ""; protein = ""; carbs = ""; fat = ""; fiber = ""
             typed = []
             return
         }
@@ -80,7 +85,17 @@ struct MacroFields: Equatable {
         protein = OptionalNumberField.string(from: facts.proteinG, locale: locale)
         carbs = OptionalNumberField.string(from: facts.carbsG, locale: locale)
         fat = OptionalNumberField.string(from: facts.fatG, locale: locale)
-        typed = [.calories, .protein, .carbs, .fat]
+        // Fibre is optional on `NutritionFacts` and the other four are not, so
+        // a recipe with no fibre leaves the field blank and UNtyped -- letting
+        // a costing pass fill it in, rather than pinning it to a blank the
+        // coach never chose.
+        if let fiberG = facts.fiberG {
+            fiber = OptionalNumberField.string(from: fiberG, locale: locale)
+            typed = [.calories, .protein, .carbs, .fat, .fiber]
+        } else {
+            fiber = ""
+            typed = [.calories, .protein, .carbs, .fat]
+        }
     }
 
     /// Writes a computed per-serving figure into only the fields the coach has
@@ -102,24 +117,34 @@ struct MacroFields: Equatable {
             fat = rounded(facts.fatG, locale: locale)
             computed[.fat] = fat
         }
+        // Only when the tally actually produced a figure. Writing "0" for a
+        // dish whose ingredients carry no fibre data would state a measurement
+        // nobody made -- the same reason `NutritionFacts.fiberG` is optional
+        // while the other four are not.
+        if !typed.contains(.fiber), let fiberG = facts.fiberG {
+            fiber = rounded(fiberG, locale: locale)
+            computed[.fiber] = fiber
+        }
     }
 
     /// nil unless something was actually entered. An untouched form must not
     /// write zeros -- PLAN-FORMAT: "It must never be sent as zeros."
     ///
-    /// `merging existing:` carries `fiberG`/`sugarG`/`sodiumMg` from a
-    /// recipe's current facts onto the result, because the four visible text
-    /// fields here never represent those three -- there is no fibre/sugar/
-    /// sodium TextField in `RecipeEditorView`. Without this, saving a recipe
-    /// that already has fibre (imported via `WebLibraryImporter`, or restored
-    /// via `BackupCodec`) silently zeroes it the first time the coach taps
-    /// Done. A nil result (blank form) carries nothing, unaffected.
+    /// Fibre comes from its own field now, and stays `nil` when that field is
+    /// blank rather than becoming a measured zero.
+    ///
+    /// `merging existing:` still carries `sugarG`/`sodiumMg`, because there is
+    /// no sugar or sodium TextField in `RecipeEditorView` and those two would
+    /// otherwise be zeroed the first time a coach opened a recipe that had
+    /// them (imported via `WebLibraryImporter`, or restored via
+    /// `BackupCodec`) and tapped Done. A nil result (blank form) carries
+    /// nothing, unaffected.
     func entered(locale: Locale = .autoupdatingCurrent, merging existing: NutritionFacts? = nil) -> NutritionFacts? {
-        let values = [calories, protein, carbs, fat].map { OptionalNumberField.value(from: $0, locale: locale) }
+        let values = [calories, protein, carbs, fat, fiber].map { OptionalNumberField.value(from: $0, locale: locale) }
         guard values.contains(where: { $0 != nil }) else { return nil }
         var result = NutritionFacts(calories: values[0] ?? 0, proteinG: values[1] ?? 0,
                               carbsG: values[2] ?? 0, fatG: values[3] ?? 0)
-        result.fiberG = existing?.fiberG
+        result.fiberG = values[4]
         result.sugarG = existing?.sugarG
         result.sodiumMg = existing?.sodiumMg
         return result
