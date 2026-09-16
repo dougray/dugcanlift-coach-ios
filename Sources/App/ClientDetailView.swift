@@ -35,7 +35,7 @@ struct ClientDetailView: View {
             }
             .padding()
         }
-        .liftScreen()
+        .coachScreen()
         .background(Theme.background)
         .navigationTitle(client.name)
     }

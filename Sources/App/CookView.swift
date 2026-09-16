@@ -28,7 +28,11 @@ struct CookView: View {
     // Owned here, not by the child screens: CookView's section switch gives
     // each branch its own subtree, so @State living below would be torn down
     // and rebuilt on every section change, losing the picked client.
-    @State private var planClientID: String = ""
+    // Scene storage rather than @State: switching the top tabs tears this
+    // whole view down, and @State went with it, so the picked client reset
+    // every time the coach looked at another tab. Shared by Cook and Train, so
+    // planning one client's meals and then their training keeps the same pick.
+    @SceneStorage("planClientID") private var planClientID: String = ""
     @State private var planWeekStart: String = DayKey.today
     @State private var planShareLink: String = ""
 
@@ -60,7 +64,7 @@ struct CookView: View {
             // Applied once, by the parent every section shares -- see the
             // note in TrainPlanView about nesting this inside itself.
             .safeAreaPadding(.bottom, 72)
-            .liftScreen()
+            .coachScreen()
             .background(Theme.background)
             // The tab row above already names this screen, and the browser build
             // goes straight from its tabs into the content.
