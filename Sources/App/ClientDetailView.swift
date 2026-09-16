@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import Charts
+import MapKit
 import LiftCore
 
 struct ClientDetailView: View {
@@ -28,6 +29,7 @@ struct ClientDetailView: View {
                 fuelChart
                 bodyweightChart
                 oneRepMaxChart
+                outdoorSection
                 weekTable
                 sessionLog
             }
@@ -134,6 +136,119 @@ struct ClientDetailView: View {
         }
     }
 
+    // MARK: - Outdoor
+
+    /// Miles or kilometres, following the client's weight unit as LIFT does.
+    private var distanceUnit: String { OutdoorDisplay.distanceUnit(weightUnit: unit) }
+
+    /// Days with a run, walk or hike, newest first -- the ten most recent.
+    private var recentOutdoorDays: [TrainingDay] {
+        Array(sortedDays.reversed()
+            .filter { !OutdoorDisplay.activities($0.outdoor).isEmpty }
+            .prefix(10))
+    }
+
+    /// Shown only when there is something in it, as on the web.
+    @ViewBuilder
+    private var outdoorSection: some View {
+        let route = client.lastRoute
+        let points = OutdoorDisplay.routePoints(route)
+        let bests = OutdoorDisplay.bests(client.outdoorBests)
+        let recent = recentOutdoorDays
+
+        if points != nil || bests != nil || !recent.isEmpty {
+            Text("Outdoor")
+                .font(.title3.weight(.bold))
+                .foregroundStyle(Theme.textPrimary)
+                .padding(.top, 4)
+
+            if let route, let points {
+                let stats = OutdoorDisplay.routeStats(route, unit: distanceUnit)
+                LiftCard(title: "Last route") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        ClientRouteMap(points: points)
+                            .frame(height: 180)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+
+                        HStack {
+                            Text(OutdoorDisplay.typeLabel(route.type) ?? "")
+                                .foregroundStyle(Theme.textPrimary)
+                            Text(Date(timeIntervalSince1970: TimeInterval(route.startedAtEpochSec))
+                                .formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))
+                                .foregroundStyle(Theme.textSecondary)
+                            Spacer()
+                        }
+                        .font(.system(size: 15, weight: .semibold))
+
+                        HStack(spacing: 0) {
+                            outdoorStat("Distance", stats.distance)
+                            outdoorStat("Time", stats.time)
+                            outdoorStat("Pace", stats.pace)
+                        }
+
+                        Text(OutdoorDisplay.trimNote)
+                            .font(.caption)
+                            .foregroundStyle(Theme.textSecondary)
+                    }
+                }
+            }
+
+            if let bests {
+                LiftCard(title: "Personal bests") {
+                    VStack(alignment: .leading, spacing: 14) {
+                        ForEach(bests, id: \.type) { best in
+                            let stats = OutdoorDisplay.bestStats(best, unit: distanceUnit)
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(OutdoorDisplay.bestHeading(best))
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(Theme.textPrimary)
+                                HStack(spacing: 0) {
+                                    outdoorStat("Farthest", stats.farthest)
+                                    outdoorStat("Longest", stats.longest)
+                                    outdoorStat("Fastest pace", stats.fastest)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if !recent.isEmpty {
+                LiftCard(title: "Recent") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(recent) { day in
+                            ForEach(Array(OutdoorDisplay.activities(day.outdoor).enumerated()), id: \.offset) { _, activity in
+                                HStack {
+                                    Text("\(day.dayKey) · \(OutdoorDisplay.typeLabel(activity.type) ?? "")")
+                                        .foregroundStyle(Theme.textPrimary)
+                                    Spacer()
+                                    Text(OutdoorDisplay.activityLine(activity, unit: distanceUnit))
+                                        .foregroundStyle(Theme.textSecondary)
+                                        .monospacedDigit()
+                                }
+                                .font(.caption)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func outdoorStat(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label)
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.textSecondary)
+            Text(value)
+                .font(.system(size: 16, weight: .semibold).monospacedDigit())
+                .foregroundStyle(Theme.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     // MARK: - Week table
 
     private var weekTable: some View {
@@ -160,9 +275,15 @@ struct ClientDetailView: View {
                     // The date leads, always. A day named "Push Day" used to
                     // lose its date entirely, leaving no way to tell when it
                     // happened without expanding it.
+                    let outdoor = OutdoorDisplay.activities(day.outdoor)
                     DisclosureGroup {
                         ForEach(day.sets) { set in
                             Text("\(set.exerciseName): \(ClientDisplay.weightWithUnit(lb: set.weightLb, unit: unit)) × \(set.reps ?? 0)")
+                                .font(.caption)
+                                .foregroundStyle(Theme.textSecondary)
+                        }
+                        ForEach(Array(outdoor.enumerated()), id: \.offset) { _, activity in
+                            Text("\(OutdoorDisplay.typeLabel(activity.type) ?? ""): \(OutdoorDisplay.activityLine(activity, unit: distanceUnit))")
                                 .font(.caption)
                                 .foregroundStyle(Theme.textSecondary)
                         }
@@ -172,6 +293,10 @@ struct ClientDetailView: View {
                             if let name = day.sessionName {
                                 Text(name).font(.caption).foregroundStyle(Theme.textSecondary)
                             }
+                            if !outdoor.isEmpty {
+                                Text(OutdoorDisplay.daySummary(outdoor, unit: distanceUnit))
+                                    .font(.caption).foregroundStyle(Theme.textSecondary)
+                            }
                         }
                     }
                     .foregroundStyle(Theme.textPrimary)
@@ -179,5 +304,35 @@ struct ClientDetailView: View {
                 }
             }
         }
+    }
+}
+
+/// A client's last route on a map that does not move, drawn as LIFT iOS draws
+/// its own Last route card. Scrolling the client screen must scroll it.
+///
+/// The polyline arrives already trimmed of its first and last 200 m by the
+/// client's app; nothing here trims or extends it.
+private struct ClientRouteMap: View {
+    let points: [OutdoorShareCoordinate]
+
+    var body: some View {
+        let coordinates = points.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
+        Map(initialPosition: .automatic, interactionModes: []) {
+            MapPolyline(coordinates: coordinates)
+                .stroke(Theme.accent, style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
+            if let start = coordinates.first {
+                Annotation("Start", coordinate: start, anchor: .center) {
+                    Circle().fill(Theme.accentSecondary).frame(width: 10, height: 10)
+                }
+                .annotationTitles(.hidden)
+            }
+            if let end = coordinates.last {
+                Annotation("Finish", coordinate: end, anchor: .center) {
+                    Circle().fill(Theme.accent).frame(width: 12, height: 12)
+                }
+                .annotationTitles(.hidden)
+            }
+        }
+        .allowsHitTesting(false)
     }
 }

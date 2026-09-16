@@ -65,11 +65,14 @@ enum ClientDisplay {
         daysSinceLastLogged ?? Int.max
     }
 
-    /// The days the session log lists: only those that actually hold sets.
-    /// Every stored day used to get a row, so a client who weighs in daily but
-    /// trains elsewhere produced a run of rows that expanded to nothing.
+    /// The days the session log lists: only those that actually hold sets or
+    /// a run, walk or hike. Every stored day used to get a row, so a client
+    /// who weighs in daily but trains elsewhere produced a run of rows that
+    /// expanded to nothing. A day holding only an outdoor activity is still a
+    /// session, as SHARE-FORMAT.md says it is still a day.
     static func sessionDays(_ days: [TrainingDay]) -> [TrainingDay] {
-        days.filter { !$0.sets.isEmpty }.sorted { $0.dayKey < $1.dayKey }
+        days.filter { !$0.sets.isEmpty || !OutdoorDisplay.activities($0.outdoor).isEmpty }
+            .sorted { $0.dayKey < $1.dayKey }
     }
 
     /// Quietest first, ties broken on name so the order is stable rather than
