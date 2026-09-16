@@ -48,7 +48,7 @@ struct RootView: View {
         }
         .background(Theme.background)
         .tint(Theme.accent)
-        .preferredColorScheme(.dark)
+        .liftAppearance()
     }
 
     /// "LIFT Coach" — accent wordmark, the second word muted and unbolded, as
