@@ -409,8 +409,9 @@ disappears here too.
 whose `z` is at least `Client.exportedAtEpochSec` replaces both, including with
 nothing: a client who turns route sharing off expects the route gone, not
 frozen at the last one they sent. An older link changes neither, or pasting a
-stale link late would bring an old route back. Profile and goal do not follow
-this rule yet — they are still overwritten by any import. `exportedAtEpochSec`
+stale link late would bring an old route back. Name, unit, platform and goal
+follow the same rule (an absent goal leaves the stored one alone), and days do
+not: each link is the truth for the days it covers, whenever it arrives. `exportedAtEpochSec`
 travels in backups, or a restore would let the next stale link win.
 In a backup these are `outdoor`, `outdoorBests`, `lastRoute` and
 `exportedAtEpochSec`, as **objects with named fields, not the wire's tuples** —
