@@ -53,6 +53,7 @@ struct RecipeEditorView: View {
                     macroField("Protein (g)", text: $macros.protein, field: .protein)
                     macroField("Carbs (g)", text: $macros.carbs, field: .carbs)
                     macroField("Fat (g)", text: $macros.fat, field: .fat)
+                    macroField("Fibre (g)", text: $macros.fiber, field: .fiber)
                     if recipe.nutritionIsEstimated {
                         Text("Estimated from an import — check these before sending.")
                             .font(.caption)
