@@ -153,9 +153,9 @@ final class MacroTallyTests: XCTestCase {
         XCTAssertTrue(fields.typed.contains(.protein))
     }
 
-    // MARK: - F1: entered(merging:) must not destroy fibre/sugar/sodium
+    // MARK: - F1: a save that touched nothing must not destroy fibre/sugar/sodium
 
-    func testEnteredMergesFibreSugarSodiumFromTheExistingFactsWhenNothingChanged() {
+    func testASaveThatTouchedNothingKeepsFibre() {
         // Loading an existing recipe and changing nothing, then saving, must
         // not zero out fields the four visible text fields never touched --
         // WebLibraryImporter and BackupCodec both populate fiberG on a real
@@ -164,7 +164,7 @@ final class MacroTallyTests: XCTestCase {
         var fields = MacroFields()
         fields.loadExisting(existing)
 
-        let entered = fields.entered(merging: existing)
+        let entered = fields.entered()
 
         XCTAssertEqual(entered?.fiberG, 9, "fibre must survive a save that touched nothing")
     }
@@ -241,20 +241,104 @@ extension MacroTallyTests {
         XCTAssertEqual(fields.fiber, "6")
     }
 
-    /// Sugar and sodium still have no field of their own, so they must still
-    /// be carried forward rather than zeroed on save.
-    func testSugarAndSodiumAreStillMergedFromTheExistingRecipe() {
+    /// Sugar and sodium used to be carried forward from the recipe because the
+    /// editor had no field for them. They have fields now, and loading and
+    /// saving an untouched recipe must still keep them.
+    func testSaturatedFatSugarAndSodiumSurviveASaveThatTouchedNothing() {
         var fields = MacroFields()
-        fields.loadExisting(NutritionFacts(calories: 400, proteinG: 30, carbsG: 40,
-                                           fatG: 10, fiberG: 6, sugarG: 12, sodiumMg: 300),
-                            locale: Locale(identifier: "en_US"))
+        let existing = NutritionFacts(calories: 400, proteinG: 30, carbsG: 40, fatG: 10, fiberG: 6,
+                                      sugarG: 12, sodiumMg: 300, saturatedFatG: 3.5)
+        fields.loadExisting(existing, locale: Locale(identifier: "en_US"))
+        XCTAssertEqual(fields.saturatedFat, "3.5")
+        XCTAssertEqual(fields.sugar, "12")
+        XCTAssertEqual(fields.sodium, "300")
 
-        let existing = NutritionFacts(calories: 400, proteinG: 30, carbsG: 40,
-                                      fatG: 10, fiberG: 6, sugarG: 12, sodiumMg: 300)
-        let saved = fields.entered(locale: Locale(identifier: "en_US"), merging: existing)
+        let saved = fields.entered(locale: Locale(identifier: "en_US"))
+        XCTAssertEqual(saved?.saturatedFatG, 3.5)
         XCTAssertEqual(saved?.sugarG, 12)
         XCTAssertEqual(saved?.sodiumMg, 300)
         XCTAssertEqual(saved?.fiberG, 6)
+    }
+
+    /// With a field, a cleared value must save as unknown -- a merge from the
+    /// old recipe would bring it straight back.
+    func testClearingSodiumSavesItAsUnknownNotTheOldValue() {
+        var fields = MacroFields()
+        fields.loadExisting(NutritionFacts(calories: 400, proteinG: 30, carbsG: 40, fatG: 10, sodiumMg: 300),
+                            locale: Locale(identifier: "en_US"))
+        fields.sodium = ""
+        fields.userEdited(.sodium, to: "")
+        XCTAssertNil(fields.entered(locale: Locale(identifier: "en_US"))?.sodiumMg)
+    }
+
+    func testBlankDetailFieldsStayBlankAndSaveAsNil() {
+        var fields = MacroFields()
+        fields.loadExisting(NutritionFacts(calories: 400, proteinG: 30, carbsG: 40, fatG: 10),
+                            locale: Locale(identifier: "en_US"))
+        XCTAssertEqual([fields.saturatedFat, fields.sugar, fields.sodium], ["", "", ""])
+        XCTAssertFalse(fields.typed.contains(.sodium), "a blank loads untyped, open to costing")
+
+        let saved = fields.entered(locale: Locale(identifier: "en_US"))
+        XCTAssertNil(saved?.saturatedFatG)
+        XCTAssertNil(saved?.sugarG)
+        XCTAssertNil(saved?.sodiumMg)
+    }
+
+    /// Costing fills the three only when the ingredients carried a figure, grams
+    /// to one decimal and sodium whole -- and never over a typed value.
+    func testComputedDetailsFillOnlyWhatIsKnownAndUntyped() {
+        var fields = MacroFields()
+        fields.sugar = "9"
+        fields.userEdited(.sugar, to: "9")
+        fields.applyComputed(NutritionFacts(calories: 400, proteinG: 30, carbsG: 40, fatG: 10,
+                                            sugarG: 4.26, sodiumMg: 612.4, saturatedFatG: 2.44),
+                             locale: Locale(identifier: "en_US"))
+        XCTAssertEqual(fields.saturatedFat, "2.4")
+        XCTAssertEqual(fields.sugar, "9", "a typed value wins over a computed one")
+        XCTAssertEqual(fields.sodium, "612")
+
+        var noData = MacroFields()
+        noData.applyComputed(NutritionFacts(calories: 400, proteinG: 30, carbsG: 40, fatG: 10),
+                             locale: Locale(identifier: "en_US"))
+        XCTAssertEqual(noData.saturatedFat, "", "no figure is blank, never a measured zero")
+        XCTAssertNil(noData.entered(locale: Locale(identifier: "en_US"))?.saturatedFatG)
+    }
+
+    /// The echo of `applyComputed`'s own write must not mark a detail field
+    /// typed, or a second ingredient could never update it.
+    func testAComputedDetailKeepsUpdatingAcrossIngredients() {
+        var fields = MacroFields()
+        let enUS = Locale(identifier: "en_US")
+        fields.applyComputed(NutritionFacts(calories: 100, sodiumMg: 200), locale: enUS)
+        fields.userEdited(.sodium, to: fields.sodium)
+        fields.applyComputed(NutritionFacts(calories: 200, sodiumMg: 450), locale: enUS)
+        XCTAssertEqual(fields.sodium, "450")
+    }
+
+    /// The pairing rule: `OptionalNumberField` writes and reads these, so a
+    /// German decimal comma survives the round trip.
+    func testDetailFieldsRoundTripUnderAGermanLocale() {
+        let deDE = Locale(identifier: "de_DE")
+        var fields = MacroFields()
+        fields.loadExisting(NutritionFacts(calories: 400, proteinG: 30, carbsG: 40, fatG: 10,
+                                           sugarG: 12.5, sodiumMg: 1840, saturatedFatG: 3.5),
+                            locale: deDE)
+        XCTAssertEqual(fields.saturatedFat, "3,5")
+        XCTAssertEqual(fields.sodium, "1840", "no grouping separator for the parser to misread")
+        let saved = fields.entered(locale: deDE)
+        XCTAssertEqual(saved?.saturatedFatG, 3.5)
+        XCTAssertEqual(saved?.sugarG, 12.5)
+        XCTAssertEqual(saved?.sodiumMg, 1840)
+    }
+
+    /// A form holding only sodium is still worth saving; the four macros it
+    /// cannot leave nil are zeros that `PlanLinkEncoder` reads as "not entered".
+    func testAFormWithOnlySodiumSaves() {
+        var fields = MacroFields()
+        fields.sodium = "540"
+        let saved = fields.entered(locale: Locale(identifier: "en_US"))
+        XCTAssertEqual(saved?.sodiumMg, 540)
+        XCTAssertEqual(saved?.calories, 0)
     }
 
     /// An untouched form still writes nothing at all.
