@@ -71,7 +71,7 @@ struct ShoppingView: View {
                             Spacer()
                         }
                         .padding(Theme.cardPadding)
-                        .background(Theme.surface, in: .rect(cornerRadius: Theme.cardRadius))
+                        .liftCardBackground()
                     }
                     .buttonStyle(.plain)
                 }
