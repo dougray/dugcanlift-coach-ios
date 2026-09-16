@@ -47,4 +47,20 @@ extension ScheduledSession {
         }
         context.delete(routine)
     }
+
+    /// How many bookings deleting `routine` would empty, across every client.
+    static func bookingCount(of routine: Routine, in sessions: [ScheduledSession]) -> Int {
+        sessions.filter { $0.routineID == routine.id }.count
+    }
+
+    /// The confirmation's message. Coach web and Coach Android both confirm a
+    /// workout delete and say how many booked days it empties; this says the
+    /// same, so a coach moving between them is never surprised by an empty
+    /// week.
+    static func deleteWarning(bookings: Int) -> String {
+        guard bookings > 0 else { return "This cannot be undone." }
+        let times = bookings == 1 ? "once" : "\(bookings) times"
+        return "It is booked \(times) across your clients' weeks; those days will be "
+             + "emptied too. A plan already sent to a client is unaffected — it left as a link."
+    }
 }
