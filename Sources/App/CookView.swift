@@ -14,6 +14,7 @@ struct CookView: View {
     /// that second fact without changing its type.
     @State private var editingIsNew = false
     @State private var importing = false
+    @State private var importingLink = false
     @State private var section: Section = .recipes
 
     /// Mirrors `CookPlanView`'s own `@AppStorage("cookPlanOwners")` --
@@ -64,6 +65,7 @@ struct CookView: View {
             .navigationBarTitleDisplayMode(.inline)
             .sheet(item: $editing) { RecipeEditorView(recipe: $0, isNew: editingIsNew) }
             .sheet(isPresented: $importing) { RecipeImportView() }
+            .sheet(isPresented: $importingLink) { RecipeLinkImportView() }
         }
     }
 
@@ -107,8 +109,14 @@ struct CookView: View {
                     }
                     .tint(Theme.accent)
                     Spacer()
-                    Button("Import a dish") { importing = true }
-                        .tint(Theme.accent)
+                    // A Menu rather than a third button on one row: two
+                    // import sources already crowd the line at iPhone width,
+                    // and "Send recipes" below is the same shape.
+                    Menu("Import") {
+                        Button("From a link") { importingLink = true }
+                        Button("A dish by name") { importing = true }
+                    }
+                    .tint(Theme.accent)
                 }
 
                 if !recipes.isEmpty {
