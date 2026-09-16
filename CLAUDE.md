@@ -278,10 +278,33 @@ package. Tests build one by decoding JSON instead — see
 release; don't work around the gap with `@testable import` tricks that would
 stop working the day the package adds one.
 
-**TheMealDB is the only network call in Coach.** It has explicit offline and
-failure states, and an imported dish carries no nutrition of its own — servings
-stays at 1, because TheMealDB does not say how many a dish feeds and guessing
-four would divide every macro by a number nobody chose.
+**Coach makes exactly two network calls, both in Cook's imports.** Neither
+talks to a server DUGCANLIFT operates, and both have explicit offline and
+failure states.
+
+1. **TheMealDB** (`MealDBClient`), searched by dish name. An imported dish
+   carries no nutrition of its own — servings stays at 1, because TheMealDB
+   does not say how many a dish feeds and guessing four would divide every
+   macro by a number nobody chose.
+2. **A recipe page the coach pastes** (`RecipeLinkImportView`), read as
+   schema.org JSON-LD by `LiftCore.RecipeJSONLD`. Servings come from the
+   page's own yield when it states one and from a stepper when it does not,
+   for the same reason TheMealDB's stays at 1.
+
+Both send a `User-Agent` naming the app rather than impersonating a browser.
+Several large recipe sites answer 403 regardless — measured, and they refuse a
+browser string identically, so the block is not about the agent — and an
+honest refusal the coach can read beats a disguise.
+
+**Where an imported recipe's macros come from is a tested rule, not view
+code.** `LinkImportMacros` decides it: the page's own figures win, and costing
+only fills a gap, because a site publishing nutrition has measured a whole
+dish while costing can only price what converts to a weight. Nothing costable
+leaves the macros nil rather than zero — the same "blank stays blank" rule
+`MacroFields` holds on the typed side. It lives in `Sources/Shared/` with no
+view in it for the reason `MacroFields` does: a rule in a view's `@State`
+cannot be tested, and this one decides whether a number reaches a client's day
+total. `LinkImportMacrosTests` pins all four branches.
 
 ## Backups
 

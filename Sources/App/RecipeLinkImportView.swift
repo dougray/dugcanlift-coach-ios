@@ -213,35 +213,24 @@ struct RecipeLinkImportView: View {
             context.insert(ingredient)
         }
 
-        if imported.nutritionPerServing == nil {
-            note = "Costing the ingredients…"
-            let costed = await RecipeCosting.cost(lines: imported.ingredientLines,
-                                                  lookup: RecipeCosting.databaseLookup)
-            if costed.tally.lines > 0 {
-                recipe.nutritionPerServing = costed.tally.perServing(servings)
-                recipe.nutritionIsEstimated = true
-            }
-            recipe.sourceTranscript = costingTranscript(imported, costed)
+        var costed: CostingResult?
+        if LinkImportMacros.needsCosting(imported) {
+            note = "Costing the ingredients\u{2026}"
+            costed = await RecipeCosting.cost(lines: imported.ingredientLines,
+                                              lookup: RecipeCosting.databaseLookup)
         }
+
+        // The decision itself lives in `LinkImportMacros`, not here: it
+        // decides whether a number reaches a client's day total, and a rule
+        // in a view's `@State` cannot be tested.
+        let outcome = LinkImportMacros.resolve(imported: imported,
+                                               servings: servings,
+                                               costed: costed)
+        recipe.nutritionPerServing = outcome.nutritionPerServing
+        recipe.nutritionIsEstimated = outcome.isEstimated
+        recipe.sourceTranscript = outcome.transcript
 
         try? context.save()
         dismiss()
-    }
-
-    /// The JSON-LD stays at the top: it is what a misread quantity is checked
-    /// against. The costing note is appended so the coach can see how complete
-    /// the macros are before sending them on.
-    private func costingTranscript(_ imported: ImportedRecipe, _ costed: CostingResult) -> String {
-        var text = imported.sourceTranscript
-        text += "\n\n"
-        if costed.unpriced.isEmpty {
-            text += "The page published no macros. Every ingredient was costed here."
-        } else {
-            text += "The page published no macros. \(costed.unpriced.count) of "
-                 + "\(imported.ingredientLines.count) ingredients could not be weighed "
-                 + "automatically, so the macros are short:\n"
-                 + costed.unpriced.joined(separator: "\n")
-        }
-        return text
     }
 }
