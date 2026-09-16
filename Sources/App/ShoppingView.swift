@@ -5,13 +5,14 @@ import LiftCore
 /// What this client needs for the week that was planned.
 ///
 /// Derived from the planned meals, never stored -- only the tick-off state
-/// persists, keyed by the normalised item name, so re-deriving the list does
-/// not lose what is already in the basket.
+/// persists, keyed by client and the normalised item name, so re-deriving the
+/// list does not lose what is already in the basket, and one client's basket
+/// never shows in another's (see `ClientShoppingCheck`).
 struct ShoppingView: View {
     @Environment(\.modelContext) private var context
     @Query private var meals: [PlannedMeal]
     @Query private var recipes: [Recipe]
-    @Query private var checks: [ShoppingListCheck]
+    @Query private var checks: [ClientShoppingCheck]
     @Query(sort: \Client.name) private var clients: [Client]
 
     @Binding var clientID: String
@@ -44,9 +45,10 @@ struct ShoppingView: View {
                 }
 
                 ForEach(rows) { line in
-                    let isChecked = checks.contains { $0.itemKey == line.key }
+                    let isChecked = ClientShoppingCheck.isChecked(line, clientID: clientID, in: checks)
                     Button {
-                        toggle(line.key, isChecked: isChecked)
+                        ClientShoppingCheck.toggle(line, clientID: clientID, in: checks, context: context)
+                        try? context.save()
                     } label: {
                         HStack(alignment: .top) {
                             Image(systemName: isChecked ? "checkmark.circle.fill" : "circle")
@@ -76,9 +78,14 @@ struct ShoppingView: View {
                     .buttonStyle(.plain)
                 }
 
-                if !checks.isEmpty {
-                    Button("Clear ticks") { clearChecks() }
-                        .tint(Theme.accent)
+                // This client's ticks only -- another client's basket is
+                // not this one's to clear.
+                if !ClientShoppingCheck.checks(for: clientID, in: checks).isEmpty {
+                    Button("Clear ticks") {
+                        ClientShoppingCheck.clear(clientID: clientID, in: checks, context: context)
+                        try? context.save()
+                    }
+                    .tint(Theme.accent)
                 }
             }
             .padding()
@@ -103,19 +110,5 @@ struct ShoppingView: View {
 
     private var clientName: String {
         clients.first { $0.id == clientID }?.name ?? "this client"
-    }
-
-    private func toggle(_ key: String, isChecked: Bool) {
-        if isChecked {
-            for check in checks where check.itemKey == key { context.delete(check) }
-        } else {
-            context.insert(ShoppingListCheck(itemKey: key))
-        }
-        try? context.save()
-    }
-
-    private func clearChecks() {
-        for check in checks { context.delete(check) }
-        try? context.save()
     }
 }
