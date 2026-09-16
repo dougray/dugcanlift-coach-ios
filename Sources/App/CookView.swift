@@ -16,6 +16,7 @@ struct CookView: View {
     @State private var importing = false
     @State private var importingLink = false
     @State private var browsingCatalogue = false
+    @State private var pasting = false
     @State private var section: Section = .recipes
 
     /// Mirrors `CookPlanView`'s own `@AppStorage("cookPlanOwners")` --
@@ -68,6 +69,7 @@ struct CookView: View {
             .sheet(isPresented: $importing) { RecipeImportView() }
             .sheet(isPresented: $importingLink) { RecipeLinkImportView() }
             .sheet(isPresented: $browsingCatalogue) { RecipeCatalogView() }
+            .sheet(isPresented: $pasting) { RecipePasteImportView() }
         }
     }
 
@@ -111,14 +113,18 @@ struct CookView: View {
                     }
                     .tint(Theme.accent)
                     Spacer()
-                    // A Menu rather than a third button on one row: two
-                    // import sources already crowd the line at iPhone width,
-                    // and "Send recipes" below is the same shape.
+                    // A Menu rather than a row of buttons: four import
+                    // sources would not fit the line at iPhone width, and
+                    // "Send recipes" below is the same shape.
                     Menu("Import") {
-                        // First: it needs no connection at all, and the other
-                        // two both do.
+                        // First: it needs no connection and no typing.
                         Button("From the catalogue") { browsingCatalogue = true }
+                        // The pair for a recipe found elsewhere. A link is
+                        // better whenever the page has a recipe card, so it
+                        // leads; pasting the text is what is left when it
+                        // does not -- a caption, an email, a photo retyped.
                         Button("From a link") { importingLink = true }
+                        Button("Paste the text") { pasting = true }
                         Button("A dish by name") { importing = true }
                     }
                     .tint(Theme.accent)
