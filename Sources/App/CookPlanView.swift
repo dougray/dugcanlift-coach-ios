@@ -76,7 +76,7 @@ struct CookPlanView: View {
             }
             .padding()
         }
-        .liftScreen()
+        .coachScreen()
         .task(id: rebuildKey(mine: mineMeals, used: used)) {
             shareLink = link(mine: mineMeals, used: used)
         }

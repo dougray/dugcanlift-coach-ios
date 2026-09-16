@@ -83,7 +83,7 @@ struct TrainPlanView: View {
         // parent `TrainView` (which every section shares). Applying it here
         // too nested the padding inside itself, so scrolling this section to
         // the end landed on an empty 72pt-plus-72pt gap.
-        .liftScreen()
+        .coachScreen()
         .task(id: rebuildKey) {
             shareLink = link()
         }
