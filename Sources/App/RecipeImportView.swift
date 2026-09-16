@@ -13,7 +13,7 @@ struct RecipeImportView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var query = ""
-    @State private var hits: [ImportedRecipe] = []
+    @State private var hits: [MealDBRecipe] = []
     @State private var note = ""
     @State private var busy = false
 
@@ -78,7 +78,7 @@ struct RecipeImportView: View {
         }
     }
 
-    private func take(_ hit: ImportedRecipe) async {
+    private func take(_ hit: MealDBRecipe) async {
         // `take` awaits a full costing pass before it inserts anything, with
         // nothing disabling the result row in between -- a second tap during
         // that await (an impatient double-tap, or a slow lookup) re-entered
@@ -110,7 +110,7 @@ struct RecipeImportView: View {
         dismiss()
     }
 
-    private func summary(_ hit: ImportedRecipe, _ costed: CostingResult) -> String {
+    private func summary(_ hit: MealDBRecipe, _ costed: CostingResult) -> String {
         guard !costed.unpriced.isEmpty else {
             return "Imported from TheMealDB. Every ingredient was costed."
         }

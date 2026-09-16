@@ -1,7 +1,7 @@
 import Foundation
 
 /// A dish imported from TheMealDB: shape only, no nutrition.
-struct ImportedRecipe: Equatable, Identifiable {
+struct MealDBRecipe: Equatable, Identifiable {
     let id = UUID()
     let name: String
     let ingredients: [String]
@@ -32,7 +32,7 @@ struct MealDBClient {
         return data
     }
 
-    func search(_ query: String) async throws -> [ImportedRecipe] {
+    func search(_ query: String) async throws -> [MealDBRecipe] {
         let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryValueAllowed) ?? ""
         guard let url = URL(string: "\(Self.base)/search.php?s=\(encoded)") else {
             throw URLError(.badURL)
@@ -48,7 +48,7 @@ struct MealDBClient {
 
     /// TheMealDB ships 20 fixed ingredient/measure slots and leaves the unused
     /// ones empty, so the mapping counts rather than iterates keys.
-    private static func recipe(from meal: [String: String?]) -> ImportedRecipe {
+    private static func recipe(from meal: [String: String?]) -> MealDBRecipe {
         var ingredients: [String] = []
         for i in 1...20 {
             let name = (meal["strIngredient\(i)"] ?? nil)?
@@ -62,7 +62,7 @@ struct MealDBClient {
             .split(whereSeparator: \.isNewline)
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
-        return ImportedRecipe(
+        return MealDBRecipe(
             name: (meal["strMeal"] ?? nil) ?? "Imported recipe",
             ingredients: ingredients,
             steps: steps)
