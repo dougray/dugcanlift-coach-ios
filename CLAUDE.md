@@ -471,3 +471,51 @@ map anywhere casually.
 
 `Tests/Fixtures/outdoor-share-link.txt` and `outdoor-share-expected.json` were
 written by LIFT web. Do not regenerate them from Swift.
+
+## Saturated fat, sugar and sodium
+
+Tracked and shown, **never targeted**: no goal, bar or colour anywhere
+(SHARE-FORMAT.md, PLAN-FORMAT.md "Saturated fat, sugar and sodium", LiftKit
+1.9.0).
+
+**Storage follows the outdoor pattern.** A day's `fx` is
+`TrainingDay.nutrientTotalsData`, the wire's own `WireNutrientTotals` as JSON,
+stored exactly as sent and never re-derived from the foods. An itemised food's
+`fe` is `ClientFoodEntry.nutrientDetailsData`, a `WireNutrientDetails` held
+**as eaten** — multiplied by servings on import like the macros, though `fe` is
+per serving. `fe` aligns with `f` by *position*, so the importer indexes it by
+the `f` position, not by the foods it kept. Null stays null; all-unknown is
+stored as nil. Days are replaced whole, so a link without `fx` clears it.
+
+LiftKit 1.9.0 added `NutritionFacts.saturatedFatG`, a new column on `Recipe`
+and two on `PlannedMeal`. Coach has no migration plan and needs none: installing
+over a real store (2 clients, 56 days, 4 recipes, 20 planned meals, ticks,
+routines) opened cleanly with every row and value identical and the new columns
+nil. Checked, not assumed.
+
+**A partial total is a floor, not a day.** `NutrientDisplay` (a port of Coach
+Android's `NutrientDisplay.kt` and `Stats.nutrientAverages`) says "Sodium
+1,840 mg · from 3 of 5 foods" when coverage is partial, and averages only over
+days that recorded that nutrient, always saying how many. A nutrient nobody
+recorded gets no line — not a zero, not a dash.
+
+**The recipe editor has fields for all three**, following fibre's rules in
+`MacroFields`, not the four macros': blank loads blank and untyped, costing
+fills them only when the ingredients carried a figure (grams to one decimal,
+sodium whole), a typed value wins, blank saves nil. `entered(merging:)` is gone
+— with a field, a merge would bring back a value the coach just cleared. A form
+holding only sodium saves zeros in the four macros, the only shape
+`NutritionFacts` allows; `PlanLinkEncoder` and `CookView.macroLine` both read
+that as "macros not set".
+
+**`ux` is the kit's**: `ShareNutrients.itemRow(perServing:)` rounds and trims
+trailing nulls, and nil omits the key. It can travel without `u`.
+
+**Backup names are Coach Android's, exactly.** A day carries
+`nutrientTotals: {saturatedFatG, sugarG, sodiumMg, foods, withSaturatedFat,
+withSugar, withSodium}` — omitted when none, an unknown total an explicit
+`null`. A food carries `saturatedFatG`/`sugarG`/`sodiumMg` as eaten, each
+omitted when unknown. Recipes and planned meals get `saturatedFatG` for free,
+because `NutritionFacts` is encoded directly. Files written before any of this
+still restore. `WebLibraryImporter` reads the three from a web recipe's
+`nutritionPerServing` leniently: a non-number is unknown, not a failed import.

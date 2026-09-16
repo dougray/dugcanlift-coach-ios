@@ -141,6 +141,66 @@ enum BackupCodec {
         var foodEntries: [BackupFood]
         /// The day's activities; `[]` when none. Optional on read, as above.
         var outdoor: [BackupOutdoorActivity]?
+        /// The day's `fx`, as an object with named fields -- Coach Android's
+        /// `nutrientTotals`, name and shape. Absent when the day has none, and in
+        /// every file written before it, which means the same thing.
+        var nutrientTotals: BackupNutrientTotals?
+    }
+
+    /// Coach Android's `DayNutrientTotals` JSON exactly: all seven keys, an
+    /// unknown total written as an explicit `null`, never `0`. Read as Android
+    /// reads it -- a missing count is 0, and all three totals unknown is no
+    /// totals at all.
+    private struct BackupNutrientTotals: Codable {
+        var saturatedFatG, sugarG, sodiumMg: Double?
+        var foods, withSaturatedFat, withSugar, withSodium: Int
+
+        init(_ totals: WireNutrientTotals) {
+            saturatedFatG = totals.saturatedFatG
+            sugarG = totals.sugarG
+            sodiumMg = totals.sodiumMg
+            foods = totals.foods
+            withSaturatedFat = totals.withSaturatedFat
+            withSugar = totals.withSugar
+            withSodium = totals.withSodium
+        }
+
+        var wire: WireNutrientTotals {
+            WireNutrientTotals(saturatedFatG: saturatedFatG, sugarG: sugarG, sodiumMg: sodiumMg,
+                               foods: foods, withSaturatedFat: withSaturatedFat,
+                               withSugar: withSugar, withSodium: withSodium)
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case saturatedFatG, sugarG, sodiumMg, foods, withSaturatedFat, withSugar, withSodium
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            saturatedFatG = Self.finite(try? c.decodeIfPresent(Double.self, forKey: .saturatedFatG))
+            sugarG = Self.finite(try? c.decodeIfPresent(Double.self, forKey: .sugarG))
+            sodiumMg = Self.finite(try? c.decodeIfPresent(Double.self, forKey: .sodiumMg))
+            foods = max(0, (try? c.decodeIfPresent(Int.self, forKey: .foods)) ?? 0)
+            withSaturatedFat = max(0, (try? c.decodeIfPresent(Int.self, forKey: .withSaturatedFat)) ?? 0)
+            withSugar = max(0, (try? c.decodeIfPresent(Int.self, forKey: .withSugar)) ?? 0)
+            withSodium = max(0, (try? c.decodeIfPresent(Int.self, forKey: .withSodium)) ?? 0)
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var c = encoder.container(keyedBy: CodingKeys.self)
+            try c.encode(saturatedFatG, forKey: .saturatedFatG)
+            try c.encode(sugarG, forKey: .sugarG)
+            try c.encode(sodiumMg, forKey: .sodiumMg)
+            try c.encode(foods, forKey: .foods)
+            try c.encode(withSaturatedFat, forKey: .withSaturatedFat)
+            try c.encode(withSugar, forKey: .withSugar)
+            try c.encode(withSodium, forKey: .withSodium)
+        }
+
+        private static func finite(_ value: Double?) -> Double? {
+            guard let value, value.isFinite else { return nil }
+            return value
+        }
     }
 
     private struct BackupSet: Codable {
@@ -159,6 +219,9 @@ enum BackupCodec {
         var servings: Double
         var calories, proteinG, fatG, carbsG, fiberG: Double
         var meal: Int
+        /// As eaten, like the macros. Written only when known -- a key absent is
+        /// exactly what an older file says -- under Coach Android's names.
+        var saturatedFatG, sugarG, sodiumMg: Double?
     }
 
     static func export(from context: ModelContext, defaults: UserDefaults = .standard) throws -> Data {
@@ -190,12 +253,16 @@ enum BackupCodec {
                         foodEntries: day.foodEntries.map { food in
                             BackupFood(foodName: food.foodName, servings: food.servings,
                                        calories: food.calories, proteinG: food.proteinG, fatG: food.fatG,
-                                       carbsG: food.carbsG, fiberG: food.fiberG, meal: food.meal)
+                                       carbsG: food.carbsG, fiberG: food.fiberG, meal: food.meal,
+                                       saturatedFatG: food.nutrientDetails?.saturatedFatG,
+                                       sugarG: food.nutrientDetails?.sugarG,
+                                       sodiumMg: food.nutrientDetails?.sodiumMg)
                         },
                         outdoor: day.outdoor.map {
                             BackupOutdoorActivity(type: $0.type, durationSec: $0.durationSec,
                                                   distanceMeters: $0.distanceMeters, climbMeters: $0.climbMeters)
-                        }
+                        },
+                        nutrientTotals: day.nutrientTotals.map(BackupNutrientTotals.init)
                     )
                 },
                 exportedAtEpochSec: client.exportedAtEpochSec,
@@ -282,6 +349,7 @@ enum BackupCodec {
                     WireOutdoorActivity(type: $0.type, durationSec: $0.durationSec,
                                         distanceMeters: $0.distanceMeters, climbMeters: $0.climbMeters)
                 }
+                day.nutrientTotals = backupDay.nutrientTotals?.wire
                 context.insert(day)
                 client.trainingDays.append(day)
 
@@ -300,6 +368,10 @@ enum BackupCodec {
                                           calories: backupFood.calories, proteinG: backupFood.proteinG,
                                           fatG: backupFood.fatG, carbsG: backupFood.carbsG,
                                           fiberG: backupFood.fiberG, meal: backupFood.meal)
+                    food.nutrientDetails = WireNutrientDetails(
+                        saturatedFatG: backupFood.saturatedFatG.flatMap { $0.isFinite ? $0 : nil },
+                        sugarG: backupFood.sugarG.flatMap { $0.isFinite ? $0 : nil },
+                        sodiumMg: backupFood.sodiumMg.flatMap { $0.isFinite ? $0 : nil })
                     context.insert(food)
                     day.foodEntries.append(food)
                 }

@@ -63,10 +63,31 @@ extension Client {
 }
 
 extension TrainingDay {
+    /// SHARE-FORMAT's `fx`, as the sender wrote it: totals over only the foods
+    /// that recorded each value, as eaten. nil when the day has none, and a
+    /// value with all three totals unknown is stored as nil -- nothing recorded
+    /// is no totals, not three zeros.
+    var nutrientTotals: WireNutrientTotals? {
+        get { InlineJSON.decode(WireNutrientTotals.self, from: nutrientTotalsData) }
+        set {
+            let known = newValue.flatMap { NutrientDisplay.hasAnyTotal($0) ? $0 : nil }
+            nutrientTotalsData = InlineJSON.encode(known)
+        }
+    }
+
     /// Empty when the day has none. An empty list is stored as nil.
     var outdoor: [WireOutdoorActivity] {
         get { InlineJSON.decode([WireOutdoorActivity].self, from: outdoorData) ?? [] }
         set { outdoorData = newValue.isEmpty ? nil : InlineJSON.encode(newValue) }
+    }
+}
+
+extension ClientFoodEntry {
+    /// As eaten, never per serving. A value with all three unknown is stored
+    /// as nil.
+    var nutrientDetails: WireNutrientDetails? {
+        get { InlineJSON.decode(WireNutrientDetails.self, from: nutrientDetailsData) }
+        set { nutrientDetailsData = InlineJSON.encode(newValue.flatMap { $0.isEmpty ? nil : $0 }) }
     }
 }
 
@@ -121,6 +142,10 @@ final class TrainingDay {
     /// The day's `o` as JSON; read it through `outdoor`. Travels with the
     /// day, so replacing a day replaces its outdoor activities too.
     var outdoorData: Data?
+    /// The day's `fx` as JSON -- saturated fat, sugar and sodium totals with
+    /// their coverage counts. Read it through `nutrientTotals`. Optional with
+    /// no default, so a store written before it opens with nil.
+    var nutrientTotalsData: Data?
 
     @Relationship(deleteRule: .cascade, inverse: \ExerciseSet.day)
     var sets: [ExerciseSet] = []
@@ -193,6 +218,11 @@ final class ClientFoodEntry {
     var carbsG: Double
     var fiberG: Double
     var meal: Int   // 0 breakfast, 1 lunch, 2 dinner, 3 snack
+    /// Saturated fat, sugar and sodium as JSON, **as eaten** -- already
+    /// multiplied by `servings`, like the macros above, though the wire's `fe`
+    /// is per serving. Read it through `nutrientDetails`. nil for a food that
+    /// recorded none of the three.
+    var nutrientDetailsData: Data?
 
     init(day: TrainingDay? = nil, foodName: String, servings: Double, calories: Double,
          proteinG: Double, fatG: Double, carbsG: Double, fiberG: Double, meal: Int) {
