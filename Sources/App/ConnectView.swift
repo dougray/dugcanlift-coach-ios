@@ -10,7 +10,7 @@ struct ConnectView: View {
 
     @State private var showingExporter = false
     @State private var showingImporter = false
-    @State private var showingWebImporter = false
+    @State private var importKind: ImportKind = .backup
     @State private var exportDocument: BackupDocument?
     @State private var errorMessage: String?
     @State private var importNote: String?
@@ -56,9 +56,15 @@ struct ConnectView: View {
             Section {
                 Button("Save Backup") { exportBackup() }
                     .foregroundStyle(Theme.accent)
-                Button("Restore from Backup") { showingImporter = true }
+                Button("Restore from Backup") {
+                    importKind = .backup
+                    showingImporter = true
+                }
                     .foregroundStyle(Theme.accent)
-                Button("Import from the web app") { showingWebImporter = true }
+                Button("Import from the web app") {
+                    importKind = .webLibrary
+                    showingImporter = true
+                }
                     .foregroundStyle(Theme.accent)
                 if let importNote {
                     Text(importNote).foregroundStyle(Theme.textSecondary)
@@ -88,13 +94,19 @@ struct ConnectView: View {
         .navigationBarTitleDisplayMode(.inline)
         .fileExporter(isPresented: $showingExporter, document: exportDocument,
                       contentType: .json, defaultFilename: "coach-backup") { _ in }
+        // One importer for both buttons, told apart by `importKind`. Two
+        // `.fileImporter` modifiers on one view do not both work: SwiftUI
+        // honours only the last, so "Restore from Backup" silently opened
+        // nothing while "Import from the web app" worked.
         .fileImporter(isPresented: $showingImporter, allowedContentTypes: [.json]) { result in
-            importBackup(result)
-        }
-        .fileImporter(isPresented: $showingWebImporter, allowedContentTypes: [.json]) { result in
-            importWebLibrary(result)
+            switch importKind {
+            case .backup: importBackup(result)
+            case .webLibrary: importWebLibrary(result)
+            }
         }
     }
+
+    private enum ImportKind { case backup, webLibrary }
 
     private var inviteText: String {
         let name = coachName.isEmpty ? "your coach" : coachName
