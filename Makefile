@@ -25,11 +25,14 @@ DEVICE_APP     := $(DEVICE_DERIVED)/Build/Products/Debug-iphoneos/Coach.app
 DEVICE ?= $(shell xcrun devicectl list devices 2>/dev/null | awk '/iPhone|iPad/ {print $$3; exit}')
 
 # Unlike lift-ios, this app needs no entitlements override to build for a
-# device on a free Apple Personal Team: it declares no entitlements at all.
-# That is not an oversight. A personal team cannot sign Associated Domains,
-# which is why Coach ingests plan links by paste rather than by Universal Link
-# -- see PasteLinkView and SHARE-FORMAT.md. If a capability is ever added here,
-# expect the device build to start failing and see lift-ios's Makefile for the
+# device on a free Apple Personal Team. Its only capability is App Groups
+# (group.com.dugcanlift.coach, the share extension's hand-off to the app), which
+# a personal team can sign -- lift-ios's Lift-free.entitlements keeps its own
+# App Group and drops only Associated Domains. That is the capability a
+# personal team cannot sign, and why Coach ingests links by paste, by its
+# dugcanliftcoach:// scheme and by share extension rather than by Universal
+# Link. If a capability a free team can't sign is ever added here, expect the
+# device build to fail and see lift-ios's Makefile for the
 # CODE_SIGN_ENTITLEMENTS pattern that works around it.
 
 # xcbeautify makes xcodebuild output readable. brew install xcbeautify
