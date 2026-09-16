@@ -6,11 +6,7 @@ import LiftCore
 final class WebLibraryImporterTests: XCTestCase {
 
     private func context() throws -> ModelContext {
-        let schema = Schema([
-            Client.self, Goal.self, TrainingDay.self, ExerciseSet.self, ClientFoodEntry.self,
-            Routine.self, RoutineExercise.self, RoutinePrescribedSet.self, ScheduledSession.self,
-            Recipe.self, RecipeIngredient.self, PlannedMeal.self, ShoppingListCheck.self,
-        ])
+        let schema = Schema(CoachSchema.models)
         return ModelContext(try ModelContainer(
             for: schema, configurations: ModelConfiguration(isStoredInMemoryOnly: true)))
     }

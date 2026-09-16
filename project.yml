@@ -45,6 +45,10 @@ targets:
     sources:
       - path: Sources/App
       - path: Sources/Shared
+      # Includes PrivacyInfo.xcprivacy, the App Store privacy manifest. It
+      # must land at the root of Coach.app, which a resources build phase
+      # over this folder does -- check with
+      # `ls .build/DerivedData/Build/Products/Debug-iphonesimulator/Coach.app`.
       - path: Resources
         buildPhase: resources
     dependencies:
@@ -71,6 +75,10 @@ targets:
         # Xcode generates the Info.plist, and this target supplies its own.
         UILaunchScreen: {}
         CFBundleDisplayName: Coach
+        # Coach uses only the encryption built into iOS (HTTPS for Cook's two
+        # imports). Declaring it here answers App Store Connect's export
+        # compliance question once, instead of on every upload.
+        ITSAppUsesNonExemptEncryption: false
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
 

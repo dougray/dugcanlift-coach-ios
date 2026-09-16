@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- No analytics, no ads, no SDKs that track, no account. -->
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+	<!-- Empty because nothing reaches the developer. Coach has no backend: a
+	     client's log arrives as a pasted link and stays in SwiftData on this
+	     device. Its only two network requests are both started by the coach
+	     and go straight to a third party, never to DUGCANLIFT: a TheMealDB
+	     search for a dish name (MealDBClient), and a fetch of a recipe page
+	     whose address the coach pasted (RecipeLinkImportView). Neither sends
+	     anything about the coach or a client, and nothing is retained by the
+	     developer. MapKit's tile requests for a client's route card are the
+	     system framework's, not Coach's. -->
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<!-- @AppStorage (coachName, coachEmail, cookPlanOwners,
+		     recipeWeightUnit) and UserDefaults.standard, read and written by
+		     this app only - never a shared App Group suite, so CA92.1 applies
+		     rather than 1C8F.1. -->
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>CA92.1</string>
+			</array>
+		</dict>
+		<!-- Coach's own code reads no file timestamps. Declared to match
+		     lift-ios, which links the same LiftKit stack: LiftReference opens
+		     its bundled reference databases through GRDB and SQLite, and
+		     SwiftData sits on SQLite too; SQLite stats the database files it
+		     opens, all inside the app container. -->
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>C617.1</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>
