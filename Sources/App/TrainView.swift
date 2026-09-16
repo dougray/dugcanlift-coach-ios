@@ -8,6 +8,7 @@ struct TrainView: View {
     @Query(sort: \Client.name) private var clients: [Client]
     @Query private var sessions: [ScheduledSession]
     @State private var editing: Routine?
+    @State private var confirmingDelete: Routine?
     @State private var section: Section = .workouts
 
     // Owned here, not by `TrainPlanView`, so switching to Workouts and back
@@ -50,6 +51,19 @@ struct TrainView: View {
             // goes straight from its tabs into the content.
             .navigationBarTitleDisplayMode(.inline)
             .sheet(item: $editing) { WorkoutEditorView(routine: $0) }
+            .alert(confirmingDelete.map { "Delete \($0.name)?" } ?? "",
+                   isPresented: Binding(get: { confirmingDelete != nil },
+                                        set: { if !$0 { confirmingDelete = nil } }),
+                   presenting: confirmingDelete) { routine in
+                Button("Delete", role: .destructive) {
+                    ScheduledSession.deleteRoutineAndSessions(routine, from: sessions, in: context)
+                    confirmingDelete = nil
+                }
+                Button("Keep", role: .cancel) { confirmingDelete = nil }
+            } message: { routine in
+                Text(ScheduledSession.deleteWarning(
+                    bookings: ScheduledSession.bookingCount(of: routine, in: sessions)))
+            }
         }
     }
 
@@ -79,15 +93,16 @@ struct TrainView: View {
                                 Button("Edit") { editing = routine }
                                     .tint(Theme.accent)
                                 Spacer()
-                                // Sweeps this routine's `ScheduledSession`
-                                // rows in the same action -- see
-                                // `ScheduledSession.deleteRoutineAndSessions`.
+                                // Confirms first, saying how many booked
+                                // days it empties, as Coach web and Android
+                                // do; the delete itself sweeps this routine's
+                                // `ScheduledSession` rows in the same action --
+                                // see `ScheduledSession.deleteRoutineAndSessions`.
                                 // Also the way to discard a "New workout"
                                 // stub left behind by dismissing the editor
                                 // without changing anything.
                                 Button("Delete", role: .destructive) {
-                                    ScheduledSession.deleteRoutineAndSessions(
-                                        routine, from: sessions, in: context)
+                                    confirmingDelete = routine
                                 }
                             }
                         }
