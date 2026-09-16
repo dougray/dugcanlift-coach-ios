@@ -1,0 +1,27 @@
+LIFT Coach is the trainer's side of LIFT. Your clients log their training and food in the LIFT app; this is where you read those logs and send them a plan.
+
+You need a client who uses LIFT. Coach does not log workouts or food itself, and it cannot read data from other apps. When a client taps "Send to Coach" in LIFT, they send you a link. Paste that link into Coach and their log appears on your roster.
+
+YOUR ROSTER
+Every client you have pasted a link from, with when they last logged. Paste a newer link at any time to bring a client up to date.
+
+EACH CLIENT
+- Training volume, day by day
+- Fuel: calories against the goal the client set
+- Bodyweight trend
+- Estimated one-rep max for each lift, kept separate by equipment
+- Runs, walks and hikes, personal bests, and their last route on a map when the client chose to share it
+- Weights shown in pounds or kilograms, whichever the client uses
+
+TRAIN
+Build workout templates with sets, reps, weight, RPE, time or distance. Book them onto a client's week, then send the week to the client as a link that opens in LIFT.
+
+COOK
+Keep a recipe library with ingredients and macros. Add recipes by hand, from a built-in catalogue, by searching TheMealDB, from a recipe web page's address, or by pasting a caption and editing the split. Plan a client's breakfasts, lunches, dinners and snacks for the week and send the plan with the workouts. Each client gets a shopping list built from their planned meals, with their own ticks.
+
+PRIVATE BY DESIGN
+There is no account and no server. Everything stays on your iPhone. A client's log reaches you only as a link they chose to send. The only times Coach goes online are when you search TheMealDB or import a recipe page you pasted, and neither request includes anything about you or your clients.
+
+Save a backup file to move your roster, recipes and workouts to another device, or import your library from the LIFT Coach web app.
+
+Light and dark appearance, following your phone's setting or your choice.
