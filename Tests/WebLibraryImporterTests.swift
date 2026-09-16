@@ -46,6 +46,18 @@ final class WebLibraryImporterTests: XCTestCase {
         XCTAssertEqual((recipe.ingredients ?? []).first?.rawText, "500 g lean beef mince")
     }
 
+    /// Coach web writes `totalWeightGrams`. Dropping it here would lose a
+    /// weight a coach entered in the browser the moment they moved to iOS.
+    func testAWebRecipesWeightImports() throws {
+        let body = """
+        { "v": 2, "clients": [], "recipes": [ { "id": "r5", "name": "Weighed", "servings": 4,
+          "ingredients": [], "steps": [], "totalWeightGrams": 1200 } ] }
+        """
+        let ctx = try context()
+        _ = try WebLibraryImporter.importLibrary(from: Data(body.utf8), into: ctx)
+        XCTAssertEqual(try XCTUnwrap(try ctx.fetch(FetchDescriptor<Recipe>()).first).totalWeightGrams, 1200)
+    }
+
     func testARecipeWithNoMacrosImportsAsNilNotZero() throws {
         let body = """
         { "v": 2, "clients": [], "recipes": [ { "id": "r9", "name": "Mystery", "servings": 1,

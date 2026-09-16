@@ -122,6 +122,41 @@ final class BackupCodecTests: XCTestCase {
         XCTAssertEqual(try target.fetch(FetchDescriptor<Routine>()).count, 1)
     }
 
+    /// A recipe's weight is what gives a serving something to put on a scale.
+    /// Before `BackupRecipe` carried it, a backup silently dropped it.
+    func testARecipesWeightSurvivesBackupAndRestore() throws {
+        let source = try context()
+        let recipe = Recipe(name: "Beef Chilli", servings: 4)
+        recipe.totalWeightGrams = 1200
+        source.insert(recipe)
+        try source.save()
+
+        let target = try context()
+        try BackupCodec.restore(from: try BackupCodec.export(from: source), into: target)
+
+        let restored = try XCTUnwrap(try target.fetch(FetchDescriptor<Recipe>()).first)
+        XCTAssertEqual(restored.totalWeightGrams, 1200)
+    }
+
+    /// A file written before the field existed must still restore, unweighed.
+    func testABackupWithoutAWeightRestoresUnweighed() throws {
+        let body = """
+        { "v": 2, "clients": [], "recipes": [ { "id": "8E1C4C2A-0000-0000-0000-000000000009",
+          "name": "Old", "servings": 2, "steps": [], "ingredients": [] } ] }
+        """
+        let ctx = try context()
+        try BackupCodec.restore(from: Data(body.utf8), into: ctx)
+        XCTAssertNil(try XCTUnwrap(try ctx.fetch(FetchDescriptor<Recipe>()).first).totalWeightGrams)
+    }
+
+    func testAZeroOrNegativeWeightRestoresAsUnweighed() {
+        XCTAssertNil(BackupCodec.weighed(0))
+        XCTAssertNil(BackupCodec.weighed(-5))
+        XCTAssertNil(BackupCodec.weighed(.infinity))
+        XCTAssertNil(BackupCodec.weighed(nil))
+        XCTAssertEqual(BackupCodec.weighed(1200), 1200)
+    }
+
     func testRestoringAV1FileDoesNotWipeTheLibrary() throws {
         let ctx = try context()
         ctx.insert(Recipe(name: "Already here", servings: 2))
