@@ -197,4 +197,61 @@ final class ShareLinkImporterTests: XCTestCase {
         let foods = try context.fetch(FetchDescriptor<ClientFoodEntry>())
         XCTAssertTrue(foods.isEmpty)
     }
+
+    // MARK: - An older link cannot undo a newer one
+
+    private func sent(z: Int, name: String, unit: String = "lb", calories: Int,
+                      days: [WireDay] = []) -> ShareLinkPayload {
+        ShareLinkPayload(
+            v: 1,
+            c: WireClient(i: "b7f3a1c8", n: name, s: nil, a: nil, h: nil, u: unit, p: "ios"),
+            g: WireGoal(c: calories, p: 180, f: 70, cb: 250, fb: 30),
+            r: "2026-09-01", t: "2026-09-10", z: z, x: ["Back Squat|Barbell"], fd: nil, d: days
+        )
+    }
+
+    func testAnOlderLinkPastedLateKeepsTheNewerGoalAndProfile() throws {
+        let context = try makeContext()
+        try ShareLinkImporter.importPayload(sent(z: 2_000, name: "Jordan R.", unit: "kg", calories: 2_600), into: context)
+        try ShareLinkImporter.importPayload(sent(z: 1_000, name: "Jordan Reyes", unit: "lb", calories: 2_200), into: context)
+
+        let client = try XCTUnwrap(context.fetch(FetchDescriptor<Client>()).first)
+        XCTAssertEqual(client.goal?.calories, 2_600, "a goal changed last week is not undone by an older link")
+        XCTAssertEqual(client.name, "Jordan R.")
+        XCTAssertEqual(client.displayUnit, "kg")
+    }
+
+    func testAnOlderLinkStillDeliversItsDays() throws {
+        // Days are the truth for the window a link covers, whenever it arrives.
+        let context = try makeContext()
+        try ShareLinkImporter.importPayload(sent(z: 2_000, name: "Jordan", calories: 2_600), into: context)
+        let day = WireDay(k: 0, n: "Pull Day", fo: nil, bw: nil, st: nil, w: nil, ft: nil, f: nil)
+        try ShareLinkImporter.importPayload(sent(z: 1_000, name: "Jordan", calories: 2_200, days: [day]), into: context)
+
+        let days = try context.fetch(FetchDescriptor<TrainingDay>())
+        XCTAssertEqual(days.map(\.sessionName), ["Pull Day"])
+    }
+
+    func testANewerOrEqualLinkUpdatesGoalAndProfile() throws {
+        let context = try makeContext()
+        try ShareLinkImporter.importPayload(sent(z: 1_000, name: "Jordan Reyes", calories: 2_200), into: context)
+        try ShareLinkImporter.importPayload(sent(z: 1_000, name: "Jordan R.", unit: "kg", calories: 2_400), into: context)
+        try ShareLinkImporter.importPayload(sent(z: 3_000, name: "Jordan", calories: 2_500), into: context)
+
+        let client = try XCTUnwrap(context.fetch(FetchDescriptor<Client>()).first)
+        XCTAssertEqual(client.goal?.calories, 2_500)
+        XCTAssertEqual(client.name, "Jordan")
+        XCTAssertEqual(client.displayUnit, "lb")
+    }
+
+    func testAClientImportedBeforeLinksWereStampedTakesTheNextLink() throws {
+        let context = try makeContext()
+        try ShareLinkImporter.importPayload(sent(z: 5_000, name: "Old Name", calories: 2_000), into: context)
+        let client = try XCTUnwrap(context.fetch(FetchDescriptor<Client>()).first)
+        client.exportedAtEpochSec = nil   // as a store written before the stamp existed
+        try ShareLinkImporter.importPayload(sent(z: 1, name: "New Name", calories: 2_300), into: context)
+        XCTAssertEqual(client.name, "New Name")
+        XCTAssertEqual(client.goal?.calories, 2_300)
+    }
 }
+
