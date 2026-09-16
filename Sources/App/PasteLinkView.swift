@@ -48,7 +48,7 @@ struct PasteLinkView: View {
             }
         }
         .tint(Theme.accent)
-        .preferredColorScheme(.dark)
+        .liftAppearance()
     }
 
     private func importLink() {

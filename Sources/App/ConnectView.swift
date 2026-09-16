@@ -18,6 +18,15 @@ struct ConnectView: View {
     var body: some View {
         Form {
             Section {
+                AppearancePicker()
+                    .listRowBackground(Theme.surface)
+            } header: {
+                Text("Appearance")
+            } footer: {
+                Text("System follows your phone's light or dark setting.")
+            }
+
+            Section {
                 TextField("Name", text: $coachName)
                     .foregroundStyle(Theme.textPrimary)
                 TextField("Email", text: $coachEmail)
