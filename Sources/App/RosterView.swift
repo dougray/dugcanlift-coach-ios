@@ -10,14 +10,20 @@ struct RosterView: View {
     /// here as well would just be a sort the view throws away.
     @Query private var clients: [Client]
     @State private var showingPasteLink = false
+    @State private var pendingRemoval: RemovalImpact?
 
     /// nil on iPhone, where a row pushes the client's page. Set by
     /// `RosterSplitView` at regular width, where a row selects the client shown
     /// beside the list instead.
     var selection: Binding<String?>? = nil
+    /// Called with the client's id once a row's menu has removed them. nil on
+    /// a phone, where the row simply goes; `RosterSplitView` passes one that
+    /// clears the selection if the removed client was the one on show.
+    var onRemoved: ((String) -> Void)? = nil
 
     var body: some View {
         list
+        .removeClientAlert($pendingRemoval) { id in onRemoved?(id) }
         .scrollContentBackground(.hidden)
         .background(Theme.background)
         // No navigation title: the tab row above already says Roster, and the
@@ -72,6 +78,7 @@ struct RosterView: View {
                         .foregroundStyle(Theme.textPrimary)
                         .listRowBackground(selection.wrappedValue == client.id
                                            ? Theme.accentMuted.opacity(0.55) : Theme.surface)
+                        .contextMenu { removeButton(for: client) }
                 } else {
                     NavigationLink {
                         ClientDetailView(client: client)
@@ -80,8 +87,32 @@ struct RosterView: View {
                     }
                     .foregroundStyle(Theme.textPrimary)
                     .listRowBackground(Theme.surface)
+                    .contextMenu { removeButton(for: client) }
                 }
             }
+        }
+    }
+
+    /// Long-press a row for "Remove client", as Coach Android's roster does.
+    /// It only asks: it opens the same counted confirmation the client page's
+    /// "Remove this client" opens, so both paths say and do exactly the same
+    /// thing. Deliberately not `.onDelete`, which deletes on the swipe itself
+    /// -- a flick past a row is not consent to lose a client's logged months.
+    ///
+    /// **A swipe action cannot do this job, and that was measured.** With
+    /// `.swipeActions` here the app died every time the coach confirmed, on an
+    /// iPhone and an iPad both: `attempt to delete item 1 from section 0 which
+    /// only contains 1 items before the update`. A row that has been swiped
+    /// open is mid-animation, and the store's own removal of that row
+    /// coalesces with the swipe's update into two deletes of one row --
+    /// deferring the removal a turn did not help, because the row is still
+    /// open. The removal had already committed each time, so the roster was
+    /// correct and only the screen was gone. A context menu closes before its
+    /// action runs and leaves no such row behind, and it is what Android
+    /// already does. Do not "restore" the swipe.
+    private func removeButton(for client: Client) -> some View {
+        Button("Remove client", role: .destructive) {
+            pendingRemoval = ClientRemoval.impact(clientID: client.id, in: context)
         }
     }
 
@@ -134,6 +165,11 @@ struct RosterSplitView: View {
     /// visiting Cook, or on relaunch.
     @SceneStorage("rosterSelectedClientID") private var storedSelection = ""
     @State private var selection: String?
+    /// Set when the coach removes the client who was on show, and consumed by
+    /// the next `restoreSelection`. Without it, the roster's own "restore a
+    /// selection" would answer a removal by opening whoever is now quietest --
+    /// a client's page nobody asked for, one tap after a delete.
+    @State private var justRemoved = false
 
     var body: some View {
         GeometryReader { proxy in
@@ -150,7 +186,7 @@ struct RosterSplitView: View {
     private var split: some View {
         NavigationStack {
             HStack(spacing: 0) {
-                RosterView(selection: $selection)
+                RosterView(selection: $selection, onRemoved: cleared(after:))
                     .frame(width: AdaptiveLayout.rosterListWidth)
                 Rectangle()
                     .fill(Theme.hairline)
@@ -173,7 +209,7 @@ struct RosterSplitView: View {
         if let selected {
             // Keyed on the client so switching clients starts at the top of the
             // new page rather than at the old page's scroll position.
-            ClientDetailView(client: selected)
+            ClientDetailView(client: selected, onRemoved: cleared(after:))
                 .id(selected.id)
         } else {
             ContentUnavailableView(
@@ -192,9 +228,21 @@ struct RosterSplitView: View {
         return clients.first { $0.id == selection }
     }
 
+    /// Empties the pane beside the list when the client on show is removed,
+    /// from either the list's row menu or the page's own button.
+    private func cleared(after removedID: String) {
+        guard selection == removedID else { return }
+        justRemoved = true
+        selection = nil
+    }
+
     /// The stored client if it still exists; otherwise the one the list puts
     /// first, the quietest, since that is who most needs looking at.
     private func restoreSelection() {
+        if justRemoved {
+            justRemoved = false
+            return
+        }
         if let selection, clients.contains(where: { $0.id == selection }) { return }
         if clients.contains(where: { $0.id == storedSelection }) {
             selection = storedSelection
