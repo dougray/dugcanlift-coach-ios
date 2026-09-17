@@ -23,21 +23,62 @@ struct ClientDetailView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Theme.cardSpacing) {
+        AdaptiveScrollPage { width in
+            if AdaptiveLayout.columns(for: width, maxColumns: 2) == 1 {
                 volumeChart
                 fuelChart
                 bodyweightChart
                 oneRepMaxChart
-                outdoorSection
+                outdoorSection(wide: false)
                 weekTable
                 sessionLog
+            } else if AdaptiveLayout.showsSideColumn(width: width) {
+                // Sessions and weeks in a column of their own, beside the
+                // charts rather than a long scroll below them.
+                HStack(alignment: .top, spacing: AdaptiveLayout.gutter) {
+                    VStack(alignment: .leading, spacing: AdaptiveLayout.gutter) {
+                        chartGrid
+                        outdoorSection(wide: true)
+                    }
+                    VStack(alignment: .leading, spacing: AdaptiveLayout.gutter) {
+                        sessionLog
+                        weekTable
+                    }
+                    .frame(width: AdaptiveLayout.sideColumnWidth)
+                }
+            } else {
+                chartGrid
+                outdoorSection(wide: true)
+                Grid(alignment: .topLeading, horizontalSpacing: AdaptiveLayout.gutter) {
+                    GridRow {
+                        sessionLog
+                        weekTable
+                    }
+                }
             }
-            .padding()
         }
         .coachScreen()
         .background(Theme.background)
         .navigationTitle(client.name)
+    }
+
+    /// Two abreast, paired by height rather than by topic: the two single
+    /// charts share a row, and Fuel -- a chart plus up to nine nutrient lines
+    /// -- sits beside the per-lift charts. Pairing Volume with Fuel left the
+    /// Volume card two-thirds empty.
+    private var chartGrid: some View {
+        Grid(alignment: .topLeading,
+             horizontalSpacing: AdaptiveLayout.gutter,
+             verticalSpacing: AdaptiveLayout.gutter) {
+            GridRow {
+                volumeChart
+                bodyweightChart
+            }
+            GridRow {
+                fuelChart
+                oneRepMaxChart
+            }
+        }
     }
 
     // MARK: - Training volume
@@ -56,6 +97,7 @@ struct ClientDetailView: View {
                     .foregroundStyle(Theme.accent)
             }
             .frame(height: 180)
+            .fillsGridCell()
         }
     }
 
@@ -87,6 +129,7 @@ struct ClientDetailView: View {
                 .frame(height: 180)
                 nutrientSummary
             }
+            .fillsGridCell()
         }
     }
 
@@ -146,6 +189,7 @@ struct ClientDetailView: View {
                     .foregroundStyle(Theme.accent)
             }
             .frame(height: 180)
+            .fillsGridCell()
         }
     }
 
@@ -177,6 +221,7 @@ struct ClientDetailView: View {
                     }
                 }
             }
+            .fillsGridCell()
         }
     }
 
@@ -193,8 +238,10 @@ struct ClientDetailView: View {
     }
 
     /// Shown only when there is something in it, as on the web.
+    ///
+    /// `wide` puts the route and the bests side by side, with a taller map.
     @ViewBuilder
-    private var outdoorSection: some View {
+    private func outdoorSection(wide: Bool) -> some View {
         let route = client.lastRoute
         let points = OutdoorDisplay.routePoints(route)
         let bests = OutdoorDisplay.bests(client.outdoorBests)
@@ -206,76 +253,103 @@ struct ClientDetailView: View {
                 .foregroundStyle(Theme.textPrimary)
                 .padding(.top, 4)
 
-            if let route, let points {
-                let stats = OutdoorDisplay.routeStats(route, unit: distanceUnit)
-                LiftCard(title: "Last route") {
-                    VStack(alignment: .leading, spacing: 10) {
-                        ClientRouteMap(points: points)
-                            .frame(height: 180)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
+            if wide, let route, let points, let bests {
+                // The map beside the numbers, and the recent list under the
+                // bests rather than one long line stretched across the page.
+                Grid(alignment: .topLeading, horizontalSpacing: AdaptiveLayout.gutter) {
+                    GridRow {
+                        routeCard(route, points: points, mapHeight: 280)
+                        VStack(alignment: .leading, spacing: AdaptiveLayout.gutter) {
+                            bestsCard(bests)
+                            if !recent.isEmpty { recentCard(recent) }
+                        }
+                    }
+                }
+            } else {
+                if let route, let points {
+                    routeCard(route, points: points, mapHeight: wide ? 280 : 180)
+                }
+                if let bests {
+                    bestsCard(bests)
+                }
+                if !recent.isEmpty {
+                    recentCard(recent)
+                }
+            }
+        }
+    }
 
+    private func recentCard(_ recent: [TrainingDay]) -> some View {
+        LiftCard(title: "Recent") {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(recent) { day in
+                    ForEach(Array(OutdoorDisplay.activities(day.outdoor).enumerated()), id: \.offset) { _, activity in
                         HStack {
-                            Text(OutdoorDisplay.typeLabel(route.type) ?? "")
+                            Text("\(day.dayKey) · \(OutdoorDisplay.typeLabel(activity.type) ?? "")")
                                 .foregroundStyle(Theme.textPrimary)
-                            Text(Date(timeIntervalSince1970: TimeInterval(route.startedAtEpochSec))
-                                .formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))
-                                .foregroundStyle(Theme.textSecondary)
                             Spacer()
+                            Text(OutdoorDisplay.activityLine(activity, unit: distanceUnit))
+                                .foregroundStyle(Theme.textSecondary)
+                                .monospacedDigit()
                         }
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.caption)
+                    }
+                }
+            }
+        }
+    }
 
+    private func routeCard(_ route: WireLastRoute, points: [OutdoorShareCoordinate],
+                           mapHeight: CGFloat) -> some View {
+        let stats = OutdoorDisplay.routeStats(route, unit: distanceUnit)
+        return LiftCard(title: "Last route") {
+            VStack(alignment: .leading, spacing: 10) {
+                ClientRouteMap(points: points)
+                    .frame(height: mapHeight)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+
+                HStack {
+                    Text(OutdoorDisplay.typeLabel(route.type) ?? "")
+                        .foregroundStyle(Theme.textPrimary)
+                    Text(Date(timeIntervalSince1970: TimeInterval(route.startedAtEpochSec))
+                        .formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))
+                        .foregroundStyle(Theme.textSecondary)
+                    Spacer()
+                }
+                .font(.system(size: 15, weight: .semibold))
+
+                HStack(spacing: 0) {
+                    outdoorStat("Distance", stats.distance)
+                    outdoorStat("Time", stats.time)
+                    outdoorStat("Pace", stats.pace)
+                }
+
+                Text(OutdoorDisplay.trimNote)
+                    .font(.caption)
+                    .foregroundStyle(Theme.textSecondary)
+            }
+            .fillsGridCell()
+        }
+    }
+
+    private func bestsCard(_ bests: [WireOutdoorBest]) -> some View {
+        LiftCard(title: "Personal bests") {
+            VStack(alignment: .leading, spacing: 14) {
+                ForEach(bests, id: \.type) { best in
+                    let stats = OutdoorDisplay.bestStats(best, unit: distanceUnit)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(OutdoorDisplay.bestHeading(best))
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(Theme.textPrimary)
                         HStack(spacing: 0) {
-                            outdoorStat("Distance", stats.distance)
-                            outdoorStat("Time", stats.time)
-                            outdoorStat("Pace", stats.pace)
-                        }
-
-                        Text(OutdoorDisplay.trimNote)
-                            .font(.caption)
-                            .foregroundStyle(Theme.textSecondary)
-                    }
-                }
-            }
-
-            if let bests {
-                LiftCard(title: "Personal bests") {
-                    VStack(alignment: .leading, spacing: 14) {
-                        ForEach(bests, id: \.type) { best in
-                            let stats = OutdoorDisplay.bestStats(best, unit: distanceUnit)
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(OutdoorDisplay.bestHeading(best))
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundStyle(Theme.textPrimary)
-                                HStack(spacing: 0) {
-                                    outdoorStat("Farthest", stats.farthest)
-                                    outdoorStat("Longest", stats.longest)
-                                    outdoorStat("Fastest pace", stats.fastest)
-                                }
-                            }
+                            outdoorStat("Farthest", stats.farthest)
+                            outdoorStat("Longest", stats.longest)
+                            outdoorStat("Fastest pace", stats.fastest)
                         }
                     }
                 }
             }
-
-            if !recent.isEmpty {
-                LiftCard(title: "Recent") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(recent) { day in
-                            ForEach(Array(OutdoorDisplay.activities(day.outdoor).enumerated()), id: \.offset) { _, activity in
-                                HStack {
-                                    Text("\(day.dayKey) · \(OutdoorDisplay.typeLabel(activity.type) ?? "")")
-                                        .foregroundStyle(Theme.textPrimary)
-                                    Spacer()
-                                    Text(OutdoorDisplay.activityLine(activity, unit: distanceUnit))
-                                        .foregroundStyle(Theme.textSecondary)
-                                        .monospacedDigit()
-                                }
-                                .font(.caption)
-                            }
-                        }
-                    }
-                }
-            }
+            .fillsGridCell()
         }
     }
 
@@ -307,6 +381,7 @@ struct ClientDetailView: View {
                     .font(.caption)
                 }
             }
+            .fillsGridCell()
         }
     }
 
@@ -352,6 +427,7 @@ struct ClientDetailView: View {
                     .tint(Theme.accent)
                 }
             }
+            .fillsGridCell()
         }
     }
 }

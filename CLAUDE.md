@@ -116,6 +116,51 @@ cards need `Theme.cardBorder`, which a bare background leaves off.
 - Cook and Train are v2 (merged 2026-09-12) — see the `LIFT`
   superproject's `docs/superpowers/specs/2026-09-11-coach-ios-v2-design.md`.
 
+## Large screens
+
+Coach runs on iPhone and iPad (`TARGETED_DEVICE_FAMILY "1,2"`, all four iPad
+orientations, no `UIRequiresFullScreen`, so Split View, Stage Manager and
+iPadOS windows work). **Layout follows the space a view actually has, never
+the device.** An iPad in a narrow window gets the iPhone layout; a large or
+folding iPhone gets the wide one as soon as it is wide enough.
+
+- **The shell follows the horizontal size class.** Compact is the wordmark and
+  top tab row, unchanged. Regular is a `NavigationSplitView` sidebar
+  (`RootView.regularShell`). The sidebar starts shown only in a window at least
+  `pinnedSidebarMinWindowWidth` (1100 pt) wide -- an iPad Pro in landscape --
+  and hidden behind its toggle otherwise. That start is applied after a short
+  delay on purpose: set during the split view's first layout, it was ignored.
+- **Everything inside follows width, through `AdaptiveLayout`** in
+  `Sources/App/Adaptive.swift` -- the only place the numbers live. A card
+  column needs 320 pt (recipes 280); the week becomes seven day columns at
+  968 pt of content; the client page gives sessions and weeks their own 340 pt
+  column at 1004 pt; pages stop growing at 1240 pt and centre; Connect's form
+  and the segmented pickers hold to 700 pt. At every iPhone portrait width each
+  rule is one column, and `AdaptiveLayoutTests` pins that.
+- **Build wide screens from `AdaptiveScrollPage` and `AdaptiveGrid`**, not a
+  `ScrollView` with its own numbers. One column is the same `VStack` the phone
+  always had; several are a `Grid`, whose rows line up because card content is
+  marked `.fillsGridCell()`.
+- **The Roster at regular width is `RosterSplitView`**: the list (the same
+  `RosterView`, in selection mode) beside the selected client's page, the
+  selection restored from `@SceneStorage`. Narrower than
+  `rosterSplitMinWidth` (an iPad mini with its sidebar open) it falls back to
+  the phone's list-then-push.
+- **The wordmark header clears iPadOS window controls** with
+  `.clearsWindowControls()`, read from UIKit's corner-adapted safe area. A
+  navigation bar makes that room itself; a custom header does not.
+- **Keyboard**: `CoachCommands` -- ⌘1-4 for the sections, ⌘N for New Recipe /
+  New Workout where that screen is showing, ⇧⌘V for Paste a Link (not ⌘V, which
+  belongs to text fields). Screens publish what the commands act on as focused
+  scene values.
+- Sheets use the system's iPad form-sheet presentation; nothing sizes them.
+
+Checking layouts in the simulator: `xcrun devicectl device orientation set -d
+<udid> landscapeLeft` rotates a simulator (there is no `simctl` command for it),
+and dragging an iPadOS window's corner gives a narrow, compact-width window.
+There is no foldable or "Ultra" iPhone simulator; the width rules are what
+cover one.
+
 ## App Store
 
 `Resources/PrivacyInfo.xcprivacy` declares no tracking and no collected data,

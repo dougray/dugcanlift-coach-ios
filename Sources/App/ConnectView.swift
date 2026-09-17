@@ -88,10 +88,15 @@ struct ConnectView: View {
             .listRowBackground(Theme.background)
         }
         .scrollContentBackground(.hidden)
+        // Held to a readable width and centred on a wide screen; wider than
+        // any phone, so no change there.
+        .frame(maxWidth: AdaptiveLayout.readableWidth)
+        .frame(maxWidth: .infinity)
         .background(Theme.background)
         // The tab row above already names this screen, and the browser build
         // goes straight from its tabs into the content.
         .navigationBarTitleDisplayMode(.inline)
+        .regularWidthTitle("Connect")
         .fileExporter(isPresented: $showingExporter, document: exportDocument,
                       contentType: .json, defaultFilename: "coach-backup") { _ in }
         // One importer for both buttons, told apart by `importKind`. Two
