@@ -51,6 +51,9 @@ struct CookView: View {
                     ForEach(Section.allCases) { Text($0.rawValue).tag($0) }
                 }
                 .pickerStyle(.segmented)
+                // Capped so the three segments do not spread across an iPad;
+                // narrower than any iPhone, so no change there.
+                .frame(maxWidth: AdaptiveLayout.readableWidth)
                 .padding()
                 .tint(Theme.accent)
 
@@ -69,6 +72,9 @@ struct CookView: View {
             // The tab row above already names this screen, and the browser build
             // goes straight from its tabs into the content.
             .navigationBarTitleDisplayMode(.inline)
+            .regularWidthTitle("Cook")
+            .focusedSceneValue(\.coachNewItem, section == .recipes
+                               ? CoachNewItem(title: "New Recipe", action: newRecipe) : nil)
             .sheet(item: $editing) { RecipeEditorView(recipe: $0, isNew: editingIsNew) }
             .sheet(isPresented: $importing) { RecipeImportView() }
             .sheet(isPresented: $importingLink) { RecipeLinkImportView() }
@@ -78,18 +84,24 @@ struct CookView: View {
     }
 
     private var library: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Theme.cardSpacing) {
-                if recipes.isEmpty {
-                    LiftCard(title: "Recipes") {
-                        Text("No recipes yet. Write the ones you actually give clients — "
-                             + "the plan and their shopping list build themselves from here.")
-                            .font(.caption)
-                            .foregroundStyle(Theme.textSecondary)
-                    }
+        AdaptiveScrollPage { width in
+            let columns = AdaptiveLayout.columns(for: width, minColumnWidth: 280, maxColumns: 4)
+            if recipes.isEmpty {
+                LiftCard(title: "Recipes") {
+                    Text("No recipes yet. Write the ones you actually give clients — "
+                         + "the plan and their shopping list build themselves from here.")
+                        .font(.caption)
+                        .foregroundStyle(Theme.textSecondary)
                 }
+            }
 
-                ForEach(recipes) { recipe in
+            // Below the cards on a phone, where they are the first thing to
+            // read; above them in a grid, where a long library would push them
+            // off the bottom of the screen.
+            if columns > 1 { libraryActions(wide: true) }
+
+            if !recipes.isEmpty {
+                AdaptiveGrid(recipes, columns: columns) { recipe in
                     LiftCard(title: recipe.name) {
                         VStack(alignment: .leading, spacing: 6) {
                             Text(CookFormat.servingsLabel(recipe.servings))
@@ -98,6 +110,7 @@ struct CookView: View {
                             Text(macroLine(recipe))
                                 .font(.caption)
                                 .foregroundStyle(Theme.textSecondary)
+                            Spacer(minLength: 0)
                             HStack {
                                 Button("Edit") { editingIsNew = false; editing = recipe }
                                     .tint(Theme.accent)
@@ -105,53 +118,85 @@ struct CookView: View {
                                 Button("Delete", role: .destructive) { delete(recipe) }
                             }
                         }
+                        .fillsGridCell()
                     }
-                }
-
-                HStack {
-                    Button("New recipe") {
-                        let recipe = Recipe(name: "New recipe")
-                        context.insert(recipe)
-                        editingIsNew = true
-                        editing = recipe
-                    }
-                    .tint(Theme.accent)
-                    Spacer()
-                    // A Menu rather than a row of buttons: four import
-                    // sources would not fit the line at iPhone width, and
-                    // "Send recipes" below is the same shape.
-                    Menu("Import") {
-                        // First: it needs no connection and no typing.
-                        Button("From the catalogue") { browsingCatalogue = true }
-                        // The pair for a recipe found elsewhere. A link is
-                        // better whenever the page has a recipe card, so it
-                        // leads; pasting the text is what is left when it
-                        // does not -- a caption, an email, a photo retyped.
-                        Button("From a link") { importingLink = true }
-                        Button("Paste the text") { pasting = true }
-                        Button("A dish by name") { importing = true }
-                    }
-                    .tint(Theme.accent)
-                }
-
-                if !recipes.isEmpty {
-                    // "Here is the recipe", with nothing booked into a day --
-                    // PLAN-FORMAT's library send. Scheduling is a separate
-                    // claim from possession.
-                    Menu("Send recipes") {
-                        if clients.isEmpty {
-                            Text("No clients yet")
-                        } else {
-                            ForEach(clients) { client in
-                                ShareLink(item: libraryLink(for: client)) { Text(client.name) }
-                            }
-                        }
-                    }
-                    .tint(Theme.accent)
                 }
             }
-            .padding()
+
+            if columns == 1 { libraryActions(wide: false) }
         }
+    }
+
+    /// On a phone, New and Import share a line with Send beneath, as they
+    /// always have. Wide, the three sit together on one line at the left: the
+    /// phone's `Spacer` put Import a whole iPad's width away from New.
+    @ViewBuilder
+    private func libraryActions(wide: Bool) -> some View {
+        if wide {
+            HStack(spacing: 28) {
+                newRecipeButton
+                importMenu
+                sendRecipesMenu
+                Spacer(minLength: 0)
+            }
+        } else {
+            HStack {
+                newRecipeButton
+                Spacer()
+                importMenu
+            }
+            sendRecipesMenu
+        }
+    }
+
+    private var newRecipeButton: some View {
+        Button("New recipe", action: newRecipe)
+            .tint(Theme.accent)
+    }
+
+    // A Menu rather than a row of buttons: four import
+    // sources would not fit the line at iPhone width, and
+    // "Send recipes" below is the same shape.
+    private var importMenu: some View {
+        Menu("Import") {
+            // First: it needs no connection and no typing.
+            Button("From the catalogue") { browsingCatalogue = true }
+            // The pair for a recipe found elsewhere. A link is
+            // better whenever the page has a recipe card, so it
+            // leads; pasting the text is what is left when it
+            // does not -- a caption, an email, a photo retyped.
+            Button("From a link") { importingLink = true }
+            Button("Paste the text") { pasting = true }
+            Button("A dish by name") { importing = true }
+        }
+        .tint(Theme.accent)
+    }
+
+    @ViewBuilder
+    private var sendRecipesMenu: some View {
+        if !recipes.isEmpty {
+            // "Here is the recipe", with nothing booked into a day --
+            // PLAN-FORMAT's library send. Scheduling is a separate
+            // claim from possession.
+            Menu("Send recipes") {
+                if clients.isEmpty {
+                    Text("No clients yet")
+                } else {
+                    ForEach(clients) { client in
+                        ShareLink(item: libraryLink(for: client)) { Text(client.name) }
+                    }
+                }
+            }
+            .tint(Theme.accent)
+        }
+    }
+
+    private func newRecipe() {
+        section = .recipes
+        let recipe = Recipe(name: "New recipe")
+        context.insert(recipe)
+        editingIsNew = true
+        editing = recipe
     }
 
     private func macroLine(_ recipe: Recipe) -> String {

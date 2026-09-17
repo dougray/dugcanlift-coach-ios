@@ -26,72 +26,80 @@ struct ShoppingView: View {
         // below was reading it twice (the emptiness check, then the
         // ForEach).
         let rows = lines
-        return ScrollView {
-            VStack(alignment: .leading, spacing: Theme.cardSpacing) {
-                if rows.isEmpty {
-                    LiftCard(title: "Shopping") {
-                        Text("Nothing planned for this client's week, so there is nothing "
-                             + "to buy yet.")
-                            .font(.caption)
-                            .foregroundStyle(Theme.textSecondary)
-                    }
-                } else {
-                    LiftCard(title: "Shopping") {
-                        Text("What \(clientName) needs for the week you planned. It goes with "
-                             + "the plan link — you don't have to send this separately.")
-                            .font(.caption)
-                            .foregroundStyle(Theme.textSecondary)
-                    }
-                }
+        return AdaptiveScrollPage { width in
+            // Two columns at most: a shopping list is read down, and three
+            // narrow ones read as a table rather than a list.
+            let columns = AdaptiveLayout.columns(for: width, maxColumns: 2)
 
-                ForEach(rows) { line in
-                    let isChecked = ClientShoppingCheck.isChecked(line, clientID: clientID, in: checks)
-                    Button {
-                        ClientShoppingCheck.toggle(line, clientID: clientID, in: checks, context: context)
-                        try? context.save()
-                    } label: {
-                        HStack(alignment: .top) {
-                            Image(systemName: isChecked ? "checkmark.circle.fill" : "circle")
-                                .foregroundStyle(Theme.accent)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(line.displayName)
-                                    .foregroundStyle(Theme.textPrimary)
-                                    .strikethrough(isChecked)
-                                if !line.amounts.isEmpty {
-                                    Text(CookFormat.amountsLabel(line.amounts))
-                                        .font(Theme.detail)
-                                        .foregroundStyle(Theme.textSecondary)
-                                }
-                                // Ingredients that never parsed. Shown verbatim
-                                // so nothing silently drops off the list.
-                                ForEach(line.unparsed, id: \.self) { raw in
-                                    Text(raw)
-                                        .font(Theme.detail)
-                                        .foregroundStyle(Theme.textSecondary)
-                                }
-                            }
-                            Spacer()
-                        }
-                        .padding(Theme.cardPadding)
-                        .liftCardBackground()
-                    }
-                    .buttonStyle(.plain)
+            if rows.isEmpty {
+                LiftCard(title: "Shopping") {
+                    Text("Nothing planned for this client's week, so there is nothing "
+                         + "to buy yet.")
+                        .font(.caption)
+                        .foregroundStyle(Theme.textSecondary)
                 }
-
-                // This client's ticks only -- another client's basket is
-                // not this one's to clear.
-                if !ClientShoppingCheck.checks(for: clientID, in: checks).isEmpty {
-                    Button("Clear ticks") {
-                        ClientShoppingCheck.clear(clientID: clientID, in: checks, context: context)
-                        try? context.save()
-                    }
-                    .tint(Theme.accent)
+            } else {
+                LiftCard(title: "Shopping") {
+                    Text("What \(clientName) needs for the week you planned. It goes with "
+                         + "the plan link — you don't have to send this separately.")
+                        .font(.caption)
+                        .foregroundStyle(Theme.textSecondary)
                 }
             }
-            .padding()
+
+            if !rows.isEmpty {
+                AdaptiveGrid(rows, columns: columns) { line in
+                    itemRow(line)
+                }
+            }
+
+            // This client's ticks only -- another client's basket is
+            // not this one's to clear.
+            if !ClientShoppingCheck.checks(for: clientID, in: checks).isEmpty {
+                Button("Clear ticks") {
+                    ClientShoppingCheck.clear(clientID: clientID, in: checks, context: context)
+                    try? context.save()
+                }
+                .tint(Theme.accent)
+            }
         }
         .coachScreen()
         .background(Theme.background)
+    }
+
+    private func itemRow(_ line: ShoppingListLine) -> some View {
+        let isChecked = ClientShoppingCheck.isChecked(line, clientID: clientID, in: checks)
+        return Button {
+            ClientShoppingCheck.toggle(line, clientID: clientID, in: checks, context: context)
+            try? context.save()
+        } label: {
+            HStack(alignment: .top) {
+                Image(systemName: isChecked ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(Theme.accent)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(line.displayName)
+                        .foregroundStyle(Theme.textPrimary)
+                        .strikethrough(isChecked)
+                    if !line.amounts.isEmpty {
+                        Text(CookFormat.amountsLabel(line.amounts))
+                            .font(Theme.detail)
+                            .foregroundStyle(Theme.textSecondary)
+                    }
+                    // Ingredients that never parsed. Shown verbatim
+                    // so nothing silently drops off the list.
+                    ForEach(line.unparsed, id: \.self) { raw in
+                        Text(raw)
+                            .font(Theme.detail)
+                            .foregroundStyle(Theme.textSecondary)
+                    }
+                }
+                Spacer()
+            }
+            .fillsGridCell()
+            .padding(Theme.cardPadding)
+            .liftCardBackground()
+        }
+        .buttonStyle(.plain)
     }
 
     private var owners: [String: String] {
