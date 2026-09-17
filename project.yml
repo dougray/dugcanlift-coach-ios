@@ -34,7 +34,11 @@ settings:
     # under concurrency warnings during scaffolding — tighten once it builds.
     SWIFT_STRICT_CONCURRENCY: minimal
     ENABLE_USER_SCRIPT_SANDBOXING: YES
-    TARGETED_DEVICE_FAMILY: "1"   # iPhone only
+    # iPhone and iPad. Layout follows the width a window actually has (see
+    # "Large screens" in CLAUDE.md), so an iPad in Split View or Stage Manager
+    # gets the iPhone layout when it is narrow and nothing here needs
+    # UIRequiresFullScreen -- leaving it unset is what allows multitasking.
+    TARGETED_DEVICE_FAMILY: "1,2"
 
 targets:
 
@@ -79,6 +83,13 @@ targets:
         # imports). Declaring it here answers App Store Connect's export
         # compliance question once, instead of on every upload.
         ITSAppUsesNonExemptEncryption: false
+        # All four on iPad, which Split View and Stage Manager require. iPhone
+        # has no key, as before, so its orientations are unchanged.
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
 
