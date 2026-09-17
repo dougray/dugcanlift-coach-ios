@@ -24,20 +24,43 @@ struct TrainPlanView: View {
     private var days: [String] { PlanWeek(startDayKey: weekStart).days }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Theme.cardSpacing) {
-                LiftCard(title: "Client") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Picker("Client", selection: $clientID) {
-                            Text("Pick a client").tag("")
-                            ForEach(clients) { Text($0.name).tag($0.id) }
+        AdaptiveScrollPage { width in
+            let weekGrid = AdaptiveLayout.showsWeekGrid(width: width)
+            let columns = AdaptiveLayout.columns(for: width, maxColumns: 3)
+
+            PlanClientCard(clientID: $clientID, weekStart: $weekStart,
+                           clients: clients, wide: columns > 1)
+
+            if weekGrid {
+                // The whole week at a glance, a column a day.
+                AdaptiveGrid(days, id: \.self, columns: 7) { day in
+                    LiftCard {
+                        VStack(alignment: .leading, spacing: 8) {
+                            DayColumnHeading(dayKey: day)
+                            ForEach(booked(on: day)) { session in
+                                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                                    Text(name(of: session.routineID))
+                                        .foregroundStyle(Theme.textPrimary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                    Spacer(minLength: 0)
+                                    Button {
+                                        context.delete(session)
+                                    } label: {
+                                        Image(systemName: "xmark.circle")
+                                    }
+                                    .accessibilityLabel("Remove \(name(of: session.routineID))")
+                                    .tint(Theme.accent)
+                                }
+                                .font(.caption)
+                            }
+                            bookMenu(on: day, title: "Book")
+                                .font(.caption)
                         }
-                        .tint(Theme.accent)
-                        WeekHeader(startDayKey: $weekStart)
+                        .fillsGridCell()
                     }
                 }
-
-                ForEach(days, id: \.self) { day in
+            } else {
+                AdaptiveGrid(days, id: \.self, columns: columns) { day in
                     LiftCard(title: day) {
                         VStack(alignment: .leading, spacing: 6) {
                             ForEach(booked(on: day)) { session in
@@ -50,34 +73,28 @@ struct TrainPlanView: View {
                                 }
                                 .font(.caption)
                             }
-                            Menu("Book a workout") {
-                                ForEach(routines) { routine in
-                                    Button(routine.name) { book(routine, on: day) }
-                                }
-                            }
-                            .tint(Theme.accent)
-                            .disabled(clientID.isEmpty)
+                            bookMenu(on: day, title: "Book a workout")
                         }
+                        .fillsGridCell()
                     }
                 }
-
-                if !mineSessions.isEmpty {
-                    // `link` is computed into state, not called inline.
-                    // Inline, it re-ran the filter, a JSON encode and a
-                    // DEFLATE on every body evaluation -- including every
-                    // unrelated redraw of this screen.
-                    //
-                    // Gated on there being at least one booking this week --
-                    // previously this appeared as soon as a client was
-                    // picked, and tapping it with nothing booked shipped an
-                    // import prompt offering nothing. A programme with no
-                    // bookings yet is still sendable, via "Send programme"
-                    // on the Workouts section instead.
-                    ShareLink(item: shareLink) { Text("Send this week") }
-                        .tint(Theme.accent)
-                }
             }
-            .padding()
+
+            if !mineSessions.isEmpty {
+                // `link` is computed into state, not called inline.
+                // Inline, it re-ran the filter, a JSON encode and a
+                // DEFLATE on every body evaluation -- including every
+                // unrelated redraw of this screen.
+                //
+                // Gated on there being at least one booking this week --
+                // previously this appeared as soon as a client was
+                // picked, and tapping it with nothing booked shipped an
+                // import prompt offering nothing. A programme with no
+                // bookings yet is still sendable, via "Send programme"
+                // on the Workouts section instead.
+                ShareLink(item: shareLink) { Text("Send this week") }
+                    .tint(Theme.accent)
+            }
         }
         // The bottom inset for the floating tab bar is applied once, by the
         // parent `TrainView` (which every section shares). Applying it here
@@ -131,6 +148,16 @@ struct TrainPlanView: View {
                           })
                 })
             })
+    }
+
+    private func bookMenu(on day: String, title: String) -> some View {
+        Menu(title) {
+            ForEach(routines) { routine in
+                Button(routine.name) { book(routine, on: day) }
+            }
+        }
+        .tint(Theme.accent)
+        .disabled(clientID.isEmpty)
     }
 
     private func booked(on day: String) -> [ScheduledSession] {

@@ -35,52 +35,108 @@ struct CookPlanView: View {
         let mineMeals = mine(mapping: mapping)
         let used = usedRecipes(mine: mineMeals)
 
-        return ScrollView {
-            VStack(alignment: .leading, spacing: Theme.cardSpacing) {
-                LiftCard(title: "Client") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Picker("Client", selection: $clientID) {
-                            Text("Pick a client").tag("")
-                            ForEach(clients) { Text($0.name).tag($0.id) }
+        return AdaptiveScrollPage { width in
+            let weekGrid = AdaptiveLayout.showsWeekGrid(width: width)
+            let columns = AdaptiveLayout.columns(for: width, maxColumns: 3)
+
+            PlanClientCard(clientID: $clientID, weekStart: $weekStart,
+                           clients: clients, wide: columns > 1)
+
+            if recipes.isEmpty {
+                LiftCard(title: "Plan") {
+                    Text("Write a recipe first — the plan is built from them.")
+                        .font(.caption)
+                        .foregroundStyle(Theme.textSecondary)
+                }
+            }
+
+            if weekGrid {
+                // The whole week at a glance, a column a day.
+                AdaptiveGrid(days, id: \.self, columns: 7) { day in
+                    LiftCard {
+                        VStack(alignment: .leading, spacing: 10) {
+                            DayColumnHeading(dayKey: day)
+                            ForEach(MealType.allCases) { slot in
+                                mealCell(day: day, slot: slot, mapping: mapping)
+                            }
                         }
-                        .tint(Theme.accent)
-                        WeekHeader(startDayKey: $weekStart)
+                        .fillsGridCell()
                     }
                 }
-
-                if recipes.isEmpty {
-                    LiftCard(title: "Plan") {
-                        Text("Write a recipe first — the plan is built from them.")
-                            .font(.caption)
-                            .foregroundStyle(Theme.textSecondary)
-                    }
-                }
-
-                ForEach(days, id: \.self) { day in
+            } else {
+                AdaptiveGrid(days, id: \.self, columns: columns) { day in
                     LiftCard(title: "\(CookFormat.dayLabel(dayKey: day)) · \(day)") {
                         VStack(alignment: .leading, spacing: 6) {
                             ForEach(MealType.allCases) { slot in
                                 mealRow(day: day, slot: slot, mapping: mapping)
                             }
                         }
+                        .fillsGridCell()
                     }
                 }
-
-                if !mineMeals.isEmpty {
-                    ShareLink(item: shareLink) { Text("Send this week") }
-                        .tint(Theme.accent)
-                    Text(contentsLabel(mineCount: mineMeals.count))
-                        .font(.caption)
-                        .foregroundStyle(Theme.textSecondary)
-                }
             }
-            .padding()
+
+            if !mineMeals.isEmpty {
+                ShareLink(item: shareLink) { Text("Send this week") }
+                    .tint(Theme.accent)
+                Text(contentsLabel(mineCount: mineMeals.count))
+                    .font(.caption)
+                    .foregroundStyle(Theme.textSecondary)
+                    .frame(maxWidth: AdaptiveLayout.readableWidth, alignment: .leading)
+            }
         }
         .coachScreen()
         .task(id: rebuildKey(mine: mineMeals, used: used)) {
             shareLink = link(mine: mineMeals, used: used)
         }
         .background(Theme.background)
+    }
+
+    /// One meal slot stacked for a narrow day column: the slot's name, then
+    /// each booking with its servings and a remove button beneath it, where
+    /// `mealRow` lays all of that out on one line.
+    private func mealCell(day: String, slot: MealType, mapping: [String: String]) -> some View {
+        let booked = planned(on: day, slot: slot, mapping: mapping)
+        return VStack(alignment: .leading, spacing: 3) {
+            Text(slot.displayName)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(Theme.textSecondary)
+            if booked.isEmpty {
+                Menu("Add") {
+                    ForEach(recipes) { recipe in
+                        Button(recipe.name) { book(recipe, on: day, slot: slot) }
+                    }
+                }
+                .font(.caption)
+                .tint(Theme.accent)
+                .disabled(clientID.isEmpty || recipes.isEmpty)
+            } else {
+                ForEach(booked) { meal in
+                    Text(meal.recipeName)
+                        .font(.caption)
+                        .foregroundStyle(Theme.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 6) {
+                        Menu(CookFormat.servingsLabel(meal.servings)) {
+                            ForEach(Self.servingOptions, id: \.self) { count in
+                                Button(CookFormat.servingsLabel(count)) { setServings(count, on: meal) }
+                            }
+                        }
+                        .tint(Theme.accent)
+                        Spacer(minLength: 0)
+                        Button {
+                            remove(meal)
+                        } label: {
+                            Image(systemName: "xmark.circle")
+                        }
+                        .accessibilityLabel("Remove \(meal.recipeName)")
+                        .tint(Theme.accent)
+                    }
+                    .font(.caption)
+                    .lineLimit(1)
+                }
+            }
+        }
     }
 
     private func mealRow(day: String, slot: MealType, mapping: [String: String]) -> some View {
