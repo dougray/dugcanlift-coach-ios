@@ -140,6 +140,7 @@ struct RootView: View {
                             RoundedRectangle(cornerRadius: Theme.chipRadius)
                                 .fill(tab == item ? Theme.accent : .clear)
                                 .padding(.horizontal, 8)
+                                .background(FocusHaloRemover())
                         )
                 }
             } header: {
@@ -172,5 +173,63 @@ struct RootView: View {
         .padding(.top, 8)
         .padding(.bottom, 4)
         .clearsWindowControls()
+    }
+}
+
+/// Removes UIKit's focus halo from the sidebar cell it is placed in.
+///
+/// On iPadOS with a keyboard attached, the focus system puts the sidebar's
+/// selected cell in focus -- at launch, and again whenever a menu or sheet is
+/// dismissed and focus is restored. A `UICollectionViewCell` shows focus
+/// through its background configuration when it has the system one, and falls
+/// back to a halo (tinted with the accent, so red) when it does not. The
+/// sidebar's `listRowBackground` replaces that configuration with the accent
+/// pill, so every restore left a red outline stuck around the selected row
+/// until something else was tapped. SwiftUI's `.focusEffectDisabled()` does not
+/// reach that halo; the cell's own `focusEffect` does, once set explicitly.
+///
+/// Only the drawing goes. The cell stays focusable, arrow keys still move the
+/// selection (the pill follows it, which is the visible focus), and
+/// `CoachCommands`' ⌘1-4 do not use focus at all.
+private struct FocusHaloRemover: UIViewRepresentable {
+    func makeUIView(context: Context) -> CellProbe { CellProbe() }
+    func updateUIView(_ view: CellProbe, context: Context) {}
+
+    final class CellProbe: UIView {
+        private weak var handled: UICollectionViewCell?
+
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            isUserInteractionEnabled = false
+        }
+
+        required init?(coder: NSCoder) { nil }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            removeHalo()
+        }
+
+        // SwiftUI can move a row's background into a different (reused) cell
+        // without a new window, so check again on layout.
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            removeHalo()
+        }
+
+        private func removeHalo() {
+            var view = superview
+            while let current = view {
+                if let cell = current as? UICollectionViewCell {
+                    guard cell !== handled else { return }
+                    // A nil the cell was never given means "use the default
+                    // halo"; assigned, it means no effect.
+                    cell.focusEffect = nil
+                    handled = cell
+                    return
+                }
+                view = current.superview
+            }
+        }
     }
 }
