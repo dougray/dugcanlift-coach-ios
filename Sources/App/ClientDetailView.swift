@@ -6,6 +6,21 @@ import LiftCore
 
 struct ClientDetailView: View {
     let client: Client
+    /// Called with the client's id once they have been removed. `nil` on a
+    /// phone, where this page pops itself back to the roster;
+    /// `RosterSplitView` passes one that clears the selection, so the pane
+    /// beside the list shows its empty state rather than whoever is now
+    /// quietest.
+    var onRemoved: ((String) -> Void)? = nil
+
+    @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
+    @State private var pendingRemoval: RemovalImpact?
+    /// Set the moment the client is deleted. Nearly every line of this page
+    /// reads that `Client`, and reading a deleted SwiftData model is not
+    /// defined -- this keeps the one render between the delete and the page
+    /// going away from touching it at all.
+    @State private var removed = false
 
     private var sortedDays: [TrainingDay] {
         client.trainingDays.sorted { $0.dayKey < $1.dayKey }
@@ -23,6 +38,21 @@ struct ClientDetailView: View {
     }
 
     var body: some View {
+        Group {
+            if removed {
+                // The client is gone; the page leaves on the next pass.
+                Theme.background
+            } else {
+                page
+            }
+        }
+        .coachScreen()
+        .background(Theme.background)
+        .navigationTitle(removed ? "" : client.name)
+        .removeClientAlert($pendingRemoval) { id in leave(removing: id) }
+    }
+
+    private var page: some View {
         AdaptiveScrollPage { width in
             if AdaptiveLayout.columns(for: width, maxColumns: 2) == 1 {
                 volumeChart
@@ -56,10 +86,41 @@ struct ClientDetailView: View {
                     }
                 }
             }
+            removeButton
         }
-        .coachScreen()
-        .background(Theme.background)
-        .navigationTitle(client.name)
+    }
+
+    // MARK: - Remove this client
+
+    /// At the foot of the page, as Coach web and Coach Android both have it:
+    /// out of the way of reading a client, and behind a confirmation that says
+    /// what goes. Outlined rather than filled red -- it asks a question, it
+    /// does not delete -- matching web's ghost button and Android's
+    /// `OutlinedButton`.
+    private var removeButton: some View {
+        Button("Remove this client") {
+            if let impact = ClientRemoval.impact(clientID: client.id, in: context) {
+                pendingRemoval = impact
+            } else {
+                // Not on this device any more -- removed in the other pane, or
+                // restored over. There is nothing to confirm, and nothing left
+                // for this page to show.
+                leave(removing: client.id)
+            }
+        }
+        .buttonStyle(.bordered)
+        .tint(Theme.accent)
+        .frame(maxWidth: .infinity)
+        .padding(.top, 12)
+    }
+
+    private func leave(removing id: String) {
+        removed = true
+        if let onRemoved {
+            onRemoved(id)
+        } else {
+            dismiss()
+        }
     }
 
     /// Two abreast, paired by height rather than by topic: the two single

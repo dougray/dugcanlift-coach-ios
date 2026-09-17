@@ -3,7 +3,7 @@ LIFT Coach is the trainer's side of LIFT. Your clients log their training and fo
 You need a client who uses LIFT. Coach does not log workouts or food itself, and it cannot read data from other apps. When a client taps "Send to Coach" in LIFT, they send you a link. Paste that link into Coach and their log appears on your roster.
 
 YOUR ROSTER
-Every client you have pasted a link from, with when they last logged. Paste a newer link at any time to bring a client up to date.
+Every client you have pasted a link from, with when they last logged. Paste a newer link at any time to bring a client up to date. Remove a client and their logged days go with them, along with the meals and sessions you planned for them; your recipes and workouts stay.
 
 EACH CLIENT
 - Training volume, day by day
