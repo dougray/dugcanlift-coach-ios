@@ -9,5 +9,6 @@ struct CoachApp: App {
             RootView()
         }
         .modelContainer(for: CoachSchema.models)
+        .commands { CoachCommands() }
     }
 }

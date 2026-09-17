@@ -36,6 +36,9 @@ struct TrainView: View {
                     ForEach(Section.allCases) { Text($0.rawValue).tag($0) }
                 }
                 .pickerStyle(.segmented)
+                // Capped so the segments do not spread across an iPad;
+                // narrower than any iPhone, so no change there.
+                .frame(maxWidth: AdaptiveLayout.readableWidth)
                 .padding()
                 .tint(Theme.accent)
 
@@ -54,6 +57,9 @@ struct TrainView: View {
             // The tab row above already names this screen, and the browser build
             // goes straight from its tabs into the content.
             .navigationBarTitleDisplayMode(.inline)
+            .regularWidthTitle("Train")
+            .focusedSceneValue(\.coachNewItem, section == .workouts
+                               ? CoachNewItem(title: "New Workout", action: newWorkout) : nil)
             .sheet(item: $editing) { WorkoutEditorView(routine: $0) }
             .alert(confirmingDelete.map { "Delete \($0.name)?" } ?? "",
                    isPresented: Binding(get: { confirmingDelete != nil },
@@ -72,17 +78,23 @@ struct TrainView: View {
     }
 
     private var library: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Theme.cardSpacing) {
-                if routines.isEmpty {
-                    LiftCard(title: "Workouts") {
-                        Text("No workouts yet. Build one and you can schedule it "
-                             + "across a client's week as often as you like.")
-                            .font(.caption)
-                            .foregroundStyle(Theme.textSecondary)
-                    }
+        AdaptiveScrollPage { width in
+            let columns = AdaptiveLayout.columns(for: width, maxColumns: 3)
+            if routines.isEmpty {
+                LiftCard(title: "Workouts") {
+                    Text("No workouts yet. Build one and you can schedule it "
+                         + "across a client's week as often as you like.")
+                        .font(.caption)
+                        .foregroundStyle(Theme.textSecondary)
                 }
-                ForEach(routines) { routine in
+            }
+
+            // Above the grid when there is one, for the reason Cook's library
+            // does the same.
+            if columns > 1 { HStack(spacing: 28) { libraryActions; Spacer(minLength: 0) } }
+
+            if !routines.isEmpty {
+                AdaptiveGrid(routines, columns: columns) { routine in
                     LiftCard(title: routine.name) {
                         VStack(alignment: .leading, spacing: 6) {
                             Text(summary(of: routine))
@@ -93,6 +105,7 @@ struct TrainView: View {
                                     .font(.caption)
                                     .foregroundStyle(Theme.textPrimary)
                             }
+                            Spacer(minLength: 0)
                             HStack {
                                 Button("Edit") { editing = routine }
                                     .tint(Theme.accent)
@@ -110,41 +123,50 @@ struct TrainView: View {
                                 }
                             }
                         }
+                        .fillsGridCell()
                     }
-                }
-                Button("New workout") {
-                    let routine = Routine(name: "New workout")
-                    context.insert(routine)
-                    editing = routine
-                }
-                .tint(Theme.accent)
-
-                // The only route to a "here is the programme, nothing
-                // booked yet" send. `link()`/`fragment()` inline only
-                // templates a session actually books, so a coach with
-                // nothing booked yet had no way to send a library at all --
-                // PLAN-FORMAT allows it (testALibrarySendCarriesWorkouts-
-                // WithNoSessions), but no screen could reach that call.
-                // Sends every current template; the constraints allow zero,
-                // one, or many workouts with no sessions, and picking a
-                // subset is more UI than this needs.
-                if !routines.isEmpty {
-                    Menu("Send programme") {
-                        if clients.isEmpty {
-                            Text("No clients yet")
-                        } else {
-                            ForEach(clients) { client in
-                                ShareLink(item: programmeLink(for: client)) {
-                                    Text(client.name)
-                                }
-                            }
-                        }
-                    }
-                    .tint(Theme.accent)
                 }
             }
-            .padding()
+
+            if columns == 1 { libraryActions }
         }
+    }
+
+    @ViewBuilder
+    private var libraryActions: some View {
+        Button("New workout", action: newWorkout)
+            .tint(Theme.accent)
+
+        // The only route to a "here is the programme, nothing
+        // booked yet" send. `link()`/`fragment()` inline only
+        // templates a session actually books, so a coach with
+        // nothing booked yet had no way to send a library at all --
+        // PLAN-FORMAT allows it (testALibrarySendCarriesWorkouts-
+        // WithNoSessions), but no screen could reach that call.
+        // Sends every current template; the constraints allow zero,
+        // one, or many workouts with no sessions, and picking a
+        // subset is more UI than this needs.
+        if !routines.isEmpty {
+            Menu("Send programme") {
+                if clients.isEmpty {
+                    Text("No clients yet")
+                } else {
+                    ForEach(clients) { client in
+                        ShareLink(item: programmeLink(for: client)) {
+                            Text(client.name)
+                        }
+                    }
+                }
+            }
+            .tint(Theme.accent)
+        }
+    }
+
+    private func newWorkout() {
+        section = .workouts
+        let routine = Routine(name: "New workout")
+        context.insert(routine)
+        editing = routine
     }
 
     private func programmeLink(for client: Client) -> String {
