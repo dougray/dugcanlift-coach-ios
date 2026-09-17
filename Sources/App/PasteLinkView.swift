@@ -53,11 +53,10 @@ struct PasteLinkView: View {
 
     private func importLink() {
         do {
-            let payload = try ShareLinkCodec.decode(link: text.trimmingCharacters(in: .whitespacesAndNewlines))
-            try ShareLinkImporter.importPayload(payload, into: context)
+            _ = try ShareLinkImporter.importLink(text, into: context)
             dismiss()
         } catch {
-            errorMessage = "That doesn't look like a valid LIFT log link. Double-check you copied the whole thing."
+            errorMessage = ShareLinkImporter.invalidLinkMessage
         }
     }
 }
