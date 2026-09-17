@@ -467,6 +467,59 @@ shared `MealOwners` helper: `PlannedMeal` has no client field of its own (see
 a restored or imported meal with no entry in that map is stored in SwiftData
 but permanently invisible to every screen that reads it.
 
+## Removing a client
+
+A coach can remove a client, which the privacy policy
+(`www.dugcanlift.com/coach/privacy/`, "Deleting data") has always promised on
+"the web and iPhone" while only Coach web and Coach Android could do it.
+
+**`ClientRemoval` decides what goes, and it is not in a view** — the rule
+`MacroFields` and `LinkImportMacros` follow, for the same reason: a rule in a
+view's `@State` cannot be tested, and this one decides what a coach loses.
+`ClientRemovalTests` is a port of Coach Android's `ClientRemovalTest.kt`, case
+for case.
+
+**What goes:** the `Client` and, by SwiftData's cascade rules, its `Goal`, its
+`TrainingDay`s and through those every `ExerciseSet` and `ClientFoodEntry` —
+plus the three kinds of row that name a client as a plain value, which no
+cascade reaches: `ScheduledSession`s booked for them, `PlannedMeal`s owned by
+them through the `cookPlanOwners` map (swept through `MealOwners`, and only
+after the store commits), and their `ClientShoppingCheck` ticks. **Recipes and
+routines stay** — the coach's own library. It is one `save()`: a failure rolls
+back whole and says "Nothing was changed", so there is no half-removed client.
+Android's third outcome flag, `problem`, has no analogue here, because its two
+JSON library files can be unreadable one at a time and one SwiftData store
+cannot.
+
+**The confirmation is Coach Android's sentence, word for word**, counts and
+all, including its two rules about zero: the logged-day count is always said,
+even when it is none; a planned-meal or booked-session count is left out
+entirely when it is zero. Coach web asks a shorter question and deletes less
+(it orphans its plans and sessions in local storage); Android is the deliberate
+upgrade and iOS follows Android. `ClientRemovalTests` pins both full sentences.
+
+**One confirmation, two ways in.** `RemoveClientAlert` is attached by both the
+client page's "Remove this client" (at the foot of the page, as web and Android
+both have it) and the roster row's long-press menu, so they cannot drift apart.
+
+**The roster row is a context menu, not a swipe, and that was measured.** With
+`.swipeActions` the app died every time the coach confirmed, on an iPhone and
+an iPad both: `attempt to delete item 1 from section 0 which only contains 1
+items before the update`. A swiped-open row is mid-animation and the store's
+own removal of it coalesces with the swipe's update into two deletes of one
+row; deferring the removal a turn did not help. The removal had already
+committed each time, so the roster was right and only the screen was gone.
+A context menu closes before its action runs, and it is what Android's roster
+already does. Never `.onDelete` either: a flick past a row is not consent.
+
+**After a removal the client's page must not be read again.**
+`ClientDetailView` sets a `removed` flag that empties its own body before it
+leaves, because every line of that page reads a `Client` that no longer exists.
+At regular width `RosterSplitView.cleared(after:)` empties the pane and sets
+`justRemoved`, which `restoreSelection` consumes: without it the roster answers
+a delete by opening whoever is now quietest. Cook's and Train's
+`planClientID` is cleared too when it was the removed client.
+
 ## Outdoor
 
 A client's runs, walks and hikes arrive in the share link (SHARE-FORMAT.md
