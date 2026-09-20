@@ -212,6 +212,14 @@ enum BackupCodec {
         var durationSec: Double?
         var distanceMeters: Double?
         var isWarmup: Bool
+        /// `"left"` or `"right"`, **omitted entirely when both** -- not
+        /// `"both"`, not `null`, not a bit (BACKUP-FORMAT.md). Named rather
+        /// than packed for the reason outdoor bests are objects here: this
+        /// file is read by people and by three platforms, and a field a
+        /// reader does not know has to survive being carried through. A file
+        /// written before per-limb logging has no key here and restores as
+        /// both, which is what every one of those sets always meant.
+        var side: String?
     }
 
     private struct BackupFood: Codable {
@@ -248,7 +256,7 @@ enum BackupCodec {
                             BackupSet(exerciseName: set.exerciseName, equipment: set.equipment,
                                       weightLb: set.weightLb, reps: set.reps, rpe: set.rpe,
                                       durationSec: set.durationSec, distanceMeters: set.distanceMeters,
-                                      isWarmup: set.isWarmup)
+                                      isWarmup: set.isWarmup, side: set.side?.backupValue)
                         },
                         foodEntries: day.foodEntries.map { food in
                             BackupFood(foodName: food.foodName, servings: food.servings,
@@ -358,7 +366,10 @@ enum BackupCodec {
                                            equipment: backupSet.equipment, weightLb: backupSet.weightLb,
                                            reps: backupSet.reps, rpe: backupSet.rpe,
                                            durationSec: backupSet.durationSec,
-                                           distanceMeters: backupSet.distanceMeters, isWarmup: backupSet.isWarmup)
+                                           distanceMeters: backupSet.distanceMeters, isWarmup: backupSet.isWarmup,
+                                           // Lenient: an unrecognised string is
+                                           // both, not a failed import.
+                                           side: SetSide.fromBackup(backupSet.side))
                     context.insert(set)
                     day.sets.append(set)
                 }

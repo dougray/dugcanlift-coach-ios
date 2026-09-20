@@ -93,6 +93,13 @@ enum ShareLinkImporter {
             let equipment = parts.count > 1 && !parts[1].isEmpty ? String(parts[1]) : nil
 
             for tuple in entry.sets {
+                // `flags` is a bitfield: bit 0 warmup, bits 1-2 side.
+                // **Mask, never compare.** `flags == 1` was right while warmup
+                // was the only bit and is wrong now -- a left-side working set
+                // sends 2 and a left-side warmup sends 3, and the comparison
+                // calls the first a working set by luck and the second a
+                // working set wrongly.
+                let flags = (value(at: 5, in: tuple).flatMap { Int(exactly: $0.rounded()) }) ?? 0
                 let set = ExerciseSet(
                     day: day,
                     exerciseName: name,
@@ -102,7 +109,11 @@ enum ShareLinkImporter {
                     rpe: value(at: 2, in: tuple),
                     durationSec: value(at: 3, in: tuple),
                     distanceMeters: value(at: 4, in: tuple),
-                    isWarmup: (value(at: 5, in: tuple) ?? 0) == 1
+                    isWarmup: SetFlags.isWarmup(flags),
+                    // Absent is both: a link written before per-limb logging
+                    // has no flags byte at all, and every set in it is a set
+                    // whose side nobody recorded.
+                    side: SetFlags.side(flags)
                 )
                 context.insert(set)
                 day.sets.append(set)
