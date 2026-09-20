@@ -249,6 +249,10 @@ final class PerLimbTests: XCTestCase {
 
     /// A client who turned per-side logging on halfway through really does
     /// have three different things, and merging them would invent a history.
+    ///
+    /// The unmarked sets are **drawn, not dropped** -- a third series labelled
+    /// "Both", as Coach web draws it. They are real sets, and leaving them out
+    /// of the chart would lose training that happened.
     func testAnUnmarkedRunAndASidedRunAreThreeSeries() throws {
         let context = try makeContext()
         try ShareLinkImporter.importPayload(payload(days: [
@@ -256,8 +260,51 @@ final class PerLimbTests: XCTestCase {
             day(1, sets: [[95, 8, nil, nil, nil, 2], [95, 8, nil, nil, nil, 4]]),
         ]), into: context)
 
-        let lifts = LiftProgression.byLift(in: try context.fetch(FetchDescriptor<TrainingDay>()))
-        XCTAssertEqual(lifts[0].series.map(\.side), [nil, .left, .right])
+        let lift = try XCTUnwrap(
+            LiftProgression.byLift(in: try context.fetch(FetchDescriptor<TrainingDay>())).first)
+        XCTAssertEqual(lift.series.map(\.side), [nil, .left, .right],
+                       "fixed order, so a legend never reshuffles")
+        XCTAssertEqual(lift.series.map(\.label), ["Both", "Left", "Right"])
+        XCTAssertEqual(lift.series[0].points.count, 1, "the unmarked day is kept, not dropped")
+        // Which is why "Both" needs a colour of its own beside them: drawn in
+        // the accent, it would be the same red as Left.
+        XCTAssertTrue(lift.hasBothAlongsideSides)
+    }
+
+    /// A line needs two points, and Coach web filters its chart and legend on
+    /// exactly that -- a legend swatch for a line nobody can see is worse than
+    /// no swatch. The figure is not filtered: a side with one session still
+    /// counts in "1 left, 3 right so far".
+    func testAChartDrawsOnlySeriesWithTwoPointsWhileTheCountStillSeesThem() throws {
+        let context = try makeContext()
+        try ShareLinkImporter.importPayload(payload(days: [
+            day(0, sets: [[95, 8]]),                                          // one unmarked day
+            day(1, sets: [[95, 8, nil, nil, nil, 2], [100, 8, nil, nil, nil, 4]]),
+            day(3, sets: [[95, 8, nil, nil, nil, 2], [100, 8, nil, nil, nil, 4]]),
+        ]), into: context)
+
+        let lift = try XCTUnwrap(
+            LiftProgression.byLift(in: try context.fetch(FetchDescriptor<TrainingDay>())).first)
+        XCTAssertEqual(lift.series.map(\.label), ["Both", "Left", "Right"])
+        XCTAssertEqual(lift.plottedSeries.map(\.label), ["Left", "Right"],
+                       "a one-session series has no line to draw")
+
+        let imbalance = try XCTUnwrap(lift.imbalance)
+        XCTAssertEqual(imbalance.detail, "Needs 3 sessions a side · 2 left, 2 right so far")
+    }
+
+    /// And a lift that is only ever two-sided has no third line to colour --
+    /// its single series keeps the accent every other chart on the page uses.
+    func testATwoSidedLiftNeedsNoSeparateBothColour() throws {
+        let context = try makeContext()
+        try ShareLinkImporter.importPayload(payload(days: [day(0, sets: [[185, 5]])],
+                                                    exercises: ["Back Squat|Barbell"]), into: context)
+
+        let lift = try XCTUnwrap(
+            LiftProgression.byLift(in: try context.fetch(FetchDescriptor<TrainingDay>())).first)
+        XCTAssertFalse(lift.hasSides)
+        XCTAssertFalse(lift.hasBothAlongsideSides)
+        XCTAssertEqual(lift.series.map(\.label), ["Both"])
     }
 
     func testWarmupsAreExcludedFromProgressionOnEitherSide() throws {
@@ -280,106 +327,153 @@ final class PerLimbTests: XCTestCase {
     }
 
     func testAFigureNeedsThreeSessionsASide() {
-        XCTAssertNil(LiftProgression.imbalance(left: points([100, 100]), right: points([90, 90, 90])),
-                     "two sessions on one side is one heavy day away from meaningless")
-        XCTAssertNil(LiftProgression.imbalance(left: points([100, 100, 100]), right: points([90, 90])))
-        XCTAssertNil(LiftProgression.imbalance(left: [], right: []))
-        XCTAssertNotNil(LiftProgression.imbalance(left: points([100, 100, 100]),
-                                                  right: points([90, 90, 90])))
+        let short = LiftProgression.imbalance(left: points([100, 100]), right: points([90, 90, 90]))
+        XCTAssertFalse(short.enough, "two sessions on one side is one heavy day away from meaningless")
+        XCTAssertFalse(LiftProgression.imbalance(left: points([100, 100, 100]),
+                                                  right: points([90, 90])).enough)
+        XCTAssertFalse(LiftProgression.imbalance(left: [], right: []).enough)
+        XCTAssertTrue(LiftProgression.imbalance(left: points([100, 100, 100]),
+                                                 right: points([90, 90, 90])).enough)
     }
 
-    func testTheFigureIsTheMeanOfTheLastThreeSessionsNotTheBestDay() throws {
+    /// Coach web's `imbalanceLines`, word for word: an em dash rather than a
+    /// number nobody can stand behind, and a line saying what is missing.
+    func testNotEnoughDataSaysWhatIsMissing() {
+        let imbalance = LiftProgression.imbalance(left: points([100, 100]), right: points([90, 90]))
+        XCTAssertEqual(imbalance.headline, "—")
+        XCTAssertEqual(imbalance.detail, "Needs 3 sessions a side · 2 left, 2 right so far")
+        XCTAssertEqual(imbalance.leftSessions, 2)
+        XCTAssertEqual(imbalance.rightSessions, 2)
+    }
+
+    func testTheFigureIsTheMeanOfTheLastThreeSessionsNotTheBestDay() {
         // A single monster left session early on must not follow the client
         // around forever: only the last three sessions count.
-        let imbalance = try XCTUnwrap(
-            LiftProgression.imbalance(left: points([400, 100, 100, 100]),
-                                      right: points([100, 100, 100, 100])))
+        let imbalance = LiftProgression.imbalance(left: points([400, 100, 100, 100]),
+                                                  right: points([100, 100, 100, 100]))
         XCTAssertEqual(imbalance.percent, 0, accuracy: 0.0001)
         XCTAssertNil(imbalance.strongerSide, "a dead heat has no stronger side")
     }
 
-    func testTheGapIsStrongMinusWeakOverStrong() throws {
-        let imbalance = try XCTUnwrap(
-            LiftProgression.imbalance(left: points([100, 100, 100]), right: points([90, 90, 90])))
+    func testTheGapIsStrongMinusWeakOverStrong() {
+        let imbalance = LiftProgression.imbalance(left: points([100, 100, 100]),
+                                                  right: points([90, 90, 90]))
         XCTAssertEqual(imbalance.percent, 10, accuracy: 0.0001)
         XCTAssertEqual(imbalance.strongerSide, .left)
-        XCTAssertEqual(imbalance.percentText, "10.0%")
-        XCTAssertEqual(imbalance.headline, "Left ahead by 10.0%")
+        XCTAssertEqual(imbalance.headline, "Left ahead by 10%")
     }
 
-    func testAPerfectlyBalancedPairIsEven() throws {
-        let imbalance = try XCTUnwrap(
-            LiftProgression.imbalance(left: points([100, 100, 100]), right: points([100, 100, 100])))
+    /// Coach web rounds to a tenth and JavaScript drops a trailing zero, so
+    /// "5%" is the web's own output and a Swift `%.1f` would say "5.0%".
+    func testThePercentReadsAsTheWebPrintsIt() {
+        // 80,80,80 then 95,95,95 against a flat 100: last three 95 vs 100.
+        let round = LiftProgression.imbalance(left: points([80, 80, 80, 95, 95, 95]),
+                                              right: points([100, 100, 100, 100, 100, 100]))
+        XCTAssertEqual(round.headline, "Right ahead by 5%")
+        XCTAssertEqual(round.detail,
+                       "Mean estimated 1RM of the last 3 sessions each · gap closing")
+
+        let tenth = LiftProgression.imbalance(left: points([94.7, 94.7, 94.7]),
+                                              right: points([100, 100, 100]))
+        XCTAssertEqual(tenth.headline, "Right ahead by 5.3%")
+    }
+
+    func testAPerfectlyBalancedPairIsLevel() {
+        let imbalance = LiftProgression.imbalance(left: points([100, 100, 100]),
+                                                  right: points([100, 100, 100]))
         XCTAssertEqual(imbalance.percent, 0)
         XCTAssertNil(imbalance.strongerSide)
-        XCTAssertEqual(imbalance.headline, "Even", "not 'ahead by 0.0%'")
+        XCTAssertEqual(imbalance.headline, "Sides level", "not 'ahead by 0%'")
     }
 
-    func testATrendNeedsFourSessionsASide() throws {
-        let three = try XCTUnwrap(
-            LiftProgression.imbalance(left: points([100, 100, 100]), right: points([90, 90, 90])))
+    func testATrendNeedsFourSessionsASide() {
+        let three = LiftProgression.imbalance(left: points([100, 100, 100]),
+                                              right: points([90, 90, 90]))
         XCTAssertEqual(three.trend, .notEnoughData,
                        "with three, the first three and the last three are the same sessions")
-        XCTAssertNil(three.trendText)
         XCTAssertNil(three.previousPercent)
+        XCTAssertEqual(three.detail, "Mean estimated 1RM of the last 3 sessions each",
+                       "and no clause about a gap nobody can judge")
     }
 
     func testATrendWidensClosesOrHoldsSteady() throws {
         // First three: 100 vs 83.33, a 16.7% gap. Last three: 100 vs 80, 20%.
-        let widening = try XCTUnwrap(
-            LiftProgression.imbalance(left: points([100, 100, 100, 100]),
-                                      right: points([90, 80, 80, 80])))
+        let widening = LiftProgression.imbalance(left: points([100, 100, 100, 100]),
+                                                 right: points([90, 80, 80, 80]))
         XCTAssertEqual(widening.trend, .widening)
-        XCTAssertEqual(widening.trendText, "widening")
+        XCTAssertEqual(widening.detail,
+                       "Mean estimated 1RM of the last 3 sessions each · gap widening")
         XCTAssertEqual(widening.percent, 20, accuracy: 0.0001)
         XCTAssertEqual(try XCTUnwrap(widening.previousPercent), 16.6666667, accuracy: 0.0001)
 
-        let closing = try XCTUnwrap(
-            LiftProgression.imbalance(left: points([100, 100, 100, 100]),
-                                      right: points([80, 90, 100, 100])))
+        let closing = LiftProgression.imbalance(left: points([100, 100, 100, 100]),
+                                                right: points([80, 90, 100, 100]))
         XCTAssertEqual(closing.trend, .closing)
 
-        let steady = try XCTUnwrap(
-            LiftProgression.imbalance(left: points([100, 100, 100, 100]),
-                                      right: points([90, 90, 90, 90])))
+        let steady = LiftProgression.imbalance(left: points([100, 100, 100, 100]),
+                                               right: points([90, 90, 90, 90]))
         XCTAssertEqual(steady.trend, .steady)
-        XCTAssertEqual(steady.trendText, "holding steady")
+        XCTAssertEqual(steady.detail,
+                       "Mean estimated 1RM of the last 3 sessions each · gap steady")
+    }
+
+    /// Tracked and shown, never targeted -- the same check Coach web's own
+    /// tests make on these two strings.
+    func testNothingInTheseLinesTellsACoachWhatToDo() {
+        let lines = [
+            LiftProgression.imbalance(left: points([100, 100]), right: points([90, 90])),
+            LiftProgression.imbalance(left: points([100, 100, 100, 100]),
+                                      right: points([90, 80, 80, 80])),
+        ].map { "\($0.headline) \($0.detail)" }.joined(separator: " ").lowercased()
+        for word in ["should", "fix", "warning", "target", "too ", "concern"] {
+            XCTAssertFalse(lines.contains(word), "\"\(word)\" has no business in this card")
+        }
     }
 
     /// Half a percentage point of movement is noise in an estimate built out
-    /// of an estimate, and the band is exclusive at both ends.
+    /// of an estimate.
     func testMovementInsideHalfAPercentagePointIsSteady() throws {
         // First three mean: left 100, right 99.6 -> gap 0.4%. Last three:
         // left 100, right 100 -> gap 0. Moved -0.4, inside the band.
-        let imbalance = try XCTUnwrap(
-            LiftProgression.imbalance(left: points([100, 100, 100, 100]),
-                                      right: points([98.8, 100, 100, 100])))
+        let imbalance = LiftProgression.imbalance(left: points([100, 100, 100, 100]),
+                                                  right: points([98.8, 100, 100, 100]))
         XCTAssertEqual(try XCTUnwrap(imbalance.previousPercent), 0.4, accuracy: 0.0001)
         XCTAssertEqual(imbalance.trend, .steady)
     }
 
     /// A session that recorded nothing usable is an absence, not a light day.
     func testAZeroSessionIsDroppedRatherThanAveragedIn() {
-        XCTAssertNil(LiftProgression.imbalance(left: points([100, 100, 0]),
-                                                right: points([90, 90, 90])),
-                     "two usable left sessions is not three")
+        let imbalance = LiftProgression.imbalance(left: points([100, 100, 0]),
+                                                  right: points([90, 90, 90]))
+        XCTAssertFalse(imbalance.enough, "two usable left sessions is not three")
+        XCTAssertEqual(imbalance.leftSessions, 2)
     }
 
     /// The port checked against the reference it came from. Worked through
-    /// `lift/sides.js`'s `imbalance()` by hand with the same input:
+    /// `sides.js`'s `imbalance()` by hand with the same input:
     /// last three left = (110+112+114)/3 = 112, right = (100+104+108)/3 = 104,
     /// gap = (112-104)/112 = 0.0714... -> 7.142857%; first three left =
     /// (100+104+110)/3 = 104.666..., right = (96+98+100)/3 = 98, gap =
     /// 6.369426%. Moved +0.77 points, so: widening.
     func testImbalanceAgreesWithTheReferenceImplementation() throws {
-        let imbalance = try XCTUnwrap(
-            LiftProgression.imbalance(left: points([100, 104, 110, 112, 114]),
-                                      right: points([96, 98, 100, 104, 108])))
+        let imbalance = LiftProgression.imbalance(left: points([100, 104, 110, 112, 114]),
+                                                  right: points([96, 98, 100, 104, 108]))
         XCTAssertEqual(imbalance.percent, 7.142857142857, accuracy: 0.000001)
         XCTAssertEqual(try XCTUnwrap(imbalance.previousPercent), 6.369426751592, accuracy: 0.000001)
         XCTAssertEqual(imbalance.strongerSide, .left)
         XCTAssertEqual(imbalance.trend, .widening)
-        XCTAssertEqual(imbalance.percentText, "7.1%")
+        XCTAssertEqual(imbalance.headline, "Left ahead by 7.1%")
+    }
+
+    /// A card shows the figure only when the lift has both limbs, as Coach
+    /// web's does: a client who has only ever logged one side gets no
+    /// standing count of what they have not done.
+    func testALiftWithOnlyOneSideShowsNoFigureAtAll() {
+        let left = LiftSeries(side: .left, points: points([100, 100, 100]))
+        XCTAssertNil(LiftProgression.imbalance(in: [left]))
+        XCTAssertNil(LiftProgression.imbalance(in: [LiftSeries(side: nil, points: points([100]))]))
+        XCTAssertNotNil(LiftProgression.imbalance(
+            in: [left, LiftSeries(side: .right, points: points([90, 90, 90]))]))
     }
 
     // MARK: - Display

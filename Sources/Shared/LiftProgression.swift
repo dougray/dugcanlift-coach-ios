@@ -50,7 +50,24 @@ struct LiftProgressionSeries: Identifiable, Sendable {
     /// never does, and its card is exactly the card it always was.
     var hasSides: Bool { series.contains { $0.side != nil } }
 
+    /// The unmarked series, when this lift has one **and** has sided ones too
+    /// -- sets logged before the client turned per-side logging on. They are
+    /// real sets and Coach web draws them as a third line, "Both", rather than
+    /// dropping them; this says whether that line needs a colour of its own so
+    /// it is not the same red as Left.
+    var hasBothAlongsideSides: Bool { hasSides && series.contains { $0.side == nil } }
+
     var imbalance: LiftImbalance? { LiftProgression.imbalance(in: series) }
+
+    /// The series a chart can actually draw: a line needs two points, and a
+    /// legend swatch for a line nobody can see is worse than no swatch. Coach
+    /// web filters its `plotted` the same way and builds its legend from the
+    /// result.
+    ///
+    /// The imbalance figure is **not** filtered by this — it reads `series`,
+    /// so a side with one session still counts toward "2 left, 2 right so
+    /// far" rather than vanishing from the count.
+    var plottedSeries: [LiftSeries] { series.filter { $0.points.count >= 2 } }
 }
 
 /// How far apart a client's two sides are, and which way that is moving.
@@ -60,14 +77,27 @@ struct LiftProgressionSeries: Identifiable, Sendable {
 /// discipline saturated fat, sugar and sodium are held to. A gap of a few per
 /// cent is ordinary in most people, an app is not qualified to say what one
 /// person's means, and a trainer is.
+///
+/// `headline` and `detail` are a port of Coach web's `imbalanceLines`
+/// (`coach/sides.js`), word for word, so a coach who reads this sentence on
+/// one platform reads the same sentence on the others. Two pieces rather than
+/// one, so the headline stays short on a phone and "not enough yet" says what
+/// is missing rather than nothing.
 struct LiftImbalance: Sendable, Equatable {
+    /// Whether both sides reached `minimumSessionsPerSide`. False is a real
+    /// answer with something to say, not an absence.
+    var enough: Bool
+    /// Sessions that recorded a usable estimate, per side -- what the "2 left,
+    /// 2 right so far" line counts.
+    var leftSessions: Int
+    var rightSessions: Int
     /// The side whose recent mean is higher, or nil for a dead heat.
     var strongerSide: SetSide?
-    /// `(strong − weak) / strong`, in percentage points. 0 for a matched pair.
+    /// `(strong − weak) / strong`, in percentage points. 0 when there is no
+    /// figure to show.
     var percent: Double
     /// The same figure over the window's *first* three sessions, when there
-    /// were enough sessions to compute one. `trend` compares against it, and
-    /// it is carried so a card can say "was 3.1%".
+    /// were enough sessions to compute one. `trend` compares against it.
     var previousPercent: Double?
     var trend: Trend
 
@@ -76,26 +106,49 @@ struct LiftImbalance: Sendable, Equatable {
     /// `.notEnoughData` rather than a guess: with exactly three sessions the
     /// first three and the last three are the same sessions, so "steady"
     /// would be arithmetic rather than an observation.
-    enum Trend: Sendable, Equatable { case widening, closing, steady, notEnoughData }
+    enum Trend: Sendable, Equatable {
+        case widening, closing, steady, notEnoughData
 
-    /// "4.2%" -- one decimal, which is as much precision as an Epley estimate
-    /// off a rep-range lift can honestly carry.
-    var percentText: String { String(format: "%.1f%%", percent) }
-
-    var trendText: String? {
-        switch trend {
-        case .widening:      return "widening"
-        case .closing:       return "closing"
-        case .steady:        return "holding steady"
-        case .notEnoughData: return nil
+        /// The word the detail line prints after "gap ". Coach web's own
+        /// values (`widening` / `closing` / `steady`), not a rephrasing.
+        var word: String? {
+            switch self {
+            case .widening:      return "widening"
+            case .closing:       return "closing"
+            case .steady:        return "steady"
+            case .notEnoughData: return nil
+            }
         }
     }
 
-    /// "Left ahead by 4.2%", or "Even" for a dead heat -- `strongerSide` is
-    /// nil exactly then, and "ahead by 0.0%" would be a strange thing to read.
+    /// "5.3%", and "5%" for a round one -- Coach web rounds to a tenth and
+    /// JavaScript drops the trailing zero, so a Swift `%.1f` would print
+    /// "5.0%" where the web says "5%".
+    var percentText: String {
+        let rounded = (percent * 10).rounded() / 10
+        return rounded == rounded.rounded()
+            ? "\(Int(rounded))%" : String(format: "%.1f%%", rounded)
+    }
+
+    /// "Right ahead by 5.3%", "Sides level" for a dead heat, or "—" when
+    /// there is no figure -- an em dash rather than a number nobody can
+    /// stand behind.
     var headline: String {
-        guard let strongerSide else { return "Even" }
+        guard enough else { return "—" }
+        guard let strongerSide else { return "Sides level" }
         return "\(strongerSide.displayName) ahead by \(percentText)"
+    }
+
+    /// "Mean estimated 1RM of the last 3 sessions each · gap closing", with
+    /// the clause absent when the trend cannot be judged, or "Needs 3
+    /// sessions a side · 2 left, 2 right so far".
+    var detail: String {
+        guard enough else {
+            return "Needs \(LiftProgression.minimumSessionsPerSide) sessions a side · "
+                + "\(leftSessions) left, \(rightSessions) right so far"
+        }
+        let basis = "Mean estimated 1RM of the last \(LiftProgression.minimumSessionsPerSide) sessions each"
+        return trend.word.map { "\(basis) · gap \($0)" } ?? basis
     }
 }
 
@@ -125,8 +178,8 @@ enum LiftProgression {
     static let minimumSessionsForTrend = 4
 
     /// A gap that moves less than this many percentage points across the
-    /// window is "holding steady" rather than a direction. Half a point is
-    /// noise in an estimate built out of an estimate.
+    /// window is steady rather than a direction. Half a point is noise in an
+    /// estimate built out of an estimate.
     static let steadyBandPercentagePoints = 0.5
 
     // MARK: - Grouping
@@ -214,15 +267,18 @@ enum LiftProgression {
     /// sessions a side") rather than showing a figure with a quiet caveat: a
     /// percentage on screen gets read and remembered whatever is printed next
     /// to it.
-    static func imbalance(left: [LiftSessionPoint], right: [LiftSessionPoint]) -> LiftImbalance? {
+    static func imbalance(left: [LiftSessionPoint], right: [LiftSessionPoint]) -> LiftImbalance {
         let l = values(left)
         let r = values(right)
+        let notYet = LiftImbalance(enough: false, leftSessions: l.count, rightSessions: r.count,
+                                   strongerSide: nil, percent: 0, previousPercent: nil,
+                                   trend: .notEnoughData)
 
-        guard l.count >= minimumSessionsPerSide, r.count >= minimumSessionsPerSide else { return nil }
+        guard l.count >= minimumSessionsPerSide, r.count >= minimumSessionsPerSide else { return notYet }
 
         let nowLeft = mean(l.suffix(minimumSessionsPerSide))
         let nowRight = mean(r.suffix(minimumSessionsPerSide))
-        guard let percent = gap(nowLeft, nowRight) else { return nil }
+        guard let percent = gap(nowLeft, nowRight) else { return notYet }
 
         let stronger: SetSide? = nowLeft == nowRight ? nil : (nowLeft > nowRight ? .left : .right)
 
@@ -238,15 +294,23 @@ enum LiftProgression {
                   : .steady
         }
 
-        return LiftImbalance(strongerSide: stronger, percent: percent,
+        return LiftImbalance(enough: true, leftSessions: l.count, rightSessions: r.count,
+                             strongerSide: stronger, percent: percent,
                              previousPercent: previous, trend: trend)
     }
 
     /// Convenience over the series a card already built, so the figure and the
     /// lines above it always describe the same stretch of training.
+    ///
+    /// Nil when the lift does not have **both** a left and a right series, as
+    /// Coach web's card does: a client who has only ever logged one limb of a
+    /// lift gets no line about the other, rather than a standing count of what
+    /// they have not done.
     static func imbalance(in series: [LiftSeries]) -> LiftImbalance? {
-        imbalance(left: series.first { $0.side == .left }?.points ?? [],
-                  right: series.first { $0.side == .right }?.points ?? [])
+        guard let left = series.first(where: { $0.side == .left }),
+              let right = series.first(where: { $0.side == .right })
+        else { return nil }
+        return imbalance(left: left.points, right: right.points)
     }
 
     /// `(strong − weak) / strong` in percentage points, or nil when there is
