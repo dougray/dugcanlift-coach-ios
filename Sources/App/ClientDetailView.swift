@@ -270,11 +270,12 @@ struct ClientDetailView: View {
         return LiftCard(title: "Estimated 1RM") {
             VStack(alignment: .leading, spacing: 12) {
                 ForEach(lifts) { lift in
+                    let plotted = lift.plottedSeries
                     VStack(alignment: .leading, spacing: 4) {
                         Text(ClientDisplay.liftDisplayName(key: lift.exerciseKey))
                             .font(.subheadline).foregroundStyle(Theme.textSecondary)
                         Chart {
-                            ForEach(lift.series) { line in
+                            ForEach(plotted) { line in
                                 ForEach(line.points, id: \.dayKey) { point in
                                     LineMark(
                                         x: .value("Day", point.dayKey),
@@ -293,13 +294,19 @@ struct ClientDetailView: View {
                         // through really does draw all three, and two of them
                         // must not be the same colour.
                         .chartForegroundStyleScale(
-                            domain: lift.series.map(\.label),
-                            range: lift.series.map { colour(for: $0.side) })
+                            domain: plotted.map(\.label),
+                            range: plotted.map {
+                                colour(for: $0.side, sided: lift.hasSides)
+                            })
                         // One line needs no legend; it only earns its space
                         // when there is something to tell apart.
-                        .chartLegend(lift.series.count > 1 ? .visible : .hidden)
+                        .chartLegend(plotted.count > 1 ? .visible : .hidden)
                         .frame(height: 100)
-                        if lift.hasSides { imbalanceLine(lift) }
+                        // Only when the lift has both limbs, as Coach web's
+                        // card does: a client who has only ever logged one
+                        // side gets no standing count of what they have not
+                        // done.
+                        if let imbalance = lift.imbalance { imbalanceBlock(imbalance) }
                     }
                 }
             }
@@ -311,43 +318,40 @@ struct ClientDetailView: View {
     /// fat, sugar and sodium are held to. No threshold, no colour, no prompt
     /// to fix anything: a gap of a few per cent is ordinary, the app is not
     /// qualified to say what one client's means, and the trainer reading this
-    /// is. The card says that in words rather than leaving a number to be
-    /// read as a verdict.
+    /// is.
+    ///
+    /// Both lines are `LiftImbalance`'s own, which is a port of Coach web's
+    /// `imbalanceLines` word for word -- a coach who reads this sentence in
+    /// the browser must read the same sentence here.
     @ViewBuilder
-    private func imbalanceLine(_ lift: LiftProgressionSeries) -> some View {
-        if let imbalance = lift.imbalance {
-            VStack(alignment: .leading, spacing: 2) {
+    private func imbalanceBlock(_ imbalance: LiftImbalance) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Imbalance")
+                    .font(.caption)
+                    .foregroundStyle(Theme.textSecondary)
+                Spacer()
                 Text(imbalance.headline)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Theme.textPrimary)
-                Text(imbalanceDetail(imbalance))
-                    .font(.caption)
-                    .foregroundStyle(Theme.textSecondary)
             }
-        } else {
-            Text("Left and right need \(LiftProgression.minimumSessionsPerSide) sessions each before a gap is worth a number. Below that one heavy day decides it.")
+            Text(imbalance.detail)
                 .font(.caption)
                 .foregroundStyle(Theme.textSecondary)
         }
     }
 
-    private func imbalanceDetail(_ imbalance: LiftImbalance) -> String {
-        let basis = "Estimated 1RM, each side averaged over its last \(LiftProgression.minimumSessionsPerSide) sessions. A difference between limbs is normal."
-        guard let trend = imbalance.trendText else {
-            return "A trend needs \(LiftProgression.minimumSessionsForTrend) sessions a side. " + basis
-        }
-        let was = imbalance.previousPercent
-            .map { " — it was \(String(format: "%.1f%%", $0)) over the first three." } ?? "."
-        return "The gap is \(trend)\(was) " + basis
-    }
-
-    /// Left and right get colours of their own, and a two-sided line keeps the
-    /// accent every other chart on this page uses.
-    private func colour(for side: SetSide?) -> Color {
+    /// Left and right get colours of their own. An unmarked series -- sets
+    /// logged before the client turned per-side logging on -- is muted when it
+    /// sits beside them, and keeps the accent every other chart on this page
+    /// uses when it is the only line. Coach web's `seriesColour` rule exactly,
+    /// and the reason it exists is that Both and Left were otherwise the same
+    /// red.
+    private func colour(for side: SetSide?, sided: Bool) -> Color {
         switch side {
         case .left:  return Theme.accent
         case .right: return Theme.accentSecondary
-        case nil:    return Theme.accent
+        case nil:    return sided ? Theme.textSecondary : Theme.accent
         }
     }
 

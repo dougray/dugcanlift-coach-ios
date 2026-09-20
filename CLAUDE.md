@@ -607,10 +607,28 @@ sessions. Half a percentage point of movement is steady.
 `testImbalanceAgreesWithTheReferenceImplementation` checks the port against a
 case worked through `sides.js` by hand.
 
+**The words are Coach web's, not ours.** `LiftImbalance.headline` / `.detail`
+port `coach/sides.js`'s `imbalanceLines` exactly — "Right ahead by 5.3%",
+"Sides level", "Mean estimated 1RM of the last 3 sessions each · gap closing"
+(no clause when the trend cannot be judged), and "—" with "Needs 3 sessions a
+side · 2 left, 2 right so far". A coach who reads the sentence in the browser
+reads the same sentence here and on Android. The percent is rounded to a tenth
+with a trailing zero dropped, because that is what JavaScript prints: "5%",
+never "5.0%". Change these strings in all three Coach builds or in none.
+
 **Tracked and shown, never targeted**, exactly as saturated fat, sugar and
 sodium are: no threshold, no colour, no advice. A gap of a few per cent is
 ordinary, the app is not qualified to say what one client's means, and the
-trainer reading it is.
+trainer reading it is. `testNothingInTheseLinesTellsACoachWhatToDo` makes the
+same check Coach web's own tests make on the two strings.
+
+**Sets logged before per-side logging are drawn, not dropped.** A lift can
+carry all three series, and the unmarked one is a real third line labelled
+"Both" — muted when it sits beside Left and Right, and the page's accent when
+it is the only line (Coach web's `seriesColour` rule). Drawn in the accent
+beside them it was the same red as Left. The figure itself appears only when
+a lift has **both** limbs, so a client who has only ever logged one side gets
+no standing count of what they have not done.
 
 **Volume counts both sides.** One leg at a time is still two sets of work, and
 the day's volume, the set counts and the week summary are untouched — those
