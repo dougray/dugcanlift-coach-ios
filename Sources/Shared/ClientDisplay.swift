@@ -39,20 +39,43 @@ enum ClientDisplay {
         return value == "—" ? value : "\(value) \(unit)"
     }
 
-    /// The key two same-named lifts on different equipment must not share.
-    /// Matches the wire format's own definition of a lift's identity.
-    static func liftKey(name: String, equipment: String?) -> String {
+    /// The lift without its side -- `"name|equipment"`, which is how the
+    /// share link's exercise dictionary spells a lift and what a chart card
+    /// is titled with. Two sides of one lift share this.
+    static func exerciseKey(name: String, equipment: String?) -> String {
         "\(name)|\(equipment ?? "")"
     }
 
-    /// Turns a `liftKey` back into something a coach reads — "Back Squat
+    /// The key two lifts that must not be averaged together share nothing of:
+    /// **name, equipment and side**.
+    ///
+    /// Equipment joined it because a cable pulldown and a machine pulldown are
+    /// not the same lift, and charting them together produced one zig-zagging
+    /// line that was the average of two honest trends. Side joins it for
+    /// exactly the same reason (SHARE-FORMAT.md, "Tolerating the bits is not
+    /// enough; Coach must group on side"): a left-arm row and a right-arm row
+    /// are two lifts, and a Coach that reads the side bits and then charts as
+    /// before has a *worse* chart than one that ignores them, because the two
+    /// limbs are now genuinely interleaved.
+    ///
+    /// A two-sided lift keeps the key it always had -- the side part is empty,
+    /// so one series, the same numbers, nothing to notice.
+    static func liftKey(name: String, equipment: String?, side: SetSide? = nil) -> String {
+        "\(exerciseKey(name: name, equipment: equipment))|\(side?.rawValue ?? "")"
+    }
+
+    /// Turns a key back into something a coach reads — "Back Squat
     /// (Barbell)", or the bare name when equipment is blank, matching an
-    /// equipment-less exercise's empty string on the wire.
+    /// equipment-less exercise's empty string on the wire. A key carrying a
+    /// side reads "Bulgarian Split Squat (Dumbbell) · Left".
     static func liftDisplayName(key: String) -> String {
-        guard let separator = key.firstIndex(of: "|") else { return key }
-        let name = String(key[key.startIndex..<separator])
-        let equipment = String(key[key.index(after: separator)...])
-        return equipment.trimmingCharacters(in: .whitespaces).isEmpty ? name : "\(name) (\(equipment))"
+        let parts = key.split(separator: "|", maxSplits: 2, omittingEmptySubsequences: false)
+        guard parts.count >= 2 else { return key }
+        let name = String(parts[0])
+        let equipment = String(parts[1]).trimmingCharacters(in: .whitespaces)
+        let base = equipment.isEmpty ? name : "\(name) (\(equipment))"
+        guard parts.count > 2, let side = SetSide(rawValue: String(parts[2])) else { return base }
+        return "\(base) · \(side.displayName)"
     }
 
     /// How the roster orders itself: quietest first, so the person who most

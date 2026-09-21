@@ -175,10 +175,23 @@ final class ExerciseSet {
     var durationSec: Double?
     var distanceMeters: Double?
     var isWarmup: Bool
+    /// Which limb, as `SetSide`'s raw value -- read it through `side`.
+    ///
+    /// Optional with no default, so a store written before per-limb logging
+    /// opens with it nil: a lightweight migration, and nil is already the
+    /// right answer for every one of those rows. **Absent is both, forever**;
+    /// nothing backfills a guess from an exercise name.
+    ///
+    /// Stored as the raw string rather than the enum because SwiftData
+    /// predicates and a hand-inspected store both read a string, and because
+    /// an unrecognised value from a future writer degrades to both rather
+    /// than refusing to decode.
+    var sideRaw: String?
 
     init(day: TrainingDay? = nil, exerciseName: String, equipment: String? = nil,
          weightLb: Double? = nil, reps: Int? = nil, rpe: Double? = nil,
-         durationSec: Double? = nil, distanceMeters: Double? = nil, isWarmup: Bool = false) {
+         durationSec: Double? = nil, distanceMeters: Double? = nil, isWarmup: Bool = false,
+         side: SetSide? = nil) {
         self.day = day
         self.exerciseName = exerciseName
         self.equipment = equipment
@@ -188,6 +201,16 @@ final class ExerciseSet {
         self.durationSec = durationSec
         self.distanceMeters = distanceMeters
         self.isWarmup = isWarmup
+        self.sideRaw = side?.rawValue
+    }
+}
+
+extension ExerciseSet {
+    /// nil is both -- a two-sided lift, or a single-arm lift whose sides
+    /// nobody recorded.
+    var side: SetSide? {
+        get { SetSide(rawValue: sideRaw ?? "") }
+        set { sideRaw = newValue?.rawValue }
     }
 }
 
