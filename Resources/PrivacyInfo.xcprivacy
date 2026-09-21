@@ -20,16 +20,19 @@
 	<array/>
 	<key>NSPrivacyAccessedAPITypes</key>
 	<array>
-		<!-- @AppStorage (coachName, coachEmail, cookPlanOwners,
+		<!-- CA92.1: @AppStorage (coachName, coachEmail, cookPlanOwners,
 		     recipeWeightUnit) and UserDefaults.standard, read and written by
-		     this app only - never a shared App Group suite, so CA92.1 applies
-		     rather than 1C8F.1. -->
+		     this app only. 1C8F.1: PendingShareLinks, the
+		     group.com.dugcanlift.coach suite, where the share extension
+		     queues a link for this app to import - read and cleared by the
+		     app, written by its own extension, never another developer's. -->
 		<dict>
 			<key>NSPrivacyAccessedAPIType</key>
 			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
 			<key>NSPrivacyAccessedAPITypeReasons</key>
 			<array>
 				<string>CA92.1</string>
+				<string>1C8F.1</string>
 			</array>
 		</dict>
 		<!-- Coach's own code reads no file timestamps. Declared to match

@@ -4,6 +4,21 @@ import LiftCore
 
 enum ShareLinkImporter {
 
+    /// Shown wherever a link fails to import: Paste a Link, a
+    /// `dugcanliftcoach://` URL, or a link queued by the share extension.
+    static let invalidLinkMessage =
+        "That doesn't look like a valid LIFT log link. Double-check you copied the whole thing."
+
+    /// The one path from text to store. Paste a Link, `onOpenURL` and the
+    /// share extension's queue all come through here, so they accept and
+    /// reject exactly the same links (see `ShareLinkExtractor`).
+    @discardableResult
+    static func importLink(_ text: String, into context: ModelContext) throws -> ShareLinkPayload {
+        let payload = try ShareLinkExtractor.payload(in: text)
+        try importPayload(payload, into: context)
+        return payload
+    }
+
     static func importPayload(_ payload: ShareLinkPayload, into context: ModelContext) throws {
         let client = try findOrCreateClient(for: payload.c, in: context)
         client.lastImportedAt = .now
