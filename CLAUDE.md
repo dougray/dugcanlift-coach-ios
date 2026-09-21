@@ -570,6 +570,77 @@ map anywhere casually.
 `Tests/Fixtures/outdoor-share-link.txt` and `outdoor-share-expected.json` were
 written by LIFT web. Do not regenerate them from Swift.
 
+## Left and right
+
+A client may log a set a limb at a time. `ExerciseSet.sideRaw` holds it, read
+through `side`, and **absent is "both", forever** — every row written before
+this, and every link and backup written before it, means a two-sided lift or a
+lift whose sides nobody recorded. Optional with no default, so an existing
+store opens with it nil and no migration guesses at history. `SetSide` and the
+maths are ports of lift-ios's `SetSide` / `LiftProgression` and LIFT web's
+`lift/sides.js`. Port them; do not re-derive them.
+
+**`flags` is a bitfield: mask, never compare.** Bit 0 is warmup, bits 1-2 are
+the side (0 both, 1 left, 2 right; `3` is never written and reads as both).
+`flags == 1` was right while warmup was the only bit and is wrong now — a
+left-side working set sends 2 and a left-side warmup sends 3. Android has no
+warmup flag at all and sends 0, 2 or 4; only the iPhone and the browser send 3
+or 5. `SetFlags` is the one place that reads the byte, and
+`PerLimbTests.testFlagsAreMaskedNotCompared` pins all six values.
+
+**Side joins name and equipment in `ClientDisplay.liftKey`.** This is the whole
+point, not a nicety: measured against a build that read the bits and grouped as
+before, the per-lift estimated-1RM chart merges two limbs into one series and
+zig-zags set for set — worse than ignoring the bits, because the sides are now
+genuinely interleaved. `exerciseKey` is the lift without its side, which is
+what a chart card is titled with and what the two series hang under. A
+two-sided lift is unchanged: one key, one series, the same numbers.
+
+**The imbalance figure is a cross-platform rule.** `LiftProgression`, a value
+type with no view in it, for the reason `MacroFields` is one: this decides a
+number a trainer reads about a client's body. Each side is the **mean of its
+last three sessions'** estimated 1RM (Epley, best working set of a day — a
+session is a day, not a set), the gap is `(strong − weak) / strong`, shown only
+with **three sessions a side**, and the trend compares it against the first
+three and needs **four** — with exactly three, the two ends are the same
+sessions. Half a percentage point of movement is steady.
+`testImbalanceAgreesWithTheReferenceImplementation` checks the port against a
+case worked through `sides.js` by hand.
+
+**The words are Coach web's, not ours.** `LiftImbalance.headline` / `.detail`
+port `coach/sides.js`'s `imbalanceLines` exactly — "Right ahead by 5.3%",
+"Sides level", "Mean estimated 1RM of the last 3 sessions each · gap closing"
+(no clause when the trend cannot be judged), and "—" with "Needs 3 sessions a
+side · 2 left, 2 right so far". A coach who reads the sentence in the browser
+reads the same sentence here and on Android. The percent is rounded to a tenth
+with a trailing zero dropped, because that is what JavaScript prints: "5%",
+never "5.0%". Change these strings in all three Coach builds or in none.
+
+**Tracked and shown, never targeted**, exactly as saturated fat, sugar and
+sodium are: no threshold, no colour, no advice. A gap of a few per cent is
+ordinary, the app is not qualified to say what one client's means, and the
+trainer reading it is. `testNothingInTheseLinesTellsACoachWhatToDo` makes the
+same check Coach web's own tests make on the two strings.
+
+**Sets logged before per-side logging are drawn, not dropped.** A lift can
+carry all three series, and the unmarked one is a real third line labelled
+"Both" — muted when it sits beside Left and Right, and the page's accent when
+it is the only line (Coach web's `seriesColour` rule). Drawn in the accent
+beside them it was the same red as Left. The figure itself appears only when
+a lift has **both** limbs, so a client who has only ever logged one side gets
+no standing count of what they have not done.
+
+**Volume counts both sides.** One leg at a time is still two sets of work, and
+the day's volume, the set counts and the week summary are untouched — those
+only ever needed weight and reps, which is why side rides in the byte that
+already exists rather than in a seventh tuple position.
+
+In a backup, side is a **named field**, `side: "left" | "right"`, omitted
+entirely when both — not `"both"`, not `null`, not a bit. An unrecognised
+string reads as both rather than failing the import, and a file written before
+this restores unchanged. PLAN-FORMAT is unchanged in v1: a coach prescribes as
+before and the client chooses sides when logging.
+
 ## Saturated fat, sugar and sodium
 
 Tracked and shown, **never targeted**: no goal, bar or colour anywhere

@@ -256,33 +256,102 @@ struct ClientDetailView: View {
 
     // MARK: - Per-lift estimated 1RM (Epley formula, matching LIFT's own convention)
 
+    /// One card, one chart per lift -- and for a lift a client logs a limb at
+    /// a time, **two lines, never merged**, with the gap between them stated
+    /// underneath.
+    ///
+    /// Every number here comes from `LiftProgression`, which has no view in it
+    /// and is unit tested. The view asks for the series and the imbalance and
+    /// draws what it is given, so the rule about what a trainer is told about
+    /// a client's body lives somewhere it can be checked.
     private var oneRepMaxChart: some View {
-        let byLift = Dictionary(grouping: sortedDays.flatMap { day in
-            day.sets.filter { !$0.isWarmup && $0.weightLb != nil && $0.reps != nil && $0.reps! > 0 }
-                .map { (day.dayKey, $0) }
-        }, by: { ClientDisplay.liftKey(name: $0.1.exerciseName, equipment: $0.1.equipment) })
+        let lifts = LiftProgression.byLift(in: sortedDays)
 
         return LiftCard(title: "Estimated 1RM") {
             VStack(alignment: .leading, spacing: 12) {
-                ForEach(byLift.keys.sorted(), id: \.self) { lift in
-                    let points = (byLift[lift] ?? []).map { dayKey, set -> (String, Double) in
-                        let weight = set.weightLb ?? 0
-                        let reps = Double(set.reps ?? 0)
-                        let estimate = weight * (1 + reps / 30)   // Epley
-                        return (dayKey, ClientDisplay.weightValue(lb: estimate, unit: unit))
-                    }
-                    VStack(alignment: .leading) {
-                        Text(ClientDisplay.liftDisplayName(key: lift))
+                ForEach(lifts) { lift in
+                    let plotted = lift.plottedSeries
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(ClientDisplay.liftDisplayName(key: lift.exerciseKey))
                             .font(.subheadline).foregroundStyle(Theme.textSecondary)
-                        Chart(points, id: \.0) { point in
-                            LineMark(x: .value("Day", point.0), y: .value("Est. 1RM (\(unit))", point.1))
-                                .foregroundStyle(Theme.accent)
+                        Chart {
+                            ForEach(plotted) { line in
+                                ForEach(line.points, id: \.dayKey) { point in
+                                    LineMark(
+                                        x: .value("Day", point.dayKey),
+                                        y: .value("Est. 1RM (\(unit))",
+                                                  ClientDisplay.weightValue(
+                                                    lb: point.estimatedOneRepMaxLb, unit: unit)),
+                                        series: .value("Side", line.label))
+                                    .foregroundStyle(by: .value("Side", line.label))
+                                }
+                            }
                         }
+                        // Built from the lines actually drawn, not from all
+                        // three possible ones: a fixed domain puts "Both" in
+                        // the legend of a lift that has no two-sided sets. A
+                        // lift whose client turned per-side logging on halfway
+                        // through really does draw all three, and two of them
+                        // must not be the same colour.
+                        .chartForegroundStyleScale(
+                            domain: plotted.map(\.label),
+                            range: plotted.map {
+                                colour(for: $0.side, sided: lift.hasSides)
+                            })
+                        // One line needs no legend; it only earns its space
+                        // when there is something to tell apart.
+                        .chartLegend(plotted.count > 1 ? .visible : .hidden)
                         .frame(height: 100)
+                        // Only when the lift has both limbs, as Coach web's
+                        // card does: a client who has only ever logged one
+                        // side gets no standing count of what they have not
+                        // done.
+                        if let imbalance = lift.imbalance { imbalanceBlock(imbalance) }
                     }
                 }
             }
             .fillsGridCell()
+        }
+    }
+
+    /// **Tracked and shown, never targeted** -- the same discipline saturated
+    /// fat, sugar and sodium are held to. No threshold, no colour, no prompt
+    /// to fix anything: a gap of a few per cent is ordinary, the app is not
+    /// qualified to say what one client's means, and the trainer reading this
+    /// is.
+    ///
+    /// Both lines are `LiftImbalance`'s own, which is a port of Coach web's
+    /// `imbalanceLines` word for word -- a coach who reads this sentence in
+    /// the browser must read the same sentence here.
+    @ViewBuilder
+    private func imbalanceBlock(_ imbalance: LiftImbalance) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Imbalance")
+                    .font(.caption)
+                    .foregroundStyle(Theme.textSecondary)
+                Spacer()
+                Text(imbalance.headline)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Theme.textPrimary)
+            }
+            Text(imbalance.detail)
+                .font(.caption)
+                .foregroundStyle(Theme.textSecondary)
+        }
+    }
+
+    /// Left and right get colours of their own. An unmarked series -- sets
+    /// logged before the client turned per-side logging on -- is muted when it
+    /// sits beside them, and keeps the accent every other chart on this page
+    /// uses when it is the only line. Coach web's `seriesColour` rule exactly,
+    /// and the reason it exists is that Both and Left were otherwise the same
+    /// red.
+    private func colour(for side: SetSide?, sided: Bool) -> Color {
+        switch side {
+        case .left:  return Theme.accent
+        case .right: return Theme.accentSecondary
+        case nil:    return sided ? Theme.textSecondary : Theme.accent
         }
     }
 
@@ -458,7 +527,10 @@ struct ClientDetailView: View {
                     let outdoor = OutdoorDisplay.activities(day.outdoor)
                     DisclosureGroup {
                         ForEach(day.sets) { set in
-                            Text("\(set.exerciseName): \(ClientDisplay.weightWithUnit(lb: set.weightLb, unit: unit)) × \(set.reps ?? 0)")
+                            // "185 lb × 5 L" -- a per-side set says which
+                            // side; a two-sided one says nothing new.
+                            Text("\(set.exerciseName): \(ClientDisplay.weightWithUnit(lb: set.weightLb, unit: unit)) × \(set.reps ?? 0)"
+                                 + (set.side.map { " \($0.shortLabel)" } ?? ""))
                                 .font(.caption)
                                 .foregroundStyle(Theme.textSecondary)
                         }
