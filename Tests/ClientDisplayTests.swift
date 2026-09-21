@@ -52,10 +52,14 @@ final class ClientDisplayTests: XCTestCase {
     }
 
     func testTheKeyMatchesTheWireFormat() {
-        XCTAssertEqual(ClientDisplay.liftKey(name: "Back Squat", equipment: "Barbell"),
+        XCTAssertEqual(ClientDisplay.exerciseKey(name: "Back Squat", equipment: "Barbell"),
                        "Back Squat|Barbell")
-        XCTAssertEqual(ClientDisplay.liftKey(name: "Pull Up", equipment: nil), "Pull Up|",
+        XCTAssertEqual(ClientDisplay.exerciseKey(name: "Pull Up", equipment: nil), "Pull Up|",
                        "an equipment-less exercise is an empty string on the wire, not a missing pipe")
+        // The grouping key adds the side, which is empty for a two-sided
+        // lift -- so a bench press groups exactly as it always did.
+        XCTAssertEqual(ClientDisplay.liftKey(name: "Back Squat", equipment: "Barbell"),
+                       "Back Squat|Barbell|")
     }
 
     func testTheDisplayNameReadsAsACoachWouldSayIt() {
