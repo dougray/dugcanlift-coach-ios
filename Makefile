@@ -1,6 +1,18 @@
 SCHEME      := Coach
 BUNDLE_ID   := com.dugcanlift.coach
-SIM         := iPhone 17 Pro
+# The simulator to build, test and run on. Detected rather than pinned: a
+# hard-coded model is wrong the moment Xcode ships a new one or this checkout
+# moves to another Mac, and the failure -- "Unable to find a device matching
+# the provided destination specifier" -- names the destination, not the cause.
+# A booted iPhone wins, because it is already on screen and needs no boot;
+# otherwise the first available iPhone. Override for a specific model:
+#   make test SIM="iPhone 18 Pro"
+#
+# LPAREN carries the "(" that separates a simulator's name from its UDID: make
+# counts parentheses while it parses $(shell ...), so a bare one inside the
+# awk program ends the call early ("unterminated call to function `shell'").
+LPAREN      := (
+SIM         := $(shell xcrun simctl list devices available 2>/dev/null | awk '/^ +iPhone/ { n = substr($$0, 1, index($$0, " $(LPAREN)") - 1); sub(/^ +/, "", n); if (!f) f = n; if ($$0 ~ /Booted/) { print n; d = 1; exit } } END { if (!d) print f }')
 DERIVED     := .build/DerivedData
 APP         := $(DERIVED)/Build/Products/Debug-iphonesimulator/Coach.app
 DEST        := platform=iOS Simulator,name=$(SIM)
@@ -22,7 +34,7 @@ DEVICE_APP     := $(DEVICE_DERIVED)/Build/Products/Debug-iphoneos/Coach.app
 # defeats the target. A device that really is unreachable fails at the install
 # with a clear CoreDevice error, which is better than a build that declines to
 # start.
-DEVICE ?= $(shell xcrun devicectl list devices 2>/dev/null | awk '/iPhone|iPad/ {print $$3; exit}')
+DEVICE ?= $(shell xcrun devicectl list devices 2>/dev/null | awk '/iPhone|iPad/ { for (i = 1; i <= NF; i++) if ($$i ~ /^[0-9A-Fa-f]{8}-[0-9A-Fa-f-]+$$/) { print $$i; exit } }')
 
 # Unlike lift-ios, this app needs no entitlements override to build for a
 # device on a free Apple Personal Team. Its only capability is App Groups

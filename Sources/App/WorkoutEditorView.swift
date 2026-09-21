@@ -91,25 +91,72 @@ struct WorkoutEditorView: View {
 struct PrescribedSetRow: View {
     @Bindable var set: RoutinePrescribedSet
 
-    var body: some View {
-        HStack {
-            optionalField("lb", value: Binding(
-                get: { set.targetWeightKg.map { PlanLinkEncoder.kgToLb($0) } },
-                set: { set.targetWeightKg = $0.map { PlanLinkEncoder.lbToKg($0) } }))
-            optionalField("reps", value: Binding(
-                get: { set.targetReps.map(Double.init) },
-                set: { set.targetReps = $0.map { Int($0) } }))
-            optionalField("RPE", value: $set.targetRPE)
-        }
+    /// The weight as it was when this row appeared. An edit that returns the
+    /// text to what was shown restores this exact value, not a reconversion.
+    @State private var loadedWeightKg: Double?
+
+    init(set: RoutinePrescribedSet) {
+        self.set = set
+        _loadedWeightKg = State(initialValue: set.targetWeightKg)
     }
 
-    private func optionalField(_ label: String, value: Binding<Double?>) -> some View {
-        // Format and parse both go through `OptionalNumberField`, one
-        // locale-aware pair — see its doc comment for why a `.formatted()`
-        // getter paired with a `Double(trimmed)` setter is not safe here.
-        TextField(label, text: Binding(
-            get: { OptionalNumberField.string(from: value.wrappedValue) },
-            set: { value.wrappedValue = OptionalNumberField.value(from: $0) }))
-        .keyboardType(.decimalPad)
+    var body: some View {
+        HStack {
+            // Pounds on screen, kilograms in storage. `PrescribedWeightField`
+            // rounds the display and keeps the stored value when the text
+            // still says what it showed, so an untouched field never writes a
+            // kg -> lb -> kg drift back.
+            DraftNumberField(
+                label: "lb",
+                load: { PrescribedWeightField.text(kilograms: set.targetWeightKg) },
+                commit: {
+                    set.targetWeightKg = PrescribedWeightField.kilograms(
+                        from: $0, stored: loadedWeightKg)
+                })
+            // Format and parse both go through `OptionalNumberField`, one
+            // locale-aware pair -- see its doc comment for why a `.formatted()`
+            // getter paired with a `Double(trimmed)` setter is not safe here.
+            DraftNumberField(
+                label: "reps",
+                load: { OptionalNumberField.string(from: set.targetReps.map(Double.init)) },
+                commit: { set.targetReps = OptionalNumberField.value(from: $0).map { Int($0) } })
+            DraftNumberField(
+                label: "RPE",
+                load: { OptionalNumberField.string(from: set.targetRPE) },
+                commit: { set.targetRPE = OptionalNumberField.value(from: $0) })
+        }
+    }
+}
+
+/// A numeric text field that keeps the coach's own text while they type.
+///
+/// Bound straight through a formatter, every keystroke was re-rendered from
+/// the stored number: "175." became "175" before the "5" could follow, and a
+/// rounded display rewrote whatever extra precision had just been typed. The
+/// text is loaded once, and each edit is committed to the model -- the model
+/// never writes back into the text.
+private struct DraftNumberField: View {
+    let label: String
+    let load: () -> String
+    let commit: (String) -> Void
+
+    @State private var text = ""
+    /// The text last loaded or committed; nil until the field has loaded.
+    @State private var committed: String?
+
+    var body: some View {
+        TextField(label, text: $text)
+            .keyboardType(.decimalPad)
+            .onAppear {
+                guard committed == nil else { return }
+                let initial = load()
+                committed = initial
+                text = initial
+            }
+            .onChange(of: text) { _, new in
+                guard let committed, new != committed else { return }
+                self.committed = new
+                commit(new)
+            }
     }
 }
