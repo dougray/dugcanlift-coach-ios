@@ -207,8 +207,12 @@ which stays true only while nothing reaches the developer — see "Coach makes
 exactly two network calls". Adding any request, SDK or required-reason API
 (`UserDefaults` is CA92.1; file timestamps C617.1, for SQLite) means revisiting
 it. `ITSAppUsesNonExemptEncryption` is `false` in `project.yml`: HTTPS only.
-Listing text is in `fastlane/metadata/en-US`, screenshots (6.9", sample data) in
-`fastlane/screenshots/en-US`. Keep the description to what the app does.
+Listing text is in `fastlane/metadata/en-US`, screenshots in
+`fastlane/screenshots/en-US`: iPhone 6.9" (`N_iPhone69_*`, 1320x2868) and, since
+Coach runs on iPad, iPad 13" landscape (`N_iPadPro13_*`, 2752x2064), all sample
+data, light mode except one dark. deliver sorts each by pixel size; the 13"
+files must not contain `app_ipad_pro_129` or "2nd generation", which would file
+them as the older 12.9" slot. No alpha channel: App Store Connect rejects it. Keep the description to what the app does.
 
 ## Shared code lives in LiftKit
 
