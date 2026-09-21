@@ -60,12 +60,23 @@ targets:
         product: LiftCore
       - package: LiftKit
         product: LiftReference
+      # Embedded in Coach.app/PlugIns.
+      - target: CoachShare
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.dugcanlift.coach
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+    entitlements:
+      path: Config/Coach.entitlements
+      properties:
+        # The share extension's hand-off (PendingShareLinks). App Groups sign
+        # on a free Personal Team -- lift-ios's widget ships with one, and its
+        # free-team entitlements file keeps it -- unlike Associated Domains,
+        # which is why there are still no Universal Links here.
+        com.apple.security.application-groups:
+          - group.com.dugcanlift.coach
     info:
       path: Config/Coach-Info.plist
       properties:
@@ -92,6 +103,58 @@ targets:
           - UIInterfaceOrientationLandscapeRight
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
+        # dugcanliftcoach://import#1z... opens Coach and imports the log, the
+        # same as Paste a Link (RootView.onOpenURL). A custom scheme needs no
+        # entitlement, so it works on a free team where Universal Links don't.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.dugcanlift.coach.import
+            CFBundleURLSchemes:
+              - dugcanliftcoach
+
+  # ------------------------------------------------------ share extension
+  # "Coach" in the share sheet for a LIFT log link shared from Safari,
+  # Messages, Mail or Notes. It decodes the link to confirm who it is from,
+  # then queues the fragment in the App Group for the app to import on its
+  # next foreground -- see PendingShareLinks for why it does not open the app
+  # or write to SwiftData itself.
+  CoachShare:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Sources/ShareExtension
+      # Only what the extension needs from Shared: no SwiftData, no views.
+      - path: Sources/Shared/ShareLinkExtractor.swift
+      - path: Sources/Shared/PendingShareLinks.swift
+    dependencies:
+      # LiftCore only. LiftReference's GRDB and 2.3 MB of databases have no
+      # business in a share sheet with a tight memory limit.
+      - package: LiftKit
+        product: LiftCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.dugcanlift.coach.share
+        APPLICATION_EXTENSION_API_ONLY: YES
+    entitlements:
+      path: Config/CoachShare.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.dugcanlift.coach
+    info:
+      path: Config/CoachShare-Info.plist
+      properties:
+        CFBundleDisplayName: Coach
+        ITSAppUsesNonExemptEncryption: false
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+          NSExtensionAttributes:
+            # A web URL (Safari, Messages' link previews) or text (Notes, Mail,
+            # a message body) -- a link can arrive as either. Text means Coach
+            # is offered for any text; the extension says plainly when it
+            # isn't a LIFT link.
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsWebURLWithMaxCount: 1
+              NSExtensionActivationSupportsText: true
 
   # --------------------------------------------------------------- tests
   CoachTests:

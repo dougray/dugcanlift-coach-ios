@@ -29,6 +29,8 @@ and run `make project`.
   and avoids a retroactive split if a widget is ever added later.
 - **`Sources/App/`** — SwiftUI views (`RosterView`, `ClientDetailView`,
   `ConnectView`).
+- **`Sources/ShareExtension/`** — the `CoachShare` share extension (see
+  "Universal Links do not work on this team" below).
 
 ## Design spec
 
@@ -48,9 +50,46 @@ persistence, nothing here ever talks to a server DUGCANLIFT operates.
 (`QG57FJM5C8`) is a free Apple Personal Team — Associated Domains fails at
 build time on a free team (confirmed by `lift-ios`'s own build history).
 Do not add the Associated Domains entitlement or attempt to intercept
-`https://www.dugcanlift.com/coach/#...` links via Universal Links. v1
-ingestion is a "Paste a link" text field; a Share Extension (which needs
-no Associated Domains entitlement) is a documented fast-follow, not v1.
+`https://www.dugcanlift.com/coach/#...` links via Universal Links. A link
+reaches Coach three ways instead, all through
+`ShareLinkImporter.importLink`, so they accept and refuse exactly the same
+text:
+
+1. **Paste a Link** (`PasteLinkView`).
+2. **`dugcanliftcoach://import#1z...`**, a custom URL scheme
+   (`CFBundleURLTypes` in project.yml, `RootView.onOpenURL`). It needs no
+   entitlement.
+3. **The share extension** (`CoachShare`, `Sources/ShareExtension/`). "Coach"
+   appears in the share sheet for a URL or text; it decodes the link to show
+   "Add Jordan Reyes's log · 56 days" (or says it isn't a LIFT link), and on
+   Add queues the *fragment* in the App Group `group.com.dugcanlift.coach`
+   (`PendingShareLinks`). `RootView` drains the queue whenever the scene
+   becomes active and imports each one.
+
+The extension **does not open the app and does not write SwiftData.** iOS
+gives a share extension no supported way to open its containing app
+(`NSExtensionContext.open` is for Today widgets; the responder-chain walk to
+`UIApplication` is undocumented), and importing from the extension would mean
+moving the store into the App Group — a migration for a feature that doesn't
+need one. The cost is one step: the coach opens Coach afterwards, which the
+confirmation says in words. App Groups, unlike Associated Domains, sign on a
+free Personal Team — `lift-ios`'s widget ships with one, and its
+`Lift-free.entitlements` keeps it. The extension compiles only
+`ShareLinkExtractor.swift` and `PendingShareLinks.swift` from `Sources/Shared`
+and links `LiftCore` only: never add SwiftData models or `LiftReference` to it.
+It has its own `PrivacyInfo.xcprivacy` (an extension is its own bundle).
+
+**`ShareLinkExtractor` is the one rule for finding a link in text.** The first
+`www.dugcanlift.com/coach/#1z…` / `#1u…` (or `dugcanliftcoach:` URL) anywhere
+in the text wins, whatever surrounds it; otherwise the whole text may be a bare
+fragment. Another site's URL carrying a `#1z…` fragment is refused. This is
+stricter than Coach Android's paste field, which keeps whatever follows the
+last `#` — that breaks on "week #3: https://…". **Safari shares the web
+Coach's address without the log**: `coach/app.js` strips the fragment with
+`history.replaceState` as soon as it has read it, so sharing from Safari after
+the page loaded sends `https://www.dugcanlift.com/coach/`. The extension says
+so (`isCoachPageWithoutLog`); share from the message or mail it arrived in, or
+long-press the link, instead.
 
 **The wire format is a contract with `lift-ios`, not just a doc.**
 `SHARE-FORMAT.md`/`BACKUP-FORMAT.md` (in the `LIFT` superproject's
