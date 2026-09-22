@@ -35,16 +35,39 @@ enum PlanLinkEncoder {
         return name.isEmpty ? "Your coach" : name
     }
 
+    /// - Parameter sides: the coach's prescribed sides. `nil` reads them from
+    ///   the routines' own store, so no call site can send a plan and forget
+    ///   them; a test passes them in.
     static func fragment(routines: [Routine] = [], sessions: [ScheduledSession] = [],
                          recipes: [Recipe] = [], meals: [PlannedMeal] = [],
+                         sides: PrescriptionSides? = nil,
                          lifterID: String, coachName: String) -> String {
+        guard let json = json(routines: routines, sessions: sessions, recipes: recipes,
+                              meals: meals, sides: sides, lifterID: lifterID,
+                              coachName: coachName) else { return "" }
+        if let deflated = CompactEncoding.deflateRaw(json) {
+            return "1z" + CompactEncoding.base64URL(deflated)
+        }
+        return "1u" + CompactEncoding.base64URL(json)
+    }
+
+    /// The payload's JSON, before the envelope: what every decoder reads, and
+    /// what the tests compare. Keys sorted, so the same plan is the same text.
+    static func json(routines: [Routine] = [], sessions: [ScheduledSession] = [],
+                     recipes: [Recipe] = [], meals: [PlannedMeal] = [],
+                     sides: PrescriptionSides? = nil,
+                     lifterID: String, coachName: String) -> Data? {
+        let sides = sides ?? PrescriptionSides.load(from: routines.first?.modelContext)
         let workouts = routines.map { routine in
             PlanWorkout(n: routine.name, e: routine.orderedExercises.map { exercise in
                 PlanWorkoutExercise(
                     n: exercise.name,
                     q: exercise.equipment.isEmpty ? nil : exercise.equipment,
                     c: exercise.note,
-                    s: exercise.orderedSets.map(setTuple))
+                    s: exercise.orderedSets.map { setTuple($0, side: sides.side(of: $0)) },
+                    // Each side is `b: 1`, and absent when not -- never `0` --
+                    // so a plan without it is the same bytes it always was.
+                    b: sides.isEachSide(exercise) ? 1 : nil)
             })
         }
 
@@ -79,18 +102,20 @@ enum PlanLinkEncoder {
 
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
-        guard let json = try? encoder.encode(payload) else { return "" }
-        if let deflated = CompactEncoding.deflateRaw(json) {
-            return "1z" + CompactEncoding.base64URL(deflated)
-        }
-        return "1u" + CompactEncoding.base64URL(json)
+        return try? encoder.encode(payload)
     }
 
-    /// `[weightLb, reps, rpe, durationSec, distanceMeters]`, trailing nulls
-    /// trimmed. Leading and interior nulls stay: a conditioning piece is
+    /// `[weightLb, reps, rpe, durationSec, distanceMeters, flags]`, trailing
+    /// nulls trimmed. Leading and interior nulls stay: a conditioning piece is
     /// `[null, null, null, 600, 1600]`, and trimming those would move
     /// distance into the weight slot.
-    private static func setTuple(_ set: RoutinePrescribedSet) -> [Double?] {
+    ///
+    /// `flags` is written only for a set that names a side -- bits 1-2, `2`
+    /// left, `4` right, bit 0 always 0 -- and then every position before it is
+    /// kept: a left-side conditioning piece is `[null, null, null, 600, 1600,
+    /// 2]`. A both-sides set writes no sixth position at all, so every plan
+    /// written before sides is unchanged to the byte.
+    static func setTuple(_ set: RoutinePrescribedSet, side: SetSide?) -> [Double?] {
         var values: [Double?] = [
             set.targetWeightKg.map(kgToLb),
             set.targetReps.map(Double.init),
@@ -98,6 +123,9 @@ enum PlanLinkEncoder {
             set.targetDurationSec.map(Double.init),
             set.targetDistanceMeters,
         ]
+        if let side, let flags = PlanSetFlags.flags(sideBits: side.shareFlagBits) {
+            return values + [flags]
+        }
         while let last = values.last, last == nil { values.removeLast() }
         return values
     }

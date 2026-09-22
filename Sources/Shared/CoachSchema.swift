@@ -12,6 +12,10 @@ enum CoachSchema {
         ClientFoodEntry.self,
         Routine.self, RoutineExercise.self, RoutinePrescribedSet.self,
         ScheduledSession.self,
+        // Per-side prescriptions: Coach's own rows keyed by exercise and set
+        // id, not properties on LiftKit's shared routine models -- see
+        // PrescriptionSides.swift for why.
+        EachSideExercise.self, PrescribedSetSide.self,
         // Cook. LiftCore.FoodEntry is deliberately absent: PlannedMeal can
         // build one, but a coach plans meals rather than logging them, so
         // Coach never persists one.
