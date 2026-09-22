@@ -7,6 +7,8 @@ struct TrainView: View {
     @Query(sort: \Routine.createdAt, order: .reverse) private var routines: [Routine]
     @Query(sort: \Client.name) private var clients: [Client]
     @Query private var sessions: [ScheduledSession]
+    @Query private var eachSideRows: [EachSideExercise]
+    @Query private var sideRows: [PrescribedSetSide]
     @State private var editing: Routine?
     @State private var confirmingDelete: Routine?
     @State private var section: Section = .workouts
@@ -78,7 +80,8 @@ struct TrainView: View {
     }
 
     private var library: some View {
-        AdaptiveScrollPage { width in
+        let sides = PrescriptionSides(eachSideRows: eachSideRows, sideRows: sideRows)
+        return AdaptiveScrollPage { width in
             let columns = AdaptiveLayout.columns(for: width, maxColumns: 3)
             if routines.isEmpty {
                 LiftCard(title: "Workouts") {
@@ -101,7 +104,8 @@ struct TrainView: View {
                                 .font(.caption)
                                 .foregroundStyle(Theme.textSecondary)
                             ForEach(routine.orderedExercises) { exercise in
-                                Text("\(exercise.displayName) — \(prescription(of: exercise))")
+                                Text("\(exercise.displayName) — "
+                                     + PrescriptionText.summary(exercise, sides: sides))
                                     .font(.caption)
                                     .foregroundStyle(Theme.textPrimary)
                             }
@@ -181,29 +185,5 @@ struct TrainView: View {
         let sets = exercises.reduce(0) { $0 + $1.orderedSets.count }
         return "\(exercises.count) exercise\(exercises.count == 1 ? "" : "s") · "
              + "\(sets) set\(sets == 1 ? "" : "s")"
-    }
-
-    /// Collapses only when every set is identical — "3 × 5 @ 225". A ramp
-    /// lists its sets, because 225/225/245 has no collapsed form.
-    private func prescription(of exercise: RoutineExercise) -> String {
-        let sets = exercise.orderedSets
-        guard let first = sets.first else { return "no sets yet" }
-        let texts = sets.map(text(for:))
-        if sets.count > 1, Set(texts).count == 1 {
-            return "\(sets.count) × \(text(for: first))"
-        }
-        return texts.joined(separator: ", ")
-    }
-
-    private func text(for set: RoutinePrescribedSet) -> String {
-        var parts: [String] = []
-        if let kg = set.targetWeightKg {
-            parts.append("\(Int(PlanLinkEncoder.kgToLb(kg).rounded())) lb")
-        }
-        if let reps = set.targetReps { parts.append("\(reps)") }
-        if let rpe = set.targetRPE { parts.append("RPE \(rpe.formatted())") }
-        if let seconds = set.targetDurationSec { parts.append("\(seconds)s") }
-        if let metres = set.targetDistanceMeters { parts.append("\(Int(metres))m") }
-        return parts.isEmpty ? "—" : parts.joined(separator: " × ")
     }
 }
