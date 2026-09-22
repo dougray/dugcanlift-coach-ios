@@ -22,6 +22,13 @@ final class AdaptiveLayoutTests: XCTestCase {
         }
     }
 
+    func testTheSideControlGoesUnderTheSetAtEveryIPhonePortraitWidth() {
+        for width in [0, 320, 375, 393, 402, 430, 440] as [CGFloat] {
+            XCTAssertFalse(AdaptiveLayout.showsSideControlInline(width: width), "\(width)")
+        }
+        XCTAssertTrue(AdaptiveLayout.showsSideControlInline(width: 580))
+    }
+
     func testUnmeasuredWidthIsOneColumn() {
         XCTAssertEqual(AdaptiveLayout.columns(for: 0), 1)
         XCTAssertEqual(AdaptiveLayout.columns(for: -10), 1)
