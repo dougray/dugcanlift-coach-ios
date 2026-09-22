@@ -684,6 +684,48 @@ string reads as both rather than failing the import, and a file written before
 this restores unchanged. PLAN-FORMAT is unchanged in v1: a coach prescribes as
 before and the client chooses sides when logging.
 
+## Per-side prescriptions
+
+A coach can say an exercise is **each side** (every prescribed set done on both
+sides: "3 × 8 each side" is three rows and six sets) and that a set is for **one
+side only** (an extra set on the left). PLAN-FORMAT.md "Sides"; Coach web's
+`prescriptions.js` is the reference implementation, and its fixture
+`Tests/Fixtures/web-plan-per-side.txt` is checked in here. Never regenerate it
+from Swift.
+
+**On the wire** each side is `b: 1`, omitted when not (never `0`), and a named
+side is a sixth set-tuple position, `flags` bits 1-2 (`2` left, `4` right; read
+masked through `LiftCore.PlanSetFlags`, never compared). A both-sides set writes
+no sixth position, and only trailing nulls are trimmed, so a left conditioning
+piece is `[null, null, null, 600, 1600, 2]` and a plan without sides is
+byte-for-byte what main wrote -- `PerSidePrescriptionTests` pins that against a
+frozen copy of the old encoder.
+
+**Storage is Coach's own**: `EachSideExercise` and `PrescribedSetSide`, rows
+keyed by `RoutineExercise.id` / `RoutinePrescribedSet.id` as plain values. Not
+properties on `RoutineExercise` / `RoutinePrescribedSet`: those are LiftKit's
+shared `@Model`s, and a property there is a schema change for LIFT iOS too,
+which would have to freeze all three routine models in every version since V3.
+New entities are a lightweight migration here; installing over a real store
+(2 clients, 56 days, 4 recipes, 20 meals, 2 routines, 8 sessions) kept every
+row. The cost is the same as `ScheduledSession`'s: no cascade reaches them, so
+`deleteRoutineAndSessions` sweeps them (`PrescriptionSides.deleteAll`).
+`PlanLinkEncoder` reads them from the routines' own store when not handed them,
+so no call site can send a plan and forget its sides.
+
+**The editor**: an "Each side" toggle per exercise, pre-ticked by
+`UnilateralGuess` (LIFT web and Android's whole-word term list, not LIFT iOS's
+substring one) or by the coach's last answer for that `name|equipment`
+(`EachSideChoices`, `UserDefaults`). The Both / L / R control shows only for an
+each-side exercise, one with a sided set, or after "Set a side", so a bench
+press editor is unchanged; it sits beside the numbers from
+`AdaptiveLayout.sideControlInlineMinWidth` and under them below it. A named side
+on a lift that is not each side is allowed -- it means that set is single-limb.
+
+**Backup**: `eachSide: true` on an exercise and `side: "left" | "right"` on a
+prescribed set, each omitted otherwise, read leniently (junk is not / both).
+`WebLibraryImporter` reads Coach web's same spellings.
+
 ## Saturated fat, sugar and sodium
 
 Tracked and shown, **never targeted**: no goal, bar or colour anywhere
