@@ -40,6 +40,11 @@ enum AdaptiveLayout {
     /// -- an iPad in portrait, a mid-size Stage Manager window -- the sidebar
     /// starts hidden so the content keeps the width.
     static let pinnedSidebarMinWindowWidth: CGFloat = 1100
+    /// The workout editor's Both / L / R control sits beside a set's numbers
+    /// from this width, and on a line of its own under them below it, where a
+    /// fourth control would squeeze three number fields to nothing. Wider
+    /// than every iPhone in portrait.
+    static let sideControlInlineMinWidth: CGFloat = 560
 
     /// How many columns of at least `minColumnWidth` fit in `width`, clamped
     /// to `1...maxColumns`. Zero or negative width -- a view not yet measured
@@ -61,6 +66,11 @@ enum AdaptiveLayout {
     /// Whether the client page puts sessions in a column of their own.
     static func showsSideColumn(width: CGFloat) -> Bool {
         width >= sideColumnMinContentWidth
+    }
+
+    /// Whether the editor's side control fits in the set's own row.
+    static func showsSideControlInline(width: CGFloat) -> Bool {
+        width >= sideControlInlineMinWidth
     }
 
     /// The content width a page gets inside a container `containerWidth`
