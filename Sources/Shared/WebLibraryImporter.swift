@@ -99,6 +99,11 @@ enum WebLibraryImporter {
                 target.note = (exercise.note?.isEmpty == false) ? exercise.note : nil
                 target.routine = routine
                 context.insert(target)
+                // `eachSide: true` and a set's `side`, Coach web's spellings
+                // (BACKUP-FORMAT.md, "The Coach backup's workouts").
+                if exercise.eachSide == true {
+                    context.insert(EachSideExercise(exerciseID: target.id))
+                }
                 for (order, set) in (exercise.sets ?? []).enumerated() {
                     let prescribed = RoutinePrescribedSet(orderIndex: order)
                     // The web store is POUNDS. RoutinePrescribedSet is
@@ -111,6 +116,9 @@ enum WebLibraryImporter {
                     prescribed.targetDistanceMeters = set.distanceM
                     prescribed.exercise = target
                     context.insert(prescribed)
+                    if let side = SetSide.fromBackup(set.side) {
+                        context.insert(PrescribedSetSide(setID: prescribed.id, side: side))
+                    }
                 }
             }
             summary.routines += 1
@@ -242,6 +250,19 @@ enum WebLibraryImporter {
         let equipment: String?
         let note: String?
         let sets: [WebSet]?
+        /// Only `true` is each side; anything else, or junk, is not.
+        let eachSide: Bool?
+
+        private enum CodingKeys: String, CodingKey { case name, equipment, note, sets, eachSide }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            name = try c.decode(String.self, forKey: .name)
+            equipment = try c.decodeIfPresent(String.self, forKey: .equipment)
+            note = try c.decodeIfPresent(String.self, forKey: .note)
+            sets = try c.decodeIfPresent([WebSet].self, forKey: .sets)
+            eachSide = (try? c.decodeIfPresent(Bool.self, forKey: .eachSide)) ?? nil
+        }
     }
 
     /// `distanceM`, not `distanceMeters` -- the web store's own spelling.
@@ -251,6 +272,20 @@ enum WebLibraryImporter {
         let rpe: Double?
         let durationSec: Int?
         let distanceM: Double?
+        /// `"left"` / `"right"`, absent when both. Junk reads as both.
+        let side: String?
+
+        private enum CodingKeys: String, CodingKey { case weightLb, reps, rpe, durationSec, distanceM, side }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            weightLb = try c.decodeIfPresent(Double.self, forKey: .weightLb)
+            reps = try c.decodeIfPresent(Int.self, forKey: .reps)
+            rpe = try c.decodeIfPresent(Double.self, forKey: .rpe)
+            durationSec = try c.decodeIfPresent(Int.self, forKey: .durationSec)
+            distanceM = try c.decodeIfPresent(Double.self, forKey: .distanceM)
+            side = (try? c.decodeIfPresent(String.self, forKey: .side)) ?? nil
+        }
     }
 
     private struct WebSession: Decodable {

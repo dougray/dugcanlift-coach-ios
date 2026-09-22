@@ -73,6 +73,31 @@ enum BackupCodec {
         var equipment: String
         var note: String?
         var sets: [BackupPrescribedSet]
+        /// `true` on an exercise done each side, **omitted when not** -- never
+        /// `false` (BACKUP-FORMAT.md, "The Coach backup's workouts"; Coach
+        /// web's and Android's spelling). Anything but `true` reads as not,
+        /// rather than failing the restore, and a file written before sides
+        /// has no key and restores as it always did.
+        var eachSide: Bool?
+
+        private enum CodingKeys: String, CodingKey { case name, equipment, note, sets, eachSide }
+
+        init(name: String, equipment: String, note: String?, sets: [BackupPrescribedSet], eachSide: Bool) {
+            self.name = name
+            self.equipment = equipment
+            self.note = note
+            self.sets = sets
+            self.eachSide = eachSide ? true : nil
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            name = try c.decode(String.self, forKey: .name)
+            equipment = try c.decode(String.self, forKey: .equipment)
+            note = try c.decodeIfPresent(String.self, forKey: .note)
+            sets = try c.decode([BackupPrescribedSet].self, forKey: .sets)
+            eachSide = (try? c.decodeIfPresent(Bool.self, forKey: .eachSide)) == true ? true : nil
+        }
     }
 
     /// Kilograms, as stored. This file is Coach's own, not the wire, so there
@@ -83,6 +108,35 @@ enum BackupCodec {
         var targetRPE: Double?
         var targetDurationSec: Int?
         var targetDistanceMeters: Double?
+        /// `"left"` or `"right"` on a set prescribed for one side, **omitted
+        /// entirely when both** -- the spelling a logged set uses here. An
+        /// unrecognised value, or one that is not a string, reads as both.
+        var side: String?
+
+        private enum CodingKeys: String, CodingKey {
+            case targetWeightKg, targetReps, targetRPE, targetDurationSec, targetDistanceMeters, side
+        }
+
+        init(targetWeightKg: Double?, targetReps: Int?, targetRPE: Double?,
+             targetDurationSec: Int?, targetDistanceMeters: Double?, side: SetSide?) {
+            self.targetWeightKg = targetWeightKg
+            self.targetReps = targetReps
+            self.targetRPE = targetRPE
+            self.targetDurationSec = targetDurationSec
+            self.targetDistanceMeters = targetDistanceMeters
+            self.side = side?.backupValue
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            targetWeightKg = try c.decodeIfPresent(Double.self, forKey: .targetWeightKg)
+            targetReps = try c.decodeIfPresent(Int.self, forKey: .targetReps)
+            targetRPE = try c.decodeIfPresent(Double.self, forKey: .targetRPE)
+            targetDurationSec = try c.decodeIfPresent(Int.self, forKey: .targetDurationSec)
+            targetDistanceMeters = try c.decodeIfPresent(Double.self, forKey: .targetDistanceMeters)
+            side = SetSide.fromBackup((try? c.decodeIfPresent(String.self, forKey: .side)) ?? nil)?
+                .backupValue
+        }
     }
 
     private struct BackupSession: Codable {
@@ -239,6 +293,7 @@ enum BackupCodec {
         let routines = try context.fetch(FetchDescriptor<Routine>())
         let sessions = try context.fetch(FetchDescriptor<ScheduledSession>())
         let owners = MealOwners.load(from: defaults)
+        let sides = PrescriptionSides.load(from: context)
 
         let backup = Backup(v: 2, clients: clients.map { client in
             BackupClient(
@@ -305,8 +360,9 @@ enum BackupCodec {
                                       sets: exercise.orderedSets.map { set in
                     BackupPrescribedSet(targetWeightKg: set.targetWeightKg, targetReps: set.targetReps,
                                         targetRPE: set.targetRPE, targetDurationSec: set.targetDurationSec,
-                                        targetDistanceMeters: set.targetDistanceMeters)
-                })
+                                        targetDistanceMeters: set.targetDistanceMeters,
+                                        side: sides.side(of: set))
+                }, eachSide: sides.isEachSide(exercise))
             })
         }, sessions: sessions.map { session in
             BackupSession(id: session.id, clientID: session.clientID, dayKey: session.dayKey,
@@ -442,6 +498,9 @@ enum BackupCodec {
                                                orderIndex: index, note: exerciseRow.note)
                 exercise.routine = routine
                 context.insert(exercise)
+                if exerciseRow.eachSide == true {
+                    context.insert(EachSideExercise(exerciseID: exercise.id))
+                }
                 for (order, setRow) in exerciseRow.sets.enumerated() {
                     let set = RoutinePrescribedSet(orderIndex: order, targetWeightKg: setRow.targetWeightKg,
                                                    targetReps: setRow.targetReps, targetRPE: setRow.targetRPE,
@@ -449,6 +508,9 @@ enum BackupCodec {
                                                    targetDistanceMeters: setRow.targetDistanceMeters)
                     set.exercise = exercise
                     context.insert(set)
+                    if let side = SetSide.fromBackup(setRow.side) {
+                        context.insert(PrescribedSetSide(setID: set.id, side: side))
+                    }
                 }
             }
         }
