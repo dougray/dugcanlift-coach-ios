@@ -45,6 +45,9 @@ extension ScheduledSession {
         for session in sessions where session.routineID == routine.id {
             context.delete(session)
         }
+        // Its prescribed sides hold ids, not relationships, for the same
+        // reason sessions do; no cascade reaches them either.
+        PrescriptionSides.deleteAll(for: routine, in: context)
         context.delete(routine)
     }
 
