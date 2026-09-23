@@ -565,6 +565,22 @@ same file LIFT bundles. Item ids are the whole contract, so the copies must not
 drift: edit it in the kit and copy it here, never here alone. It is app-side
 rather than in `LiftReference` for the reason `rf` is app-side.
 
+`Resources/road-food.sha256` is the kit's checksum of those bytes, copied across
+with the JSON, and `RoadPicksTests.testTheBundledFileIsTheKitsBytes` hashes
+**what the test bundle actually holds** and asserts it matches. Every other
+check there is on what the data *means* — ids resolve, the dated charts carry
+their dates — and a copy several chains behind passes all of them. That matters
+here more than anywhere: an id the client's build does not have is skipped in
+silence by design, so a coach on a stale copy is a coach whose picks vanish on
+the client's phone with nothing said.
+
+**When that test fails**, copy `road-food.json` *and* `road-food.sha256` from
+`dugcanlift-kit/data/` over together. Never edit either file here, and never
+re-write the checksum by hand to make the test pass: the kit writes it with
+`node data/validate-road-food.mjs --write-checksum`, and the other four app
+repos pin the same one, so a hand-written hash only moves the failure somewhere
+further away.
+
 ## Backups
 
 `BackupCodec` is **v2** and carries the whole library. v1 carried only clients,
