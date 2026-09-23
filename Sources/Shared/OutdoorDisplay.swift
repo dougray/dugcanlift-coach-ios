@@ -118,6 +118,19 @@ enum OutdoorDisplay {
         "\(distanceText(meters: Double(activity.distanceMeters), unit: unit)) · \(durationOrDash(activity.durationSec))"
     }
 
+    /// "Sep 20" -- the day a Recent row happened, as a person writes it.
+    ///
+    /// A port of Coach Android's `formatShortDay`, down to its fallback: a key
+    /// that does not parse is printed as it stands rather than vanishing, so a
+    /// row never loses its date. The day log and the Weeks table deliberately
+    /// keep the raw key, because Android's do too -- a dense list of days reads
+    /// as a column of keys in both, and that string changes in both builds or
+    /// in neither.
+    static func shortDayText(_ dayKey: String) -> String {
+        guard let date = DayKey.date(from: dayKey) else { return dayKey }
+        return date.formatted(.dateTime.month(.abbreviated).day())
+    }
+
     private static func unitMeters(_ unit: String) -> Double {
         unit == "km" ? 1000 : metersPerMile
     }

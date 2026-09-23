@@ -210,4 +210,16 @@ final class OutdoorDisplayTests: XCTestCase {
         let weighIn = TrainingDay(client: nil, dayKey: "2026-09-14", bodyweightLb: 200)
         XCTAssertEqual(ClientDisplay.sessionDays([weighIn, run]).map(\.dayKey), ["2026-09-13"])
     }
+
+    /// The Recent card's date, which Coach Android has always written as
+    /// "Sep 20" (`formatShortDay`) while Coach iPhone printed the raw key.
+    /// Its fallback is Android's too: a key that does not parse is printed as
+    /// it stands rather than leaving a row with no date at all.
+    func testARecentRowSaysItsDayTheWayAPersonWritesOne() {
+        let formatted = OutdoorDisplay.shortDayText("2026-09-20")
+        XCTAssertNotEqual(formatted, "2026-09-20")
+        XCTAssertFalse(formatted.contains("-"), formatted)
+        XCTAssertEqual(OutdoorDisplay.shortDayText("not a day"), "not a day")
+        XCTAssertEqual(OutdoorDisplay.shortDayText(""), "")
+    }
 }
