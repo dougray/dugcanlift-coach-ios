@@ -1,0 +1,41 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dugcanlift-site",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8766",
+        "--directory",
+        "/Users/dougcopeland/Projects/dugcanlift-site"
+      ],
+      "port": 8766
+    },
+    {
+      "name": "dugcanlift-coach",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8767",
+        "--directory",
+        "/Users/dougcopeland/Projects/dugcanlift-coach"
+      ],
+      "port": 8767
+    },
+    {
+      "name": "site-build",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8768",
+        "--directory",
+        "/private/tmp/claude-501/-Users-dougcopeland-Projects-coach-ios/7f3ca5f8-35b1-4d94-844f-d42351be947a/scratchpad/site"
+      ],
+      "port": 8768
+    }
+  ]
+}
