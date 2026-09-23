@@ -386,6 +386,22 @@ result down — `CookPlanView`'s `mealRow` alone is called 7 days x 4 meal
 types = 28 times per render, and the map was being decoded on every one of
 those calls before review.
 
+**A test that takes the default `defaults:` writes into the shipped app.**
+`BackupCodec.restore`/`export` and `WebLibraryImporter.importLibrary` default
+`defaults:` to `UserDefaults.standard`, and `CoachTests` is hosted by the Coach
+app — so `.standard` in a test *is* the installed app's own preference domain
+on the simulator, not a sandbox. A `make test` run left a `cookPlanOwners`
+entry mapping a UUID that matches no `PlannedMeal` to the fixtures' client id
+`"a1b2c3d4"` in the app a coach actually uses, where nothing would ever clean
+it up. Every `BackupCodec` and `importLibrary` call in a test passes an
+isolated suite instead — `export` too, because it *reads* the map and would
+otherwise pull the real app's into an exported payload. Each test file that
+calls them has an `isolatedDefaults()` helper naming a suite after `#function`,
+clearing it, and registering its own `addTeardownBlock`. The rule is "no test
+call takes the default", not "isolate the ones that write": the defaulted
+parameter warns about nothing, and the defect reached a newly written test file
+on its own before it was caught.
+
 **Shopping ticks belong to one client.** `LiftCore.ShoppingListCheck` is keyed
 by item name alone, because on LIFT the list has one owner; in Coach that made a
 tick for one client a tick for all of them. Coach stores `ClientShoppingCheck`
