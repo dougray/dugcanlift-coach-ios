@@ -84,6 +84,12 @@ struct CookPlanView: View {
             // Road picks travel in the same link, so a coach whose only answer
             // this week is "these are fine on the road" still has a send.
             if !mineMeals.isEmpty || !roadPicks.isEmpty {
+                // Deliberately not recorded as a sent plan: a food-only send
+                // books no day, so it would show as no group on the client
+                // page's Booked card while taking one of the 26 rows kept per
+                // client. Coach Android leaves Cook's send alone for the same
+                // reason, and `PlanLinkEncoder.recordSend` holds the rule so
+                // no screen has to remember it.
                 ShareLink(item: shareLink) { Text("Send this week") }
                     .tint(Theme.accent)
                 Text(contentsLabel(mineCount: mineMeals.count, pickCount: roadPicks.count))
