@@ -606,6 +606,98 @@ shared `MealOwners` helper: `PlannedMeal` has no client field of its own (see
 a restored or imported meal with no entry in that map is stored in SwiftData
 but permanently invisible to every screen that reads it.
 
+## Booked — what you sent, beside what they logged
+
+`PlanAndLog` puts the week a coach sent beside the week the client logged, on
+the client page above Sessions. **Coach web's `coach/plan-log.js` is the
+reference implementation**, as `sides.js` and `prescriptions.js` are; this is a
+port of it, and `Tests/Fixtures/plan-log-sent-plan.json`,
+`plan-log-share-link.txt` and `plan-log-expected.json` are web's own fixture
+pair, copied unchanged. **Never regenerate them from Swift** — a fixture
+regenerated from the code under test proves only that the code agrees with
+itself, and Coach Android checks its port against the same three files.
+
+**Counting is allowed; grading is not.** No score, no percentage, no colour on
+an absence, no roster column, nothing carried across weeks and nothing
+comparing one client to another. The words are `not logged`, never "missed" or
+"skipped": a client may have trained and not sent, been ill, or been told to
+rest, and Coach cannot tell those apart. `outside the log they sent` is a
+fourth state and exists so the third is never claimed wrongly. The word
+"adherence" never reaches a screen — it is the name of the spec. `lines(_:)`
+flattens every sentence the card can produce so
+`testNothingInThisCardTellsACoachWhatToDo` and
+`testNothingHereAggregatesAClientIntoAScore` can read them as strings, the
+shape `PerLimbTests.testNothingInTheseLinesTellsACoachWhatToDo` already uses.
+**The roster's protein percentage stays**, deliberately: a goal the client set
+for themselves can be measured against and coloured; a plan the coach wrote is
+counted and never graded.
+
+**Days join on client and date, and nothing else.** A session lifted the day
+after the one it was booked for is a booked day with nothing logged plus a
+session of its own; the two sit next to each other on screen and Coach claims
+no connection between them. Exercises join on name and equipment, then on name
+alone over what is left — the substitution, paired and labelled ("Asked Barbell
+· logged Smith machine"). Sets are counted, never paired one to one: if they
+did three of four, Coach cannot say which one they dropped. **Both rows come
+from pounds**, converted once through `ClientDisplay`; never from a
+`RoutinePrescribedSet`, which stores kilograms. A day row carries its month
+("Mon 12 Oct"); the head line's range does not repeat it. The locale is the
+reader's, as `RoadFoodDates` already decided, and the tests pin one only so
+they can assert a string.
+
+**`SentPlan` is the record that makes it possible.** Coach built a plan link
+fresh on every render and handed it straight to a `ShareLink`, so once a
+template was edited the store no longer said what the client got. One row per
+send: the payload as JSON exactly as encoded, with the canonical SHA-256 of it;
+a send whose hash matches this client's newest send replaces that row and keeps
+its id; newest 26 per client. Coach's own `@Model`, like `ScheduledSession` —
+nothing in LiftKit moves, so LIFT iOS's schema is untouched.
+
+**`PlanLinkEncoder.recordSend` is the one call that writes**, so a screen that
+sends a plan cannot forget to record it — the rule `json` already follows for
+prescribed sides. `fragment`/`json` stay side-effect-free, because a size note
+and a `.task(id:)` re-encode on every render and recording from there would
+file a plan nobody sent. **Train's "Send this week" is a `Button` that records
+and then presents the system share sheet**, not a `ShareLink`: `ShareLink` has
+no action of its own, and a `.simultaneousGesture` beside it would fail
+silently — the sheet would still open, the plan would still go, and Coach would
+record nothing. **A send that books no day is not recorded at all**: Cook's
+week and "Send programme" book nothing, would show as no group on the card, and
+would take one of the 26 rows. Coach Android draws the line in the same place,
+so the three builds hold the same rows.
+
+**Two facts the browser already had and this app did not.**
+`ExerciseSet.orderIndex` is the wire's own order, which the importer had in its
+hand and dropped — `day.sets` is an unordered to-many, so without it Coach
+cannot say which logged set was the third. `Client.coveredFrom`/`coveredTo` is
+`r`..`t`, the window the client chose to send, unioned across links (Coach
+web's `absorb` rule, whose cost is stated: a gap between two windows reads as
+covered). Without it a booked Tuesday with no `TrainingDay` cannot be told from
+one outside what the client sent, and one of those is "not logged" while the
+other is "we do not know". Both are optional with no default on models Coach
+owns: a lightweight migration, **checked by installing the new build over a
+real store** (2 clients, 8 days, 40 sets, a goal each) — every row and value
+identical, the two new columns and `orderIndex` NULL on every existing row, and
+`ZSENTPLAN` created empty. Nil `orderIndex` prints both rows and aligns
+nothing, which is what the card does with them anyway, and days are replaced
+whole by the next link, so it heals in a week. The names `coveredFrom` and
+`coveredTo` are the spec's and Coach Android's, in the backup's client
+envelope, so one file moves between the three builds.
+
+In a backup it is **`sentPlans`** (BACKUP-FORMAT.md), five fields under Coach
+web's and Coach Android's spelling — `clientId`, `sentAt`, `payloadHash`, and
+`payload` **as the object it is**, never escaped text. Merged by id and never
+deleted by an older file — the library half's rule, not the roster's — with the
+26-row cap applied after the merge. `WebLibraryImporter` reads the same key out
+of a Coach web backup, so a coach who plans in the browser carries the record
+across. A set's `orderIndex` rides along, written only when it is known, and
+sets are written in log order anyway so a reader that ignores the key still
+sees the day as it happened.
+
+**Meals are not compared**, now or as a follow-up (decided 2026-09-23). The
+payload is stored whole so the same machinery could be pointed at `m` later,
+but food is where "never targeted" is at its sharpest.
+
 ## Removing a client
 
 A coach can remove a client, which the privacy policy
@@ -620,10 +712,14 @@ for case.
 
 **What goes:** the `Client` and, by SwiftData's cascade rules, its `Goal`, its
 `TrainingDay`s and through those every `ExerciseSet` and `ClientFoodEntry` —
-plus the three kinds of row that name a client as a plain value, which no
+plus the four kinds of row that name a client as a plain value, which no
 cascade reaches: `ScheduledSession`s booked for them, `PlannedMeal`s owned by
 them through the `cookPlanOwners` map (swept through `MealOwners`, and only
-after the store commits), and their `ClientShoppingCheck` ticks. **Recipes and
+after the store commits), their `ClientShoppingCheck` ticks, and their
+`SentPlan` rows -- a payload addressed to one person, readable on no screen
+once they are gone, and otherwise riding in every backup; a row in this store
+rather than a `UserDefaults` side-car, so it goes inside the one save and rolls
+back with everything else. **Recipes and
 routines stay** — the coach's own library. It is one `save()`: a failure rolls
 back whole and says "Nothing was changed", so there is no half-removed client.
 Android's third outcome flag, `problem`, has no analogue here, because its two
@@ -631,8 +727,10 @@ JSON library files can be unreadable one at a time and one SwiftData store
 cannot.
 
 **The confirmation is Coach Android's sentence, word for word**, counts and
-all, including its two rules about zero: the logged-day count is always said,
-even when it is none; a planned-meal or booked-session count is left out
+all -- sent plans and road picks are both outside it, for the same reason: it
+was written before either existed, so it gains a clause in all three Coach
+builds at once or in none. Including its two rules about zero: the logged-day
+count is always said, even when it is none; a planned-meal or booked-session count is left out
 entirely when it is zero. Coach web asks a shorter question and deletes less
 (it orphans its plans and sessions in local storage); Android is the deliberate
 upgrade and iOS follows Android. `ClientRemovalTests` pins both full sentences.
