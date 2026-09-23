@@ -544,6 +544,22 @@ holds that, a value type with no view in it for the reason `MacroFields` is.
 Coach build says anything about staleness, so this line gains a clause in all
 three or in none.
 
+**A date a coach reads is written the way a person writes one.**
+`RoadFoodDates` formats `checkedOn` and `publishedOn` -- "Checked Sep 20, 2026",
+"Published Nov 2022" -- rather than echoing the ISO key, which is a wire shape.
+A document that names only a month is printed only to the month: no day is
+invented for the reader, the rule LIFT web's `roadDocDate` and LIFT Android's
+`publishedLabel` both hold. **The locale is the reader's**, because none of the
+three LIFT builds pins en-US either (`toLocaleDateString(undefined, ...)`,
+`Locale.getDefault()`, `Locale.current`); the tests pin one only so they can
+assert a string. A value that is not `YYYY-MM-DD` or `YYYY-MM` reads as no date
+at all and its clause is left out, as LIFT iPhone and LIFT Android both do --
+only LIFT web prints "Invalid Date", and that is the web's bug, not a shape to
+copy. The day log, the Weeks table and the nutrient headings keep the raw key
+on purpose: Coach Android's print it raw too, and those strings change in both
+builds or in neither. The outdoor Recent row does not -- Android formats that
+one (`formatShortDay`), so `OutdoorDisplay.shortDayText` does.
+
 `Resources/road-food.json` is a verbatim copy of `dugcanlift-kit/data/`, the
 same file LIFT bundles. Item ids are the whole contract, so the copies must not
 drift: edit it in the kit and copy it here, never here alone. It is app-side
