@@ -253,5 +253,71 @@ final class ShareLinkImporterTests: XCTestCase {
         XCTAssertEqual(client.name, "New Name")
         XCTAssertEqual(client.goal?.calories, 2_300)
     }
-}
 
+    // MARK: - The order a day was logged in, and the window a client sent
+
+    /// The wire's sets arrive in log order and used to be dropped into an
+    /// unordered to-many, so Coach could not say which logged set was the
+    /// third. One running index across the day keeps the exercises in order
+    /// too.
+    func testTheImporterKeepsTheOrderTheWireSentSetsIn() throws {
+        let context = try makeContext()
+        let squats = WireWorkoutEntry(exerciseIndex: 0, sets: [[225, 5], [225, 5], [245, 3]])
+        let press = WireWorkoutEntry(exerciseIndex: 1, sets: [[95, 8]])
+        let day = WireDay(k: 0, n: nil, fo: nil, bw: nil, st: nil, w: [squats, press],
+                          ft: nil, f: nil)
+        var wire = payload(days: [day])
+        wire = ShareLinkPayload(v: wire.v, c: wire.c, g: wire.g, r: wire.r, t: wire.t, z: wire.z,
+                                x: ["Back Squat|Barbell", "Overhead Press|Barbell"], fd: wire.fd,
+                                d: wire.d)
+        try ShareLinkImporter.importPayload(wire, into: context)
+
+        let sets = try context.fetch(FetchDescriptor<ExerciseSet>())
+            .sorted { ($0.orderIndex ?? .max) < ($1.orderIndex ?? .max) }
+        XCTAssertEqual(sets.map(\.orderIndex), [0, 1, 2, 3])
+        XCTAssertEqual(sets.map(\.weightLb), [225, 225, 245, 95])
+    }
+
+    /// A day replaced by a later link is renumbered from scratch, as the
+    /// whole day is replaced.
+    func testReplacingADayRenumbersItsSets() throws {
+        let context = try makeContext()
+        let first = WireWorkoutEntry(exerciseIndex: 0, sets: [[225, 5], [225, 5]])
+        try ShareLinkImporter.importPayload(payload(days: [
+            WireDay(k: 0, n: nil, fo: nil, bw: nil, st: nil, w: [first], ft: nil, f: nil)]),
+                                            into: context)
+        let again = WireWorkoutEntry(exerciseIndex: 0, sets: [[245, 3]])
+        try ShareLinkImporter.importPayload(payload(days: [
+            WireDay(k: 0, n: nil, fo: nil, bw: nil, st: nil, w: [again], ft: nil, f: nil)]),
+                                            into: context)
+        let sets = try context.fetch(FetchDescriptor<ExerciseSet>())
+        XCTAssertEqual(sets.map(\.orderIndex), [0])
+        XCTAssertEqual(sets.map(\.weightLb), [245])
+    }
+
+    /// `r`..`t` is what the client chose to send, and it is the union across
+    /// links -- so a booked day with no `TrainingDay` can be told from a day
+    /// outside the window at all.
+    func testTheCoveredWindowIsTheUnionOfEveryLink() throws {
+        let context = try makeContext()
+        try ShareLinkImporter.importPayload(payload(r: "2026-09-01", days: []), into: context)
+        let client = try XCTUnwrap(context.fetch(FetchDescriptor<Client>()).first)
+        XCTAssertEqual(client.covered, CoveredRange(from: "2026-09-01", to: "2026-09-10"))
+
+        // An older link pasted late widens the window backwards; it never
+        // narrows it, and it is not gated on the newest-send rule.
+        try ShareLinkImporter.importPayload(payload(r: "2026-08-01", days: []), into: context)
+        XCTAssertEqual(client.covered, CoveredRange(from: "2026-08-01", to: "2026-09-10"))
+    }
+
+    /// A client imported before Coach recorded a window has none, which is
+    /// "we do not know" -- never "they logged nothing".
+    func testAClientWithNoWindowRecordedHasNone() throws {
+        let context = try makeContext()
+        try ShareLinkImporter.importPayload(payload(days: []), into: context)
+        let client = try XCTUnwrap(context.fetch(FetchDescriptor<Client>()).first)
+        client.coveredFrom = nil
+        client.coveredTo = nil
+        XCTAssertNil(client.covered)
+    }
+}

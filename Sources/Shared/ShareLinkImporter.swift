@@ -61,6 +61,16 @@ enum ShareLinkImporter {
             client.exportedAtEpochSec = payload.z
         }
 
+        // The window this link covers, folded into what the client has sent
+        // before. Not gated on `isNewest`: an older link still proves the
+        // client sent those days, and a union of the two is what Coach web
+        // keeps (`absorb`). Without it a booked Tuesday with no `TrainingDay`
+        // could not be told from a Tuesday outside what the client chose to
+        // send, and one of those is "not logged" while the other is "we do
+        // not know" -- see `PlanAndLog`.
+        client.covered = ClientCoverage.absorbed(
+            existing: client.covered, link: CoveredRange(from: payload.r, to: payload.t))
+
         for wireDay in payload.d {
             guard let dayKey = DayKey.adding(days: wireDay.k, to: payload.r) else { continue }
             try replaceDay(wireDay, dayKey: dayKey, exerciseDict: payload.x, foodDict: payload.fd,
@@ -101,6 +111,12 @@ enum ShareLinkImporter {
         context.insert(day)
         client.trainingDays.append(day)
 
+        // The order the client logged the day in, which arrives in `w` and
+        // used to be dropped on the floor: `day.sets` is an unordered
+        // to-many, so without it Coach cannot say which logged set was the
+        // third. One running index across the whole day, so the exercises keep
+        // their order too.
+        var orderIndex = 0
         for entry in wireDay.w ?? [] {
             guard exerciseDict.indices.contains(entry.exerciseIndex) else { continue }
             let parts = exerciseDict[entry.exerciseIndex].split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false)
@@ -128,8 +144,10 @@ enum ShareLinkImporter {
                     // Absent is both: a link written before per-limb logging
                     // has no flags byte at all, and every set in it is a set
                     // whose side nobody recorded.
-                    side: SetFlags.side(flags)
+                    side: SetFlags.side(flags),
+                    orderIndex: orderIndex
                 )
+                orderIndex += 1
                 context.insert(set)
                 day.sets.append(set)
             }
