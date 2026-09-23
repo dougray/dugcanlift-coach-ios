@@ -323,6 +323,29 @@ final class SentPlanTests: XCTestCase {
         XCTAssertTrue(blankDay.sets.allSatisfy { $0.orderIndex == nil })
     }
 
+    /// Coach web's restore skips a row missing an id, a client or a payload
+    /// and keeps going. A record of one send is not worth failing a file that
+    /// also carries the roster.
+    func testAMalformedSentPlanRowIsSkippedRatherThanFailingTheFile() throws {
+        let context = try context()
+        let defaults = isolatedDefaults("sentplans.lenient")
+        let file = """
+        {"v":2,"clients":[{"id":"c","name":"Sam","displayUnit":"lb","days":[]}],
+         "sentPlans":[
+           {"clientId":"c","sentAt":1,"payload":{"v":1}},
+           {"id":"not-a-uuid","clientId":"c","sentAt":2,"payloadHash":"",
+            "payload":{"v":1,"t":"plan","l":"c","k":[]}},
+           {"id":"3f2a0c1e-5b7d-4a2f-9c11-0e5d7b3a1f24","clientId":"c","sentAt":3,
+            "payloadHash":"h","payload":{"v":1,"t":"plan","l":"c"}}]}
+        """
+        try BackupCodec.restore(from: Data(file.utf8), into: context, defaults: defaults)
+
+        // The roster restored, and the two readable rows with it.
+        XCTAssertEqual(try context.fetch(FetchDescriptor<Client>()).count, 1)
+        XCTAssertEqual(SentPlans.forClient("c", in: context).map(\.sentAtEpochSec), [3, 2],
+                       "the row with no id at all is the only one dropped")
+    }
+
     // MARK: - Removing a client
 
     func testARemovalTakesTheClientsSentPlansAndLeavesEveryoneElses() throws {
