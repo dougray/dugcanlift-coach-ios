@@ -23,6 +23,11 @@ struct CookPlanView: View {
     /// week it was placed in. Held here rather than added to the package
     /// model, which would be a schema change for a shipped app.
     @AppStorage("cookPlanOwners") private var ownersData = Data()
+    /// The client's road picks ride in this same link (PLAN-FORMAT.md "Road
+    /// picks"), which is why they are read here and are part of the rebuild
+    /// key: a pick ticked in Cook → Road must change the link this screen
+    /// hands to Share, or the coach sends last week's answer.
+    @AppStorage(RoadPicks.key) private var roadPicksData = Data()
 
     private var days: [String] { PlanWeek(startDayKey: weekStart).days }
 
@@ -76,10 +81,12 @@ struct CookPlanView: View {
                 }
             }
 
-            if !mineMeals.isEmpty {
+            // Road picks travel in the same link, so a coach whose only answer
+            // this week is "these are fine on the road" still has a send.
+            if !mineMeals.isEmpty || !roadPicks.isEmpty {
                 ShareLink(item: shareLink) { Text("Send this week") }
                     .tint(Theme.accent)
-                Text(contentsLabel(mineCount: mineMeals.count))
+                Text(contentsLabel(mineCount: mineMeals.count, pickCount: roadPicks.count))
                     .font(.caption)
                     .foregroundStyle(Theme.textSecondary)
                     .frame(maxWidth: AdaptiveLayout.readableWidth, alignment: .leading)
@@ -254,6 +261,9 @@ struct CookPlanView: View {
         let coachName: String
         let bookings: [Booking]
         let recipes: [Inlined]
+        /// The ids as sent, in order: a pick ticked, unticked or re-ordered
+        /// is a different link.
+        let roadPicks: [String]
 
         struct Booking: Equatable { let day: String; let slot: String; let recipeID: UUID; let servings: Double }
         struct Inlined: Equatable {
@@ -265,7 +275,8 @@ struct CookPlanView: View {
     }
 
     static func rebuildKey(clientID: String, weekStart: String, coachName: String,
-                           mine: [PlannedMeal], used: [Recipe]) -> RebuildKey {
+                           mine: [PlannedMeal], used: [Recipe],
+                           roadPicks: [String] = []) -> RebuildKey {
         RebuildKey(
             clientID: clientID, weekStart: weekStart, coachName: coachName,
             bookings: mine.map { .init(day: $0.dayKey, slot: $0.mealType.rawValue,
@@ -281,27 +292,44 @@ struct CookPlanView: View {
                       ingredients: (recipe.ingredients ?? [])
                           .sorted { $0.sortOrder < $1.sortOrder }.map(\.rawText),
                       steps: recipe.steps)
-            })
+            },
+            roadPicks: roadPicks)
     }
 
     private func rebuildKey(mine: [PlannedMeal], used: [Recipe]) -> RebuildKey {
         Self.rebuildKey(clientID: clientID, weekStart: weekStart, coachName: coachName,
-                        mine: mine, used: used)
+                        mine: mine, used: used, roadPicks: roadPicks)
     }
 
     private var coachName: String {
         PlanLinkEncoder.coachName(UserDefaults.standard.string(forKey: "coachName"))
     }
 
-    private func contentsLabel(mineCount: Int) -> String {
-        "\(mineCount) meal\(mineCount == 1 ? "" : "s") this week. "
+    private func contentsLabel(mineCount: Int, pickCount: Int) -> String {
+        var parts: [String] = []
+        if mineCount > 0 || pickCount == 0 {
+            parts.append("\(mineCount) meal\(mineCount == 1 ? "" : "s") this week")
+        }
+        if pickCount > 0 {
+            parts.append("\(pickCount) road pick\(pickCount == 1 ? "" : "s")")
+        }
+        return parts.joined(separator: " and ") + ". "
              + "Nothing in that link goes to a server — it travels in the part of the "
              + "address browsers never send."
     }
 
     private func link(mine: [PlannedMeal], used: [Recipe]) -> String {
         let fragment = PlanLinkEncoder.fragment(
-            recipes: used, meals: mine, lifterID: clientID, coachName: coachName)
+            recipes: used, meals: mine, roadPicks: roadPicks,
+            lifterID: clientID, coachName: coachName)
         return "https://www.dugcanlift.com/lift/#" + fragment
+    }
+
+    /// This client's picks, read from the same bytes `RoadPicksView` writes.
+    private var roadPicks: [String] {
+        guard !clientID.isEmpty,
+              let map = try? JSONDecoder().decode([String: [String]].self, from: roadPicksData)
+        else { return [] }
+        return RoadPicks.normalise(map[clientID] ?? [])
     }
 }

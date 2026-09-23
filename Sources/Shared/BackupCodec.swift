@@ -19,6 +19,12 @@ enum BackupCodec {
         var meals: [BackupMeal]?
         var routines: [BackupRoutine]?
         var sessions: [BackupSession]?
+        /// The Road Food items a coach has marked for each client, keyed by
+        /// client id (BACKUP-FORMAT.md "The Coach backup's road picks";
+        /// Coach web's own spelling, so one file moves between them).
+        /// Omitted by a Coach old enough not to have picks, and a file
+        /// without it changes nothing on restore.
+        var roadPicks: [String: [String]]?
     }
 
     /// A weight read from a file, or nil when it is absent, zero, negative or
@@ -294,6 +300,10 @@ enum BackupCodec {
         let sessions = try context.fetch(FetchDescriptor<ScheduledSession>())
         let owners = MealOwners.load(from: defaults)
         let sides = PrescriptionSides.load(from: context)
+        // Road picks live in `UserDefaults`, keyed by client id, not in the
+        // store -- see `RoadPicks`. Written as they are stored: an object of
+        // lists, omitted entirely when a coach has marked none.
+        let picks = RoadPicks.load(from: defaults)
 
         let backup = Backup(v: 2, clients: clients.map { client in
             BackupClient(
@@ -367,7 +377,7 @@ enum BackupCodec {
         }, sessions: sessions.map { session in
             BackupSession(id: session.id, clientID: session.clientID, dayKey: session.dayKey,
                           routineID: session.routineID)
-        })
+        }, roadPicks: picks.isEmpty ? nil : picks)
         return try JSONEncoder().encode(backup)
     }
 
@@ -487,6 +497,24 @@ enum BackupCodec {
             }
         }
         if ownersChanged { MealOwners.save(owners, to: defaults) }
+
+        // Road picks: one list per client, so "merge by id" has nothing to key
+        // on. A client this device already has picks for keeps them -- an
+        // older backup must never delete newer work, the rule the rest of the
+        // library follows -- and a client it has none for takes the file's.
+        // A file written before road picks has no key at all and changes
+        // nothing. Coach web restores it exactly this way.
+        if let filePicks = backup.roadPicks, !filePicks.isEmpty {
+            var stored = RoadPicks.load(from: defaults)
+            var changed = false
+            for (clientID, list) in filePicks where stored[clientID] == nil {
+                let cleaned = RoadPicks.normalise(list)
+                guard !cleaned.isEmpty else { continue }
+                stored[clientID] = cleaned
+                changed = true
+            }
+            if changed { RoadPicks.save(stored, to: defaults) }
+        }
 
         let existingRoutines = Set(try context.fetch(FetchDescriptor<Routine>()).map(\.id))
         for row in backup.routines ?? [] where !existingRoutines.contains(row.id) {

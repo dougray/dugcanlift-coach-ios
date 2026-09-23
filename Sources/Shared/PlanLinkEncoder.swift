@@ -38,12 +38,16 @@ enum PlanLinkEncoder {
     /// - Parameter sides: the coach's prescribed sides. `nil` reads them from
     ///   the routines' own store, so no call site can send a plan and forget
     ///   them; a test passes them in.
+    /// - Parameter roadPicks: the Road Food item ids marked for this client.
+    ///   Sent as `rf`, omitted entirely when empty. Nothing is dropped from it
+    ///   here for being absent from this app's copy of the file.
     static func fragment(routines: [Routine] = [], sessions: [ScheduledSession] = [],
                          recipes: [Recipe] = [], meals: [PlannedMeal] = [],
-                         sides: PrescriptionSides? = nil,
+                         sides: PrescriptionSides? = nil, roadPicks: [String] = [],
                          lifterID: String, coachName: String) -> String {
         guard let json = json(routines: routines, sessions: sessions, recipes: recipes,
-                              meals: meals, sides: sides, lifterID: lifterID,
+                              meals: meals, sides: sides, roadPicks: roadPicks,
+                              lifterID: lifterID,
                               coachName: coachName) else { return "" }
         if let deflated = CompactEncoding.deflateRaw(json) {
             return "1z" + CompactEncoding.base64URL(deflated)
@@ -55,7 +59,7 @@ enum PlanLinkEncoder {
     /// what the tests compare. Keys sorted, so the same plan is the same text.
     static func json(routines: [Routine] = [], sessions: [ScheduledSession] = [],
                      recipes: [Recipe] = [], meals: [PlannedMeal] = [],
-                     sides: PrescriptionSides? = nil,
+                     sides: PrescriptionSides? = nil, roadPicks: [String] = [],
                      lifterID: String, coachName: String) -> Data? {
         let sides = sides ?? PrescriptionSides.load(from: routines.first?.modelContext)
         let workouts = routines.map { routine in
@@ -102,7 +106,45 @@ enum PlanLinkEncoder {
 
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
-        return try? encoder.encode(payload)
+        // `rf` is a flat list of Road Food item ids, left out entirely when
+        // there are none -- so a plan with no picks is byte for byte the plan
+        // this encoder wrote before road picks existed, which
+        // `PlanLinkRoadPicksTests` pins against a frozen copy of it.
+        return try? encoder.encode(PayloadWithRoadPicks(payload, rf: RoadPicks.wire(roadPicks)))
+    }
+
+    /// `PlanPayload` plus `rf`.
+    ///
+    /// **Why the wrapper.** `PlanPayload` is `LiftCore`'s -- the same
+    /// definition LIFT decodes with, which is what stops a field being added
+    /// on one side and forgotten on the other -- and the kit is pinned to an
+    /// exact tag that two shipped apps consume. A list of item ids is not
+    /// worth a kit release plus a version bump in both, so `rf` is written
+    /// here instead, and LIFT reads it app-side from the same fragment
+    /// (`RoadPickLink`). The fixture both ends read is the contract between
+    /// them.
+    ///
+    /// It delegates every other key to `PlanPayload`'s own encoder rather than
+    /// restating them, so nothing about the existing wire format is written
+    /// twice and none of it can drift. With `.sortedKeys`, `rf` lands in key
+    /// order like everything else.
+    private struct PayloadWithRoadPicks: Encodable {
+        let payload: PlanPayload
+        let rf: [String]?
+
+        init(_ payload: PlanPayload, rf: [String]?) {
+            self.payload = payload
+            self.rf = rf
+        }
+
+        private enum CodingKeys: String, CodingKey { case rf }
+
+        func encode(to encoder: Encoder) throws {
+            try payload.encode(to: encoder)
+            guard let rf else { return }
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(rf, forKey: .rf)
+        }
     }
 
     /// `[weightLb, reps, rpe, durationSec, distanceMeters, flags]`, trailing
