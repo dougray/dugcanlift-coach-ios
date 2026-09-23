@@ -14,6 +14,25 @@ final class PerSidePrescriptionTests: XCTestCase {
                                         configurations: ModelConfiguration(isStoredInMemoryOnly: true)))
     }
 
+    /// Kept per label so two calls inside one test hand back the *same* suite.
+    private var suites: [String: UserDefaults] = [:]
+
+    /// A fresh, isolated `UserDefaults` suite -- never `.standard`, which in a
+    /// test hosted by the Coach app is the *installed app's* own preference
+    /// domain on the simulator, so a restore there writes `cookPlanOwners`
+    /// entries into the app a coach actually uses. No fixture here carries a
+    /// planned meal today, but the rule is the file-wide one: no `BackupCodec`
+    /// or `importLibrary` call in a test may take the defaulted `defaults:`.
+    private func isolatedDefaults(_ label: String = #function) -> UserDefaults {
+        let name = "PerSidePrescriptionTests." + label.replacingOccurrences(of: "()", with: "")
+        if let existing = suites[name] { return existing }
+        let suite = UserDefaults(suiteName: name)!
+        suite.removePersistentDomain(forName: name)
+        addTeardownBlock { suite.removePersistentDomain(forName: name) }
+        suites[name] = suite
+        return suite
+    }
+
     private func decode(_ fragment: String) throws -> PlanPayload {
         try PlanLinkCodec.decode(fragment: fragment, expectedLifterID: "a1b2c3d4")
     }
@@ -336,7 +355,7 @@ final class PerSidePrescriptionTests: XCTestCase {
             ("Bench Press", "Barbell", false, [(185, 5, nil), (95, 10, .right)]),
             ("Split Squat", "Dumbbell", true, [(40, 8, nil), (40, 8, .left)]),
         ], in: source)
-        let data = try BackupCodec.export(from: source)
+        let data = try BackupCodec.export(from: source, defaults: isolatedDefaults())
         let json = try XCTUnwrap(String(data: data, encoding: .utf8))
         XCTAssertEqual(json.components(separatedBy: #""eachSide":true"#).count - 1, 1)
         XCTAssertFalse(json.contains(#""eachSide":false"#), "omitted when false, never false")
@@ -345,7 +364,7 @@ final class PerSidePrescriptionTests: XCTestCase {
         XCTAssertFalse(json.contains(#""side":null"#) || json.contains(#""side":"both""#))
 
         let target = try context()
-        try BackupCodec.restore(from: data, into: target)
+        try BackupCodec.restore(from: data, into: target, defaults: isolatedDefaults())
         let routine = try XCTUnwrap(try target.fetch(FetchDescriptor<Routine>()).first)
         let sides = PrescriptionSides.load(from: target)
         let e = routine.orderedExercises
@@ -363,7 +382,7 @@ final class PerSidePrescriptionTests: XCTestCase {
             {"name":"B","equipment":"","sets":[{"targetReps":5}]}]}]}
         """
         let target = try context()
-        try BackupCodec.restore(from: Data(file.utf8), into: target)
+        try BackupCodec.restore(from: Data(file.utf8), into: target, defaults: isolatedDefaults())
         let routine = try XCTUnwrap(try target.fetch(FetchDescriptor<Routine>()).first)
         let sides = PrescriptionSides.load(from: target)
         XCTAssertEqual(routine.orderedExercises.map { sides.isEachSide($0) }, [false, false])
@@ -382,7 +401,8 @@ final class PerSidePrescriptionTests: XCTestCase {
         ] } ] }
         """
         let ctx = try context()
-        _ = try WebLibraryImporter.importLibrary(from: Data(body.utf8), into: ctx)
+        _ = try WebLibraryImporter.importLibrary(from: Data(body.utf8), into: ctx,
+                                                 defaults: isolatedDefaults())
         let routine = try XCTUnwrap(try ctx.fetch(FetchDescriptor<Routine>()).first)
         let sides = PrescriptionSides.load(from: ctx)
         let e = routine.orderedExercises
