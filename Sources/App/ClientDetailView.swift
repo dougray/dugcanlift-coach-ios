@@ -15,6 +15,13 @@ struct ClientDetailView: View {
 
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
+    /// Every send on this device. Queried rather than fetched so the Booked
+    /// card appears the moment a plan is shared from Train, and read through
+    /// `bookedKey` so the join runs when something changed and not on every
+    /// redraw -- the rule `CookPlanView` learned about decoding the meal-owner
+    /// map per row.
+    @Query private var sentPlans: [SentPlan]
+    @State private var booked = PlanAndLog.Result(groups: [], byLift: [], footer: PlanAndLog.footer)
     @State private var pendingRemoval: RemovalImpact?
     /// Set the moment the client is deleted. Nearly every line of this page
     /// reads that `Client`, and reading a deleted SwiftData model is not
@@ -37,6 +44,24 @@ struct ClientDetailView: View {
         ClientDisplay.sessionDays(client.trainingDays)
     }
 
+    /// What the Booked card depends on: this client's sends and the days they
+    /// have logged. Keyed on content rather than on time, so an unrelated
+    /// redraw costs nothing.
+    private struct BookedKey: Equatable {
+        let clientID: String
+        let lastImported: Date
+        let days: Int
+        let plans: [String]
+    }
+
+    private var bookedKey: BookedKey {
+        BookedKey(clientID: client.id, lastImported: client.lastImportedAt,
+                  days: client.trainingDays.count,
+                  plans: sentPlans.filter { $0.clientID == client.id }
+                      .map { "\($0.id.uuidString)@\($0.sentAtEpochSec)" }
+                      .sorted())
+    }
+
     var body: some View {
         Group {
             if removed {
@@ -50,6 +75,12 @@ struct ClientDetailView: View {
         .background(Theme.background)
         .navigationTitle(removed ? "" : client.name)
         .removeClientAlert($pendingRemoval) { id in leave(removing: id) }
+        .task(id: bookedKey) {
+            // A removed client's page must not be read again, here least of
+            // all: this reads the days of a `Client` that may be gone.
+            guard !removed else { return }
+            booked = PlanAndLog.compare(client: client, in: context)
+        }
     }
 
     private var page: some View {
@@ -61,6 +92,9 @@ struct ClientDetailView: View {
                 oneRepMaxChart
                 outdoorSection(wide: false)
                 weekTable
+                // Immediately above Sessions, below the summary cards, where a
+                // coach already scrolls to read the week.
+                BookedSection(result: booked, width: width)
                 sessionLog
             } else if AdaptiveLayout.showsSideColumn(width: width) {
                 // Sessions and weeks in a column of their own, beside the
@@ -69,6 +103,12 @@ struct ClientDetailView: View {
                     VStack(alignment: .leading, spacing: AdaptiveLayout.gutter) {
                         chartGrid
                         outdoorSection(wide: true)
+                        // The card is `span-all` on the web, so it takes the
+                        // width it is given here too rather than a column of
+                        // the chart grid.
+                        BookedSection(result: booked,
+                                      width: width - AdaptiveLayout.sideColumnWidth
+                                          - AdaptiveLayout.gutter)
                     }
                     VStack(alignment: .leading, spacing: AdaptiveLayout.gutter) {
                         sessionLog
@@ -79,6 +119,7 @@ struct ClientDetailView: View {
             } else {
                 chartGrid
                 outdoorSection(wide: true)
+                BookedSection(result: booked, width: width)
                 Grid(alignment: .topLeading, horizontalSpacing: AdaptiveLayout.gutter) {
                     GridRow {
                         sessionLog
