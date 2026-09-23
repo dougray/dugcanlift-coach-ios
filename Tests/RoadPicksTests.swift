@@ -1,3 +1,4 @@
+import CryptoKit
 import XCTest
 import SwiftData
 import LiftCore
@@ -167,14 +168,54 @@ final class RoadPicksTests: XCTestCase {
     }
 
     func testTheBundledFileIsTheKitsOwnCopy() throws {
-        // Not a checksum of the bytes -- the copy is verbatim but the test
-        // bundle is not the place to assert that -- but the shape the ids
-        // depend on: chains with items, snacks, and no empty ids.
+        // The shape the ids depend on: chains with items, snacks, and no empty
+        // ids. This used to say a checksum of the bytes was not the test
+        // bundle's business, and left the copy on the honour system --
+        // testTheBundledFileIsTheKitsBytes below is that checksum. This one
+        // stays because the two answer different questions: whether the file
+        // is usable, and whether it is the file the kit curated.
         let catalog = try catalog()
         XCTAssertFalse(catalog.chains.isEmpty)
         XCTAssertFalse(catalog.snacks.isEmpty)
         XCTAssertTrue(catalog.chains.allSatisfy { !$0.id.isEmpty && !$0.items.isEmpty })
         XCTAssertTrue(catalog.snacks.allSatisfy { !$0.id.isEmpty })
+    }
+
+    /// road-food.json is curated once in `dugcanlift-kit/data/` and copied byte
+    /// for byte into five app repos. Nothing used to check that they matched:
+    /// CLAUDE.md says so in prose, and every other check here is on what the
+    /// data *means* -- ids resolve, the dated charts carry their dates, the
+    /// summary counts what this copy has -- all of which a copy several chains
+    /// behind passes cleanly.
+    ///
+    /// It matters most here. Item ids are the contract road picks travel on,
+    /// and `testNothingIsFilteredAgainstThisAppsOwnCopyOfTheFileOnTheWayOut`
+    /// records the deliberate rule that an id the receiver does not know is
+    /// skipped in silence. A coach on a stale copy is a coach whose picks
+    /// vanish on the client's phone with nothing said.
+    ///
+    /// **It hashes what the bundle holds, not what sits in the repo**, so a
+    /// build that dropped the resource from the target fails here too.
+    func testTheBundledFileIsTheKitsBytes() throws {
+        let bundle = Bundle(for: RoadPicksTests.self)
+        let json = try XCTUnwrap(bundle.url(forResource: "road-food", withExtension: "json"),
+                                 "road-food.json is not in the test bundle")
+        let sumURL = try XCTUnwrap(bundle.url(forResource: "road-food", withExtension: "sha256"),
+                                   "road-food.sha256 is not in the test bundle -- copy it from the kit beside the JSON")
+        let pinned = try String(contentsOf: sumURL, encoding: .utf8)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        XCTAssertNotNil(pinned.range(of: #"^[0-9a-f]{64}$"#, options: .regularExpression),
+                        "road-food.sha256 should be one bare sha256 and nothing else")
+        let actual = SHA256.hash(data: try Data(contentsOf: json))
+            .map { String(format: "%02x", $0) }.joined()
+        XCTAssertEqual(actual, pinned, """
+            The bundled road-food.json does not match road-food.sha256.
+            Copy dugcanlift-kit/data/road-food.json AND data/road-food.sha256 over together.
+            Never edit either file here, and never re-write the checksum by hand to make this
+            pass: the kit writes it with `node data/validate-road-food.mjs --write-checksum`,
+            and the other four app repos pin the same one, so a hand-written hash only moves
+            the failure somewhere further away.
+            """)
     }
 
     func testAMalformedRowCostsThatRowAndNotTheList() throws {
