@@ -414,6 +414,10 @@ package. Tests build one by decoding JSON instead — see
 release; don't work around the gap with `@testable import` tricks that would
 stop working the day the package adds one.
 
+Cook has a fourth section, **Road** -- see "Road picks" below. It reads
+bundled data and sends nothing of its own, so the network count below is
+unchanged.
+
 **Coach makes exactly two network calls, both in Cook's imports.** Neither
 talks to a server DUGCANLIFT operates, and both have explicit offline and
 failure states.
@@ -468,6 +472,70 @@ leaves the macros nil rather than zero — the same "blank stays blank" rule
 view in it for the reason `MacroFields` does: a rule in a view's `@State`
 cannot be tested, and this one decides whether a number reaches a client's day
 total. `LinkImportMacrosTests` pins all four branches.
+
+## Road picks
+
+A coach marks the Road Food items they are happy with for a client, in
+**Cook → Road** -- a fourth section beside Recipes, Plan and Shopping, on the
+same client selector, exactly where Coach web puts it. That page is where it
+belongs because it is something the coach *makes for* a client and sends, not a
+record of what the client did; Train would have been the other candidate and is
+the wrong half of the app.
+
+**On the wire: `rf`**, a flat array of Road Food **item ids**, sibling of
+`r`/`m`/`w`/`k`, omitted entirely when empty (never `[]`), `v` stays 1
+(PLAN-FORMAT.md "Road picks"). No chain ids travel: "Pick all" ticks the items
+the coach could see when they ticked them, so a chain that gains an item next
+quarter does not gain a pick nobody looked at. **Coach never filters picks
+against its own copy of the data** -- the coach's bundle and the client's are
+two builds updated at different times, so only the receiver can say what it
+has, and it skips an id it does not know silently and without counting it.
+`RoadPicks.missing` exists only so a coach is not puzzled by a count that does
+not match the ticks on screen.
+
+`rf` is written by `PlanLinkEncoder.PayloadWithRoadPicks`, an `Encodable`
+wrapper that **delegates every other key to `LiftCore`'s own `PlanPayload`
+encoder** and adds one. Not a field on `PlanPayload` itself: the kit is pinned
+to an exact tag that two shipped apps consume, and a list of item ids is not
+worth a kit release plus a version bump in both. LIFT iOS reads it app-side
+from the same fragment for the same reason. `PlanLinkRoadPicksTests` pins that a
+plan with no picks is byte for byte what the old encoder wrote, by re-encoding
+the payload through that same `PlanPayload` encoder and comparing bytes.
+
+**Picks ride in Cook's plan link only**, not Train's. Coach web sends one link
+per client and Coach iOS sends two, so this is a choice web did not have to
+make: picks are food, and Cook → Plan is the food send. A picks-only send is a
+legitimate plan -- "Send this week" shows when a client has picks even with no
+meals booked, and the picks are in `CookPlanView.RebuildKey`, or a pick ticked
+in Road would not change the link Share is holding.
+
+**Storage is `UserDefaults`, keyed by client id** (`RoadPicks`), like
+`cookPlanOwners` and `EachSideChoices` and the shape Coach web's
+`coach.roadPicks` has: one short list of strings per client, replaced whole,
+with the ticking order kept for free and no schema change for either app. A
+client with no picks has **no key at all**, never an empty list.
+
+**In a backup** it is `roadPicks`, an object keyed by client id, omitted when
+there are none -- Coach Android's and Coach web's spelling, so one file moves
+between all three. **Restoring is per client, not per id**: a client this
+device already has picks for keeps them (an older backup must never delete
+newer work), a client it has none for takes the file's list, and a file written
+before road picks changes nothing.
+
+**A removed client's picks go with them** (`ClientRemoval`), swept after the
+store commits like the `cookPlanOwners` entries, so a rolled-back removal keeps
+them. **The confirmation sentence does not change**: it is Coach Android's word
+for word and was written before road picks existed, so it gains a clause in
+both places at once or in neither -- the call Coach web made too.
+
+`Tests/Fixtures/web-plan-road-picks.txt` is a link Coach web's own encoder
+wrote, carrying six picks of which one is deliberately not in anyone's
+`road-food.json`. Never regenerate it from Swift.
+
+`Resources/road-food.json` is a verbatim copy of `dugcanlift-kit/data/`, the
+same file LIFT bundles. Item ids are the whole contract, so the copies must not
+drift: edit it in the kit and copy it here, never here alone. It is app-side
+rather than in `LiftReference` for the reason `rf` is app-side.
 
 ## Backups
 
