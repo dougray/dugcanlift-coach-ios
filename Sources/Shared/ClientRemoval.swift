@@ -43,10 +43,16 @@ struct RemovalOutcome: Equatable {
 /// `Goal`, its `TrainingDay`s and, through those, every `ExerciseSet` and
 /// `ClientFoodEntry` -- plus the rows that name the client as a plain value,
 /// which no cascade reaches: `ScheduledSession`s booked for them,
-/// `PlannedMeal`s owned by them through the `cookPlanOwners` map, and their
-/// `ClientShoppingCheck` ticks. Those three carry the client's id and nothing
-/// else: with the client gone they show in no week, can never be sent or
-/// edited, and would still ride along in every backup.
+/// `PlannedMeal`s owned by them through the `cookPlanOwners` map, their
+/// `ClientShoppingCheck` ticks, and their `roadPicks`. Those carry the
+/// client's id and nothing else: with the client gone they show in no week,
+/// can never be sent or edited, and would still ride along in every backup.
+///
+/// **Road picks are not in the confirmation sentence.** That sentence is Coach
+/// Android's, word for word, and it was written before road picks existed;
+/// when Coach for Android gains them the sentence gains a clause in both
+/// places at once, not here alone. Coach web made the same call for the same
+/// reason.
 ///
 /// **What stays:** recipes and routines. They are the coach's own library,
 /// written once and reused across clients; a template a client was booked onto
@@ -106,6 +112,11 @@ enum ClientRemoval {
         // violation of the contract this key is (see CLAUDE.md, "A planned
         // meal's client lives in `@AppStorage`, not on the model").
         sweepOwners(of: clientID, defaults: defaults)
+        // Road picks go the same way and for the same reason: a list made for
+        // one client, keyed by their id, which with the client gone can be
+        // neither seen nor sent while still riding in every backup. Also
+        // after the commit, so a rolled-back removal keeps them.
+        RoadPicks.remove(clientID: clientID, in: defaults)
 
         return RemovalOutcome(removed: true, message: "Removed \(name).")
     }

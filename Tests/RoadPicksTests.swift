@@ -151,4 +151,109 @@ final class RoadPicksTests: XCTestCase {
         XCTAssertNil(catalog.chains[0].items[1].proteinG)
         XCTAssertEqual(catalog.snacks.map(\.id), ["s"])
     }
+
+    // MARK: - Removing a client
+
+    func testRemovingAClientTakesTheirPicksThroughClientRemoval() throws {
+        let schema = Schema(CoachSchema.models)
+        let context = ModelContext(try ModelContainer(
+            for: schema, configurations: ModelConfiguration(isStoredInMemoryOnly: true)))
+        let jordan = Client(id: "jordan", name: "Jordan Reyes", displayUnit: "lb", platform: "ios")
+        let sam = Client(id: "sam", name: "Sam Ortiz", displayUnit: "kg", platform: "android")
+        context.insert(jordan)
+        context.insert(sam)
+        try context.save()
+
+        try defaults { store in
+            RoadPicks.set(["wendys-large-chili"], for: "jordan", in: store)
+            RoadPicks.set(["chickfila-grilled-filet"], for: "sam", in: store)
+
+            let impact = try XCTUnwrap(ClientRemoval.impact(clientID: "jordan", in: context,
+                                                            defaults: store))
+            // Android's sentence, word for word, and road picks are not in it:
+            // it was written before they existed, and it changes in both
+            // places at once or in neither.
+            XCTAssertFalse(ClientRemoval.confirmationText(impact).contains("pick"))
+            XCTAssertFalse(ClientRemoval.confirmationText(impact).contains("road"))
+
+            let outcome = ClientRemoval.remove(clientID: "jordan", in: context, defaults: store)
+            XCTAssertTrue(outcome.removed)
+            XCTAssertEqual(RoadPicks.load(from: store), ["sam": ["chickfila-grilled-filet"]])
+        }
+    }
+
+    // MARK: - The backup
+
+    private func storeContext() throws -> ModelContext {
+        let schema = Schema(CoachSchema.models)
+        return ModelContext(try ModelContainer(
+            for: schema, configurations: ModelConfiguration(isStoredInMemoryOnly: true)))
+    }
+
+    func testPicksTravelInTheBackupAndComeBackPerClient() throws {
+        let source = try storeContext()
+        source.insert(Client(id: "jordan", name: "Jordan Reyes", displayUnit: "lb", platform: "ios"))
+        try source.save()
+
+        try defaults { out in
+            RoadPicks.set(["wendys-large-chili", "snack-jack-links-original-beef-jerky"],
+                          for: "jordan", in: out)
+            let data = try BackupCodec.export(from: source, defaults: out)
+
+            // Coach Android's and Coach web's own spelling: an object keyed by
+            // client id, each value a list of ids in the order they were
+            // ticked, so one file moves between all three.
+            let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+            XCTAssertEqual(json["roadPicks"] as? [String: [String]],
+                           ["jordan": ["wendys-large-chili",
+                                       "snack-jack-links-original-beef-jerky"]])
+
+            try defaults { fresh in
+                try BackupCodec.restore(from: data, into: try storeContext(), defaults: fresh)
+                XCTAssertEqual(RoadPicks.picks(for: "jordan", in: fresh),
+                               ["wendys-large-chili", "snack-jack-links-original-beef-jerky"])
+            }
+        }
+    }
+
+    func testAClientThisDeviceAlreadyHasPicksForKeepsThem() throws {
+        let source = try storeContext()
+        source.insert(Client(id: "jordan", name: "Jordan Reyes", displayUnit: "lb", platform: "ios"))
+        try source.save()
+        var file = Data()
+        try defaults { out in
+            RoadPicks.set(["old-pick"], for: "jordan", in: out)
+            RoadPicks.set(["sams-pick"], for: "sam", in: out)
+            file = try BackupCodec.export(from: source, defaults: out)
+        }
+
+        try defaults { device in
+            RoadPicks.set(["newer-pick"], for: "jordan", in: device)
+            try BackupCodec.restore(from: file, into: try storeContext(), defaults: device)
+            // Restoring is per client, not per id: an older backup must never
+            // delete newer work, and a client this device has none for takes
+            // the file's list.
+            XCTAssertEqual(RoadPicks.picks(for: "jordan", in: device), ["newer-pick"])
+            XCTAssertEqual(RoadPicks.picks(for: "sam", in: device), ["sams-pick"])
+        }
+    }
+
+    func testAFileWrittenBeforeRoadPicksChangesNothing() throws {
+        let source = try storeContext()
+        source.insert(Client(id: "jordan", name: "Jordan Reyes", displayUnit: "lb", platform: "ios"))
+        try source.save()
+
+        try defaults { out in
+            let data = try BackupCodec.export(from: source, defaults: out)
+            let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+            XCTAssertNil(json["roadPicks"],
+                         "a coach who has marked none writes no key, as an older Coach does")
+
+            try defaults { device in
+                RoadPicks.set(["kept"], for: "jordan", in: device)
+                try BackupCodec.restore(from: data, into: try storeContext(), defaults: device)
+                XCTAssertEqual(RoadPicks.picks(for: "jordan", in: device), ["kept"])
+            }
+        }
+    }
 }
