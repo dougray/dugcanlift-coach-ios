@@ -11,6 +11,26 @@ final class WebLibraryImporterTests: XCTestCase {
             for: schema, configurations: ModelConfiguration(isStoredInMemoryOnly: true)))
     }
 
+    /// Kept per label so two calls inside one test hand back the *same* suite.
+    private var suites: [String: UserDefaults] = [:]
+
+    /// A fresh, isolated `UserDefaults` suite -- never `.standard`, which in a
+    /// test hosted by the Coach app is the *installed app's* own preference
+    /// domain on the simulator: an import there writes `cookPlanOwners`
+    /// entries for meals that exist only in a test's in-memory store into the
+    /// app a coach actually uses. Cleared before use and removed again when the
+    /// test ends, so nothing leaks in either direction. Every `importLibrary`
+    /// call in this file passes one; none may fall back to the default.
+    private func isolatedDefaults(_ label: String = #function) -> UserDefaults {
+        let name = "WebLibraryImporterTests." + label.replacingOccurrences(of: "()", with: "")
+        if let existing = suites[name] { return existing }
+        let suite = UserDefaults(suiteName: name)!
+        suite.removePersistentDomain(forName: name)
+        addTeardownBlock { suite.removePersistentDomain(forName: name) }
+        suites[name] = suite
+        return suite
+    }
+
     private let v2 = """
     { "v": 2, "clients": [], "settings": { "name": "Doug" },
       "recipes": [ { "id": "r1", "name": "Beef Chilli", "servings": 4,
@@ -32,7 +52,8 @@ final class WebLibraryImporterTests: XCTestCase {
 
     func testImportsRecipesWithTheirIngredientsAndMacros() throws {
         let ctx = try context()
-        let summary = try WebLibraryImporter.importLibrary(from: Data(v2.utf8), into: ctx)
+        let summary = try WebLibraryImporter.importLibrary(from: Data(v2.utf8), into: ctx,
+                                                           defaults: isolatedDefaults())
         XCTAssertEqual(summary.recipes, 1)
 
         let recipe = try XCTUnwrap(try ctx.fetch(FetchDescriptor<Recipe>()).first)
@@ -50,7 +71,7 @@ final class WebLibraryImporterTests: XCTestCase {
           "ingredients": [], "steps": [], "totalWeightGrams": 1200 } ] }
         """
         let ctx = try context()
-        _ = try WebLibraryImporter.importLibrary(from: Data(body.utf8), into: ctx)
+        _ = try WebLibraryImporter.importLibrary(from: Data(body.utf8), into: ctx, defaults: isolatedDefaults())
         XCTAssertEqual(try XCTUnwrap(try ctx.fetch(FetchDescriptor<Recipe>()).first).totalWeightGrams, 1200)
     }
 
@@ -68,7 +89,7 @@ final class WebLibraryImporterTests: XCTestCase {
                                      "sodiumMg": "540 mg" } } ] }
         """
         let ctx = try context()
-        _ = try WebLibraryImporter.importLibrary(from: Data(body.utf8), into: ctx)
+        _ = try WebLibraryImporter.importLibrary(from: Data(body.utf8), into: ctx, defaults: isolatedDefaults())
         let byName = Dictionary(uniqueKeysWithValues: try ctx.fetch(FetchDescriptor<Recipe>()).map { ($0.name, $0) })
         let salty = try XCTUnwrap(byName["Salty"]?.nutritionPerServing)
         XCTAssertEqual(salty.saturatedFatG, 4.5)
@@ -85,7 +106,7 @@ final class WebLibraryImporterTests: XCTestCase {
           "ingredients": [], "steps": [], "nutritionPerServing": null } ] }
         """
         let ctx = try context()
-        _ = try WebLibraryImporter.importLibrary(from: Data(body.utf8), into: ctx)
+        _ = try WebLibraryImporter.importLibrary(from: Data(body.utf8), into: ctx, defaults: isolatedDefaults())
         let recipe = try XCTUnwrap(try ctx.fetch(FetchDescriptor<Recipe>()).first)
         XCTAssertNil(recipe.nutritionPerServing,
                      "a zero would log as a zero-calorie dinner on the client's phone")
@@ -93,7 +114,7 @@ final class WebLibraryImporterTests: XCTestCase {
 
     func testWorkoutWeightsConvertFromPoundsToKilograms() throws {
         let ctx = try context()
-        _ = try WebLibraryImporter.importLibrary(from: Data(v2.utf8), into: ctx)
+        _ = try WebLibraryImporter.importLibrary(from: Data(v2.utf8), into: ctx, defaults: isolatedDefaults())
         let routine = try XCTUnwrap(try ctx.fetch(FetchDescriptor<Routine>()).first)
         let set = try XCTUnwrap(routine.orderedExercises.first?.orderedSets.first)
         XCTAssertEqual(try XCTUnwrap(set.targetWeightKg), 102.058, accuracy: 0.01,
@@ -104,7 +125,7 @@ final class WebLibraryImporterTests: XCTestCase {
 
     func testScheduledSessionsKeepTheirClientAndDay() throws {
         let ctx = try context()
-        _ = try WebLibraryImporter.importLibrary(from: Data(v2.utf8), into: ctx)
+        _ = try WebLibraryImporter.importLibrary(from: Data(v2.utf8), into: ctx, defaults: isolatedDefaults())
         let session = try XCTUnwrap(try ctx.fetch(FetchDescriptor<ScheduledSession>()).first)
         XCTAssertEqual(session.clientID, "a1b2c3d4")
         XCTAssertEqual(session.dayKey, "2026-09-14")
@@ -116,7 +137,8 @@ final class WebLibraryImporterTests: XCTestCase {
         try ctx.save()
 
         let summary = try WebLibraryImporter.importLibrary(
-            from: Data("{\"v\":1,\"clients\":[],\"settings\":{}}".utf8), into: ctx)
+            from: Data("{\"v\":1,\"clients\":[],\"settings\":{}}".utf8), into: ctx,
+            defaults: isolatedDefaults())
         XCTAssertEqual(summary.recipes, 0)
         XCTAssertEqual(try ctx.fetch(FetchDescriptor<Recipe>()).count, 1,
                        "absent must stay absent, not wipe what is on the phone")
@@ -124,31 +146,23 @@ final class WebLibraryImporterTests: XCTestCase {
 
     func testImportingTheSameFileTwiceDoesNotDuplicate() throws {
         let ctx = try context()
-        _ = try WebLibraryImporter.importLibrary(from: Data(v2.utf8), into: ctx)
-        let second = try WebLibraryImporter.importLibrary(from: Data(v2.utf8), into: ctx)
+        _ = try WebLibraryImporter.importLibrary(from: Data(v2.utf8), into: ctx, defaults: isolatedDefaults())
+        let second = try WebLibraryImporter.importLibrary(from: Data(v2.utf8), into: ctx,
+                                                          defaults: isolatedDefaults())
         XCTAssertEqual(second.recipes, 0, "merge is by id, additively")
         XCTAssertEqual(try ctx.fetch(FetchDescriptor<Recipe>()).count, 1)
     }
 
     func testAFileThatIsNotACoachBackupThrows() {
         XCTAssertThrowsError(try WebLibraryImporter.importLibrary(
-            from: Data("{\"hello\":true}".utf8), into: try context()))
+            from: Data("{\"hello\":true}".utf8), into: try context(),
+            defaults: isolatedDefaults()))
     }
 
     // MARK: - Meal ownership (fix round 1, Finding 1)
 
-    /// A fresh, isolated `UserDefaults` suite per call -- never `.standard` --
-    /// cleared before use so nothing leaks between test runs.
-    private func isolatedDefaults(_ name: String) -> UserDefaults {
-        let suite = UserDefaults(suiteName: name)!
-        suite.removePersistentDomain(forName: name)
-        return suite
-    }
-
     func testImportingPlannedMealsRecordsTheirOwner() throws {
-        let name = "WebLibraryImporterTests.owner"
-        let defaults = isolatedDefaults(name)
-        defer { defaults.removePersistentDomain(forName: name) }
+        let defaults = isolatedDefaults()
 
         let ctx = try context()
         let summary = try WebLibraryImporter.importLibrary(from: Data(v2.utf8), into: ctx, defaults: defaults)
@@ -161,9 +175,7 @@ final class WebLibraryImporterTests: XCTestCase {
     }
 
     func testReimportingTheSameFileDoesNotDuplicateMealOwnership() throws {
-        let name = "WebLibraryImporterTests.owner.reimport"
-        let defaults = isolatedDefaults(name)
-        defer { defaults.removePersistentDomain(forName: name) }
+        let defaults = isolatedDefaults()
 
         let ctx = try context()
         _ = try WebLibraryImporter.importLibrary(from: Data(v2.utf8), into: ctx, defaults: defaults)
