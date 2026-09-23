@@ -23,6 +23,48 @@ final class RoadPicksTests: XCTestCase {
                       "road-food.json missing from the test bundle")
     }
 
+    // MARK: - How old the numbers are
+
+    /// Coach shows no staleness warning - none of the three Coach builds does
+    /// - but it does say when a chain's numbers are from, and a chart's own
+    /// date and the day someone read it are different facts.
+    func testAPlaceSaysWhatTheChainPublishedAndWhenItWasChecked() {
+        XCTAssertEqual(RoadFoodDates.line(publishedOn: "2021-03-29", checkedOn: "2026-09-23"),
+                       "Published 2021-03-29 · checked 2026-09-23")
+        XCTAssertEqual(RoadFoodDates.line(publishedOn: "2022-11", checkedOn: "2026-09-23"),
+                       "Published 2022-11 · checked 2026-09-23")
+        // Blank stays blank: a chain whose document states no date reads
+        // exactly as it did before the field existed - no empty parenthetical.
+        XCTAssertEqual(RoadFoodDates.line(publishedOn: nil, checkedOn: "2026-09-20"),
+                       "Checked 2026-09-20")
+        XCTAssertEqual(RoadFoodDates.line(publishedOn: "  ", checkedOn: "2026-09-20"),
+                       "Checked 2026-09-20")
+        XCTAssertEqual(RoadFoodDates.line(publishedOn: "2022-11", checkedOn: nil), "Published 2022-11")
+        XCTAssertNil(RoadFoodDates.line(publishedOn: nil, checkedOn: nil))
+    }
+
+    func testTheBundledFileCarriesEachChainsOwnDocumentDateWhereItsDocumentStatesOne() throws {
+        let catalog = try catalog()
+        let by = { (id: String) in catalog.chains.first { $0.id == id } }
+        XCTAssertEqual(by("burgerking")?.publishedOn, "2022-11")
+        XCTAssertEqual(by("whataburger")?.publishedOn, "2021-03-29")
+        XCTAssertEqual(by("chipotle")?.publishedOn, "2024-10")
+        // A chain whose document states no date has no key at all.
+        XCTAssertNil(by("sonic")?.publishedOn)
+        XCTAssertNil(by("quiktrip")?.publishedOn)
+        // The file is the same bytes LIFT reads, and LIFT warns from this
+        // field, so a copy that lost it would be a copy that had drifted.
+        for chain in catalog.chains {
+            XCTAssertNotNil(chain.checkedOn, "\(chain.id) has no checkedOn")
+            if let published = chain.publishedOn {
+                XCTAssertNotNil(published.range(of: #"^\d{4}-\d{2}(-\d{2})?$"#, options: .regularExpression),
+                                "\(chain.id) has an unusable publishedOn")
+                XCTAssertLessThanOrEqual(published.count == 7 ? published + "-01" : published, chain.checkedOn!,
+                                         "\(chain.id) claims a document published after it was read")
+            }
+        }
+    }
+
     // MARK: - The stored list
 
     func testPicksAreTrimmedStringsUniqueInTheOrderTheyWereTicked() {

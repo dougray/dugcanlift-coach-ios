@@ -133,7 +133,7 @@ struct RoadPicksView: View {
     private func places(_ catalog: RoadFoodCatalog) -> [Place] {
         var list = catalog.chains.map {
             Place(id: $0.id, name: $0.name,
-                  detail: $0.checkedOn.map { "Checked \($0)" },
+                  detail: RoadFoodDates.line(publishedOn: $0.publishedOn, checkedOn: $0.checkedOn),
                   items: $0.items, showsCategory: false)
         }
         if !catalog.snacks.isEmpty {
