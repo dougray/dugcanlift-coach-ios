@@ -24,6 +24,27 @@ final class BackupCodecTests: XCTestCase {
             for: schema, configurations: ModelConfiguration(isStoredInMemoryOnly: true)))
     }
 
+    /// Kept per label so two calls inside one test hand back the *same*
+    /// suite -- an export and the restore that reads it back share a map.
+    private var suites: [String: UserDefaults] = [:]
+
+    /// A fresh, isolated `UserDefaults` suite -- never `.standard`, which in a
+    /// test hosted by the Coach app is the *installed app's* own preference
+    /// domain on the simulator: a `restore` there writes `cookPlanOwners`
+    /// entries for meals that exist only in a test's in-memory store into the
+    /// app a coach actually uses. Cleared before use and removed again when the
+    /// test ends, so nothing leaks in either direction. Every `BackupCodec`
+    /// call in this file passes one; none may fall back to the default.
+    private func isolatedDefaults(_ label: String = #function) -> UserDefaults {
+        let name = "BackupCodecTests." + label.replacingOccurrences(of: "()", with: "")
+        if let existing = suites[name] { return existing }
+        let suite = UserDefaults(suiteName: name)!
+        suite.removePersistentDomain(forName: name)
+        addTeardownBlock { suite.removePersistentDomain(forName: name) }
+        suites[name] = suite
+        return suite
+    }
+
     func testExportThenRestoreRoundTripsAClient() throws {
         let sourceContext = try makeContext()
         let client = Client(id: "b7f3a1c8", name: "Jordan Reyes", displayUnit: "lb", platform: "ios")
@@ -36,10 +57,10 @@ final class BackupCodecTests: XCTestCase {
         day.sets.append(set)
         try sourceContext.save()
 
-        let data = try BackupCodec.export(from: sourceContext)
+        let data = try BackupCodec.export(from: sourceContext, defaults: isolatedDefaults())
 
         let destinationContext = try makeContext()
-        try BackupCodec.restore(from: data, into: destinationContext)
+        try BackupCodec.restore(from: data, into: destinationContext, defaults: isolatedDefaults())
 
         let clients = try destinationContext.fetch(FetchDescriptor<Client>())
         XCTAssertEqual(clients.count, 1)
@@ -57,9 +78,9 @@ final class BackupCodecTests: XCTestCase {
         let backupContext = try makeContext()
         backupContext.insert(newClient)
         try backupContext.save()
-        let data = try BackupCodec.export(from: backupContext)
+        let data = try BackupCodec.export(from: backupContext, defaults: isolatedDefaults())
 
-        try BackupCodec.restore(from: data, into: context)
+        try BackupCodec.restore(from: data, into: context, defaults: isolatedDefaults())
 
         let clients = try context.fetch(FetchDescriptor<Client>())
         XCTAssertEqual(clients.count, 1)
@@ -68,7 +89,8 @@ final class BackupCodecTests: XCTestCase {
 
     func testCorruptDataThrowsRatherThanCrashing() {
         let context = try! makeContext()
-        XCTAssertThrowsError(try BackupCodec.restore(from: Data("not json".utf8), into: context))
+        XCTAssertThrowsError(try BackupCodec.restore(from: Data("not json".utf8), into: context,
+                                                     defaults: isolatedDefaults()))
     }
 
     func testExportThenRestorePreservesLastImportedAt() throws {
@@ -79,9 +101,9 @@ final class BackupCodecTests: XCTestCase {
         sourceContext.insert(client)
         try sourceContext.save()
 
-        let data = try BackupCodec.export(from: sourceContext)
+        let data = try BackupCodec.export(from: sourceContext, defaults: isolatedDefaults())
         let destinationContext = try makeContext()
-        try BackupCodec.restore(from: data, into: destinationContext)
+        try BackupCodec.restore(from: data, into: destinationContext, defaults: isolatedDefaults())
 
         let restored = try destinationContext.fetch(FetchDescriptor<Client>()).first
         XCTAssertEqual(restored?.lastImportedAt, originalTimestamp)
@@ -95,7 +117,7 @@ final class BackupCodecTests: XCTestCase {
         ctx.insert(ScheduledSession(clientID: "a1b2c3d4", dayKey: "2026-09-14", routineID: routine.id))
         try ctx.save()
 
-        let data = try BackupCodec.export(from: ctx)
+        let data = try BackupCodec.export(from: ctx, defaults: isolatedDefaults())
         let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
         XCTAssertEqual(json["v"] as? Int, 2)
         XCTAssertEqual((json["recipes"] as? [Any])?.count, 1)
@@ -110,9 +132,9 @@ final class BackupCodecTests: XCTestCase {
         source.insert(routine)
         try source.save()
 
-        let data = try BackupCodec.export(from: source)
+        let data = try BackupCodec.export(from: source, defaults: isolatedDefaults())
         let target = try context()
-        try BackupCodec.restore(from: data, into: target)
+        try BackupCodec.restore(from: data, into: target, defaults: isolatedDefaults())
 
         XCTAssertEqual(try target.fetch(FetchDescriptor<Recipe>()).count, 1)
         XCTAssertEqual(try target.fetch(FetchDescriptor<Routine>()).count, 1)
@@ -128,7 +150,8 @@ final class BackupCodecTests: XCTestCase {
         try source.save()
 
         let target = try context()
-        try BackupCodec.restore(from: try BackupCodec.export(from: source), into: target)
+        try BackupCodec.restore(from: try BackupCodec.export(from: source, defaults: isolatedDefaults()),
+                                into: target, defaults: isolatedDefaults())
 
         let restored = try XCTUnwrap(try target.fetch(FetchDescriptor<Recipe>()).first)
         XCTAssertEqual(restored.totalWeightGrams, 1200)
@@ -141,7 +164,7 @@ final class BackupCodecTests: XCTestCase {
           "name": "Old", "servings": 2, "steps": [], "ingredients": [] } ] }
         """
         let ctx = try context()
-        try BackupCodec.restore(from: Data(body.utf8), into: ctx)
+        try BackupCodec.restore(from: Data(body.utf8), into: ctx, defaults: isolatedDefaults())
         XCTAssertNil(try XCTUnwrap(try ctx.fetch(FetchDescriptor<Recipe>()).first).totalWeightGrams)
     }
 
@@ -158,25 +181,16 @@ final class BackupCodecTests: XCTestCase {
         ctx.insert(Recipe(name: "Already here", servings: 2))
         try ctx.save()
 
-        try BackupCodec.restore(from: Data("{\"v\":1,\"clients\":[]}".utf8), into: ctx)
+        try BackupCodec.restore(from: Data("{\"v\":1,\"clients\":[]}".utf8), into: ctx,
+                                defaults: isolatedDefaults())
         XCTAssertEqual(try ctx.fetch(FetchDescriptor<Recipe>()).count, 1,
                        "a v1 file has no library; absent must not mean delete")
     }
 
     // MARK: - Meal ownership (fix round 1, Finding 1)
 
-    /// A fresh, isolated `UserDefaults` suite per call -- never `.standard` --
-    /// cleared before use so a previous test's leftovers (or a previous run's,
-    /// if a suite name were ever reused) can never leak in.
-    private func isolatedDefaults(_ name: String) -> UserDefaults {
-        let suite = UserDefaults(suiteName: name)!
-        suite.removePersistentDomain(forName: name)
-        return suite
-    }
-
     func testMealRoundTripPreservesIdSnapshotAndOwner() throws {
-        let sourceDefaults = isolatedDefaults("BackupCodecTests.meal.source")
-        defer { sourceDefaults.removePersistentDomain(forName: "BackupCodecTests.meal.source") }
+        let sourceDefaults = isolatedDefaults("meal.source")
 
         let source = try context()
         let recipe = Recipe(name: "Beef Chilli", servings: 4,
@@ -200,8 +214,7 @@ final class BackupCodecTests: XCTestCase {
         let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
         XCTAssertEqual((json["meals"] as? [Any])?.count, 1)
 
-        let targetDefaults = isolatedDefaults("BackupCodecTests.meal.target")
-        defer { targetDefaults.removePersistentDomain(forName: "BackupCodecTests.meal.target") }
+        let targetDefaults = isolatedDefaults("meal.target")
 
         let target = try context()
         try BackupCodec.restore(from: data, into: target, defaults: targetDefaults)
@@ -226,7 +239,7 @@ final class BackupCodecTests: XCTestCase {
                        "recipeName": "Ghost", "dayKey": "2026-09-14", "meal": "DINNER",
                        "servings": 1, "snapshotNutrition": null, "clientID": "a1b2c3d4" } ] }
         """
-        try BackupCodec.restore(from: Data(body.utf8), into: ctx, defaults: isolatedDefaults("BackupCodecTests.meal.ghost"))
+        try BackupCodec.restore(from: Data(body.utf8), into: ctx, defaults: isolatedDefaults())
         XCTAssertEqual(try ctx.fetch(FetchDescriptor<PlannedMeal>()).count, 0,
                        "a meal whose recipe never arrived cannot be shown; it must not be inserted orphaned")
     }
@@ -251,9 +264,9 @@ final class BackupCodecTests: XCTestCase {
         client.trainingDays.append(day)
         try source.save()
 
-        let data = try BackupCodec.export(from: source)
+        let data = try BackupCodec.export(from: source, defaults: isolatedDefaults())
         let target = try makeContext()
-        try BackupCodec.restore(from: data, into: target)
+        try BackupCodec.restore(from: data, into: target, defaults: isolatedDefaults())
 
         let restored = try XCTUnwrap(try target.fetch(FetchDescriptor<Client>()).first)
         XCTAssertEqual(restored.outdoorBests, bests)
@@ -270,7 +283,7 @@ final class BackupCodecTests: XCTestCase {
             "days": [ { "dayKey": "2026-09-01", "sets": [], "foodEntries": [] } ] } ] }
         """
         let ctx = try makeContext()
-        try BackupCodec.restore(from: Data(body.utf8), into: ctx)
+        try BackupCodec.restore(from: Data(body.utf8), into: ctx, defaults: isolatedDefaults())
         let restored = try XCTUnwrap(try ctx.fetch(FetchDescriptor<Client>()).first)
         XCTAssertNil(restored.outdoorBests)
         XCTAssertNil(restored.lastRoute)
@@ -295,7 +308,7 @@ final class BackupCodecTests: XCTestCase {
               { "dayKey": "2026-09-14", "sets": [], "foodEntries": [], "outdoor": [] } ] } ] }
         """
         let ctx = try makeContext()
-        try BackupCodec.restore(from: Data(body.utf8), into: ctx)
+        try BackupCodec.restore(from: Data(body.utf8), into: ctx, defaults: isolatedDefaults())
 
         let client = try XCTUnwrap(try ctx.fetch(FetchDescriptor<Client>()).first)
         XCTAssertEqual(client.exportedAtEpochSec, 1_789_500_000)
@@ -327,7 +340,8 @@ final class BackupCodecTests: XCTestCase {
         client.trainingDays.append(empty)
         try ctx.save()
 
-        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: BackupCodec.export(from: ctx)) as? [String: Any])
+        let data = try BackupCodec.export(from: ctx, defaults: isolatedDefaults())
+        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
         let written = try XCTUnwrap((json["clients"] as? [[String: Any]])?.first)
         XCTAssertEqual(written["exportedAtEpochSec"] as? Int, 9)
         let best = try XCTUnwrap((written["outdoorBests"] as? [[String: Any]])?.first)
