@@ -36,11 +36,13 @@ struct CookView: View {
     @State private var planWeekStart: String = DayKey.today
     @State private var planShareLink: String = ""
 
-    /// The PWA's three Cook chips, in its order.
+    /// The PWA's four Cook chips, in its order. Road is last, as it is
+    /// there: it is the one section that is not about this week.
     private enum Section: String, CaseIterable, Identifiable {
         case recipes = "Recipes"
         case plan = "Plan"
         case shopping = "Shopping"
+        case road = "Road"
         var id: String { rawValue }
     }
 
@@ -51,7 +53,7 @@ struct CookView: View {
                     ForEach(Section.allCases) { Text($0.rawValue).tag($0) }
                 }
                 .pickerStyle(.segmented)
-                // Capped so the three segments do not spread across an iPad;
+                // Capped so the segments do not spread across an iPad;
                 // narrower than any iPhone, so no change there.
                 .frame(maxWidth: AdaptiveLayout.readableWidth)
                 .padding()
@@ -62,6 +64,7 @@ struct CookView: View {
                 case .plan: CookPlanView(clientID: $planClientID, weekStart: $planWeekStart,
                                          shareLink: $planShareLink)
                 case .shopping: ShoppingView(clientID: $planClientID, weekStart: $planWeekStart)
+                case .road: RoadPicksView(clientID: $planClientID)
                 }
             }
             // Applied once, by the parent every section shares -- see the
