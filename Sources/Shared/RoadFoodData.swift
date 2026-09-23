@@ -100,16 +100,25 @@ struct RoadFoodCatalog: Decodable, Equatable {
 struct RoadFoodChain: Decodable, Equatable, Identifiable, Hashable {
     let id: String
     let name: String
+    /// The date the chain's own document states about itself, as precise as
+    /// the document is: "YYYY-MM-DD", or "YYYY-MM" where a chart names only a
+    /// month. Nil where the document states no date at all. Shown beside
+    /// `checkedOn` because they are different facts: this is when the chain
+    /// wrote the chart, and a 2021 chart read this morning is still a 2021
+    /// chart. LIFT warns from it; Coach only says it.
+    let publishedOn: String?
     /// "YYYY-MM-DD", when the numbers were checked against the chain's page.
     /// Shown so a coach ticking items can see how old they are.
     let checkedOn: String?
     let items: [RoadFoodItem]
 
-    enum CodingKeys: String, CodingKey { case id, name, checkedOn, items }
+    enum CodingKeys: String, CodingKey { case id, name, publishedOn, checkedOn, items }
 
-    init(id: String, name: String, checkedOn: String? = nil, items: [RoadFoodItem]) {
+    init(id: String, name: String, publishedOn: String? = nil, checkedOn: String? = nil,
+         items: [RoadFoodItem]) {
         self.id = id
         self.name = name
+        self.publishedOn = publishedOn
         self.checkedOn = checkedOn
         self.items = items
     }
@@ -121,6 +130,7 @@ struct RoadFoodChain: Decodable, Equatable, Identifiable, Hashable {
             throw DecodingError.dataCorruptedError(forKey: .id, in: c, debugDescription: "empty id")
         }
         name = (try? c.decodeIfPresent(String.self, forKey: .name)) ?? id
+        publishedOn = try? c.decodeIfPresent(String.self, forKey: .publishedOn)
         checkedOn = try? c.decodeIfPresent(String.self, forKey: .checkedOn)
         items = try c.decode([RoadFoodLenient<RoadFoodItem>].self, forKey: .items).compactMap(\.value)
     }
@@ -183,5 +193,32 @@ private struct RoadFoodLenient<T: Decodable>: Decodable {
 
     init(from decoder: Decoder) throws {
         value = try? T(from: decoder)
+    }
+}
+
+/// What a place card says about how old its numbers are. A value type with no
+/// view in it, for the reason `MacroFields` and `LinkImportMacros` are: a rule
+/// in a view's `@State` cannot be tested, and this one decides what a coach is
+/// told about the chart they are ticking from.
+///
+/// Two different facts, so both are said. `publishedOn` is the date the chain's
+/// own document states about itself -- Burger King's chart says "NOVEMBER 2022"
+/// -- and `checkedOn` is the day a person read it. A chain whose document states
+/// no date has no `publishedOn`, and then the line is exactly what it has always
+/// been.
+///
+/// Coach does not warn. LIFT does, from the same field, and the three Coach
+/// builds say nothing about staleness at all: this line gains a clause in all
+/// of them or in none.
+enum RoadFoodDates {
+    static func line(publishedOn: String?, checkedOn: String?) -> String? {
+        let published = publishedOn?.trimmingCharacters(in: .whitespaces)
+        let checked = checkedOn?.trimmingCharacters(in: .whitespaces)
+        switch (published?.isEmpty == false ? published : nil, checked?.isEmpty == false ? checked : nil) {
+        case let (published?, checked?): return "Published \(published) · checked \(checked)"
+        case let (published?, nil): return "Published \(published)"
+        case let (nil, checked?): return "Checked \(checked)"
+        case (nil, nil): return nil
+        }
     }
 }

@@ -532,6 +532,18 @@ both places at once or in neither -- the call Coach web made too.
 wrote, carrying six picks of which one is deliberately not in anyone's
 `road-food.json`. Never regenerate it from Swift.
 
+**A chain carries two dates, and Coach says both.** `checkedOn` is the day a
+person read its chart; `publishedOn` is the date the chart **states about
+itself**, optional and only as precise as the document is -- `"2021-03-29"`
+where Whataburger's says "as of March 29, 2021", `"2022-11"` where Burger
+King's says only "NOVEMBER 2022", absent where the document states none. A
+place card reads "Published 2022-11 · checked 2026-09-23", and a chain with no
+document date reads exactly as it did before the field existed. `RoadFoodDates`
+holds that, a value type with no view in it for the reason `MacroFields` is.
+**Coach does not warn**: LIFT warns from `publishedOn` at six months, and no
+Coach build says anything about staleness, so this line gains a clause in all
+three or in none.
+
 `Resources/road-food.json` is a verbatim copy of `dugcanlift-kit/data/`, the
 same file LIFT bundles. Item ids are the whole contract, so the copies must not
 drift: edit it in the kit and copy it here, never here alone. It is app-side
