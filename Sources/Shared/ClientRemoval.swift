@@ -44,9 +44,14 @@ struct RemovalOutcome: Equatable {
 /// `ClientFoodEntry` -- plus the rows that name the client as a plain value,
 /// which no cascade reaches: `ScheduledSession`s booked for them,
 /// `PlannedMeal`s owned by them through the `cookPlanOwners` map, their
-/// `ClientShoppingCheck` ticks, and their `roadPicks`. Those carry the
+/// `ClientShoppingCheck` ticks, their `SentPlan` rows, and their `roadPicks`. Those carry the
 /// client's id and nothing else: with the client gone they show in no week,
 /// can never be sent or edited, and would still ride along in every backup.
+///
+/// **Sent plans are not in the confirmation sentence either**, and for the
+/// same reason road picks are not: that sentence is Coach Android's, word for
+/// word, and it was written before either existed. It gains a clause in all
+/// three builds at once or in none. Coach web made the same call again here.
 ///
 /// **Road picks are not in the confirmation sentence.** That sentence is Coach
 /// Android's, word for word, and it was written before road picks existed;
@@ -93,6 +98,13 @@ enum ClientRemoval {
         for meal in ownedMeals { context.delete(meal) }
         for session in sessions(for: clientID, in: context) { context.delete(session) }
         for check in checks(for: clientID, in: context) { context.delete(check) }
+        // The record of what was sent to this client goes with them, for the
+        // reason the sessions and the ticks do: a `SentPlan` is a payload
+        // addressed to one person, readable on no screen once they are gone,
+        // and would otherwise ride in every backup from now on. It is a row in
+        // this store rather than a `UserDefaults` side-car, so it goes inside
+        // the one save and rolls back with everything else.
+        for plan in SentPlans.forClient(clientID, in: context) { context.delete(plan) }
         context.delete(client)
 
         do {

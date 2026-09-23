@@ -164,6 +164,13 @@ struct ConnectView: View {
                 ? "That backup had no library in it. Save a fresh one from the web app first."
                 : "Brought in \(summary.recipes) recipes, \(summary.meals) planned meals, "
                   + "\(summary.routines) workouts and \(summary.sessions) sessions."
+                  // Said only when there are any: a coach who has never sent a
+                  // plan from the browser should read the sentence they always
+                  // read.
+                  + (summary.sentPlans > 0
+                     ? " Plus \(summary.sentPlans) plan\(summary.sentPlans == 1 ? "" : "s") "
+                       + "you sent from the browser."
+                     : "")
             errorMessage = nil
         } catch {
             errorMessage = "That doesn't look like a LIFT Coach backup."

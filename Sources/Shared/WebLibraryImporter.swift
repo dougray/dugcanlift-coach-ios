@@ -18,8 +18,12 @@ enum WebLibraryImporter {
         var meals = 0
         var routines = 0
         var sessions = 0
+        /// Rows of `sentPlans` -- the record of what the browser sent this
+        /// client, so a coach who plans in the browser and reads on the phone
+        /// carries it across. Nothing else here is about a client.
+        var sentPlans = 0
 
-        var isEmpty: Bool { recipes + meals + routines + sessions == 0 }
+        var isEmpty: Bool { recipes + meals + routines + sessions + sentPlans == 0 }
     }
 
     enum ImportError: Error { case notACoachBackup }
@@ -137,6 +141,31 @@ enum WebLibraryImporter {
             summary.sessions += 1
         }
 
+        // Sent plans, merged by id and never deleted -- the same rule
+        // `BackupCodec` follows for this key, because an older file must not
+        // remove a send this device made since. The cap is applied after the
+        // merge, so importing two files cannot leave a client with more rows
+        // than sending would.
+        let havePlans = Set(try context.fetch(FetchDescriptor<SentPlan>())
+            .map { $0.id.uuidString.lowercased() })
+        var seenPlans = havePlans
+        var touchedClients: Set<String> = []
+        for row in file.sentPlans ?? [] {
+            let id = stableID(from: row.id)
+            guard !seenPlans.contains(id.uuidString.lowercased()), !row.clientId.isEmpty,
+                  let payload = row.payload.data else { continue }
+            seenPlans.insert(id.uuidString.lowercased())
+            touchedClients.insert(row.clientId)
+            context.insert(SentPlan(
+                id: id, clientID: row.clientId,
+                sentAtEpochSec: row.sentAt.map { Int($0) } ?? 0,
+                payloadHash: (row.payloadHash?.isEmpty == false) ? row.payloadHash!
+                                                                 : SentPlans.hash(payload: payload),
+                payloadData: payload))
+            summary.sentPlans += 1
+        }
+        for clientID in touchedClients { SentPlans.prune(clientID: clientID, in: context) }
+
         if ownersChanged { MealOwners.save(owners, to: defaults) }
 
         try context.save()
@@ -176,6 +205,19 @@ enum WebLibraryImporter {
         let plans: [WebPlan]?
         let workouts: [WebWorkout]?
         let sessions: [WebSession]?
+        /// BACKUP-FORMAT.md, "The Coach backup's sent plans". Absent in a file
+        /// written before them, which changes nothing.
+        let sentPlans: [WebSentPlan]?
+    }
+
+    /// One send as the browser wrote it. The payload is kept as the object it
+    /// is: Coach reads it with `PlanPayload`, never field by field here.
+    private struct WebSentPlan: Decodable {
+        let id: String
+        let clientId: String
+        let sentAt: Double?
+        let payloadHash: String?
+        let payload: AnyJSON
     }
 
     /// Only enough to prove this is a Coach backup. The roster itself is not

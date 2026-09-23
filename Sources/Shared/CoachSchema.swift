@@ -28,5 +28,9 @@ enum CoachSchema {
         // store holding ticks, not assumed).
         Recipe.self, RecipeIngredient.self, PlannedMeal.self,
         ClientShoppingCheck.self,
+        // What was actually sent, per client -- Coach's own row, like
+        // ScheduledSession, so the Booked card can put the plan beside the
+        // log after the templates behind it have moved on. See SentPlan.swift.
+        SentPlan.self,
     ]
 }
