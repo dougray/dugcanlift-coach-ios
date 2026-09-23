@@ -22,6 +22,22 @@ final class Client {
     /// first outdoor-aware import, which any payload then counts as newer.
     var exportedAtEpochSec: Int?
 
+    // The window this client has actually sent: the union of every link's
+    // `r`..`t`, as day keys. Without it a booked Tuesday with no `TrainingDay`
+    // is indistinguishable from a Tuesday outside the window the client chose
+    // to send, and one of those is "not logged" while the other is "we do not
+    // know" -- see `PlanAndLog`. The union is Coach web's own rule
+    // (`app.js`'s `absorb`), and its cost is stated: two imports with a gap
+    // between their windows read that gap as covered. A client sending weekly
+    // has no gap; one sending twice a year does.
+    //
+    // Optional with no default, so a store written before them opens with
+    // both nil -- a lightweight migration, checked by installing over a real
+    // store rather than assumed. Nil is "we do not know", which is the only
+    // honest reading of a client imported before this existed.
+    var coveredFrom: String?
+    var coveredTo: String?
+
     @Relationship(deleteRule: .cascade, inverse: \Goal.client)
     var goal: Goal?
 
@@ -187,11 +203,24 @@ final class ExerciseSet {
     /// an unrecognised value from a future writer degrades to both rather
     /// than refusing to decode.
     var sideRaw: String?
+    /// Where this set sat in the day the client sent -- the wire's own order,
+    /// which arrives in `w` and used to be thrown away. `day.sets` is an
+    /// unordered to-many, so without it Coach cannot say which logged set was
+    /// the third, and "Logged 225 x 5 . 225 x 5 . 245 x 2" could not be
+    /// trusted to be in the order it happened.
+    ///
+    /// Optional with no default, so a store written before it opens with nil
+    /// -- a lightweight migration, checked by installing over a real store.
+    /// Nil is "nobody recorded the order": those sets print in whatever order
+    /// the store returns them and nothing is aligned against the asked row,
+    /// which is what `PlanAndLog` does with them anyway. Days are replaced
+    /// whole by the next link, so it heals in a week.
+    var orderIndex: Int?
 
     init(day: TrainingDay? = nil, exerciseName: String, equipment: String? = nil,
          weightLb: Double? = nil, reps: Int? = nil, rpe: Double? = nil,
          durationSec: Double? = nil, distanceMeters: Double? = nil, isWarmup: Bool = false,
-         side: SetSide? = nil) {
+         side: SetSide? = nil, orderIndex: Int? = nil) {
         self.day = day
         self.exerciseName = exerciseName
         self.equipment = equipment
@@ -202,6 +231,7 @@ final class ExerciseSet {
         self.distanceMeters = distanceMeters
         self.isWarmup = isWarmup
         self.sideRaw = side?.rawValue
+        self.orderIndex = orderIndex
     }
 }
 

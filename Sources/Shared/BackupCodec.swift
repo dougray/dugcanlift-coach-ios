@@ -25,6 +25,125 @@ enum BackupCodec {
         /// Omitted by a Coach old enough not to have picks, and a file
         /// without it changes nothing on restore.
         var roadPicks: [String: [String]]?
+        /// What each client was actually sent (BACKUP-FORMAT.md, "The Coach
+        /// backup's sent plans"). Rows with ids of their own, so they merge by
+        /// id the way recipes and workouts do. Omitted when there are none, so
+        /// a coach who has never sent a plan writes the file they always did.
+        ///
+        /// **A row that will not decode is dropped, not fatal.** Coach web's
+        /// `mergeBackup` skips a row missing an id, a client or a payload and
+        /// keeps going, and a record of one send is not worth failing a file
+        /// that also carries the roster.
+        var sentPlans: LenientRows<BackupSentPlan>?
+    }
+
+    /// An array whose unreadable elements are skipped rather than failing the
+    /// whole file -- the rule `WireDay` follows for `o`, `fx` and `fe`, and
+    /// the one Coach web's own restore follows for these rows.
+    struct LenientRows<Row: Codable>: Codable {
+        var values: [Row]
+
+        init(_ values: [Row]) { self.values = values }
+
+        init(from decoder: Decoder) throws {
+            var container = try decoder.unkeyedContainer()
+            var kept: [Row] = []
+            while !container.isAtEnd {
+                if let row = try? container.decode(Row.self) {
+                    kept.append(row)
+                } else {
+                    // The index only advances on a successful decode, so a bad
+                    // element has to be read as something before the next one
+                    // can be.
+                    _ = try? container.decode(AnyJSON.self)
+                }
+            }
+            values = kept
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.unkeyedContainer()
+            for row in values { try container.encode(row) }
+        }
+    }
+
+    /// One send, in the five fields BACKUP-FORMAT.md names, under Coach web's
+    /// and Coach Android's spelling -- `clientId`, not this file's older
+    /// `clientID`, because the document names it and a new key should not be
+    /// the one that has to be translated. Read either way round all the same:
+    /// a file is worth more than a spelling.
+    private struct BackupSentPlan: Codable {
+        var id: UUID
+        var clientId: String
+        var sentAt: Int
+        var payloadHash: String
+        /// The plan payload as PLAN-FORMAT describes it, stored as the object
+        /// it is rather than as escaped text.
+        var payload: AnyJSON
+
+        private enum CodingKeys: String, CodingKey { case id, clientId, clientID, sentAt, payloadHash, payload }
+
+        init(id: UUID, clientId: String, sentAt: Int, payloadHash: String, payload: AnyJSON) {
+            self.id = id
+            self.clientId = clientId
+            self.sentAt = sentAt
+            self.payloadHash = payloadHash
+            self.payload = payload
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            // A UUID is kept as itself, so a re-restore is idempotent; any
+            // other spelling another Coach might write is hashed into one
+            // deterministically, the way `WebLibraryImporter` reads the
+            // browser's ids.
+            id = try BackupCodec.rowID(c.decode(String.self, forKey: .id))
+            clientId = try c.decodeIfPresent(String.self, forKey: .clientId)
+                ?? c.decode(String.self, forKey: .clientID)
+            sentAt = ((try? c.decodeIfPresent(Int.self, forKey: .sentAt)) ?? nil) ?? 0
+            payloadHash = ((try? c.decodeIfPresent(String.self, forKey: .payloadHash)) ?? nil) ?? ""
+            payload = try c.decode(AnyJSON.self, forKey: .payload)
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var c = encoder.container(keyedBy: CodingKeys.self)
+            try c.encode(id, forKey: .id)
+            try c.encode(clientId, forKey: .clientId)
+            try c.encode(sentAt, forKey: .sentAt)
+            try c.encode(payloadHash, forKey: .payloadHash)
+            try c.encode(payload, forKey: .payload)
+        }
+    }
+
+    /// A row id as a UUID: kept as itself when it is one, and hashed into one
+    /// when it is not, so a file another Coach wrote still restores.
+    static func rowID(_ raw: String) throws -> UUID {
+        if let real = UUID(uuidString: raw) { return real }
+        guard !raw.isEmpty else {
+            throw DecodingError.dataCorrupted(
+                .init(codingPath: [], debugDescription: "a row with no id"))
+        }
+        var hash = UInt64(5381)
+        for byte in raw.utf8 { hash = hash &* 33 &+ UInt64(byte) }
+        var bytes = withUnsafeBytes(of: hash.bigEndian, Array.init)
+        bytes += withUnsafeBytes(of: hash.littleEndian, Array.init)
+        return UUID(uuid: (bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5],
+                           bytes[6], bytes[7], bytes[8], bytes[9], bytes[10], bytes[11],
+                           bytes[12], bytes[13], bytes[14], bytes[15]))
+    }
+
+    /// A day's sets in the order the client logged them: `ExerciseSet
+    /// .orderIndex` where it is recorded, and the store's own order behind it
+    /// for the sets written before Coach kept one. Nothing here invents an
+    /// order for those; they simply keep the place they already had.
+    static func orderedSets(_ day: TrainingDay) -> [ExerciseSet] {
+        day.sets.enumerated()
+            .sorted { left, right in
+                let a = left.element.orderIndex ?? Int.max
+                let b = right.element.orderIndex ?? Int.max
+                return a == b ? left.offset < right.offset : a < b
+            }
+            .map(\.element)
     }
 
     /// A weight read from a file, or nil when it is absent, zero, negative or
@@ -168,6 +287,12 @@ enum BackupCodec {
         var exportedAtEpochSec: Int?
         var outdoorBests: [BackupOutdoorBest]?
         var lastRoute: BackupLastRoute?
+        /// The window this client has sent, as day keys -- the union of every
+        /// link's `r`..`t`. Optional, so a file written before it restores
+        /// with both nil, which is "we do not know" and never "they logged
+        /// nothing". See `PlanAndLog`.
+        var coveredFrom: String?
+        var coveredTo: String?
     }
 
     private struct BackupOutdoorActivity: Codable {
@@ -272,6 +397,12 @@ enum BackupCodec {
         var durationSec: Double?
         var distanceMeters: Double?
         var isWarmup: Bool
+        /// Where the set sat in the day the client sent. Written only when it
+        /// is known -- a set stored before Coach recorded the order has none,
+        /// and inventing one from this array's order would claim an order
+        /// nobody recorded. Sets are written in that order anyway, so a reader
+        /// that ignores this key still sees the day as it happened.
+        var orderIndex: Int?
         /// `"left"` or `"right"`, **omitted entirely when both** -- not
         /// `"both"`, not `null`, not a bit (BACKUP-FORMAT.md). Named rather
         /// than packed for the reason outdoor bests are objects here: this
@@ -304,6 +435,16 @@ enum BackupCodec {
         // store -- see `RoadPicks`. Written as they are stored: an object of
         // lists, omitted entirely when a coach has marked none.
         let picks = RoadPicks.load(from: defaults)
+        // A row whose payload will not parse is left out rather than written
+        // as a string: this key is an object in every other Coach's file, and
+        // a shape only this app can read is worse than one send going missing.
+        let sentPlans: [BackupSentPlan] = try context.fetch(FetchDescriptor<SentPlan>())
+            .compactMap { row in
+                AnyJSON(data: row.payloadData).map {
+                    BackupSentPlan(id: row.id, clientId: row.clientID, sentAt: row.sentAtEpochSec,
+                                   payloadHash: row.payloadHash, payload: $0)
+                }
+            }
 
         let backup = Backup(v: 2, clients: clients.map { client in
             BackupClient(
@@ -317,11 +458,16 @@ enum BackupCodec {
                         bodyweightLb: day.bodyweightLb, steps: day.steps,
                         foodCalories: day.foodCalories, foodProteinG: day.foodProteinG,
                         foodFatG: day.foodFatG, foodCarbsG: day.foodCarbsG, foodFiberG: day.foodFiberG,
-                        sets: day.sets.map { set in
+                        // Written in the order the client logged them, so a
+                        // reader that knows nothing of `orderIndex` still gets
+                        // the day as it happened; the index rides along for
+                        // one that does.
+                        sets: orderedSets(day).map { set in
                             BackupSet(exerciseName: set.exerciseName, equipment: set.equipment,
                                       weightLb: set.weightLb, reps: set.reps, rpe: set.rpe,
                                       durationSec: set.durationSec, distanceMeters: set.distanceMeters,
-                                      isWarmup: set.isWarmup, side: set.side?.backupValue)
+                                      isWarmup: set.isWarmup, orderIndex: set.orderIndex,
+                                      side: set.side?.backupValue)
                         },
                         foodEntries: day.foodEntries.map { food in
                             BackupFood(foodName: food.foodName, servings: food.servings,
@@ -347,7 +493,8 @@ enum BackupCodec {
                     BackupLastRoute(type: $0.type, startedAtEpochSec: $0.startedAtEpochSec,
                                     durationSec: $0.durationSec, distanceMeters: $0.distanceMeters,
                                     climbMeters: $0.climbMeters, polyline: $0.polyline)
-                }
+                },
+                coveredFrom: client.coveredFrom, coveredTo: client.coveredTo
             )
         }, recipes: recipes.map { recipe in
             BackupRecipe(id: recipe.id, name: recipe.name, servings: recipe.servings,
@@ -377,7 +524,8 @@ enum BackupCodec {
         }, sessions: sessions.map { session in
             BackupSession(id: session.id, clientID: session.clientID, dayKey: session.dayKey,
                           routineID: session.routineID)
-        }, roadPicks: picks.isEmpty ? nil : picks)
+        }, roadPicks: picks.isEmpty ? nil : picks,
+           sentPlans: sentPlans.isEmpty ? nil : LenientRows(sentPlans))
         return try JSONEncoder().encode(backup)
     }
 
@@ -393,6 +541,8 @@ enum BackupCodec {
                                  displayUnit: backupClient.displayUnit, platform: backupClient.platform,
                                  lastImportedAt: backupClient.lastImportedAt ?? .now)
             client.exportedAtEpochSec = backupClient.exportedAtEpochSec
+            client.coveredFrom = backupClient.coveredFrom
+            client.coveredTo = backupClient.coveredTo
             client.outdoorBests = backupClient.outdoorBests?.map {
                 WireOutdoorBest(type: $0.type, count: $0.count, farthestMeters: $0.farthestMeters,
                                 longestSec: $0.longestSec, fastestSecPerKm: $0.fastestSecPerKm)
@@ -435,7 +585,12 @@ enum BackupCodec {
                                            distanceMeters: backupSet.distanceMeters, isWarmup: backupSet.isWarmup,
                                            // Lenient: an unrecognised string is
                                            // both, not a failed import.
-                                           side: SetSide.fromBackup(backupSet.side))
+                                           side: SetSide.fromBackup(backupSet.side),
+                                           // Absent stays absent. A file written
+                                           // before Coach recorded the order does
+                                           // not know it, and this array's order
+                                           // is not a record of it.
+                                           orderIndex: backupSet.orderIndex)
                     context.insert(set)
                     day.sets.append(set)
                 }
@@ -541,6 +696,37 @@ enum BackupCodec {
                     }
                 }
             }
+        }
+
+        // Sent plans: rows with ids, merged by id and never deleted by an
+        // older file -- the library half's rule, not the roster's, because an
+        // older backup must not remove a send this device made since. Ids
+        // compare case-insensitively like every other id in this file. A file
+        // written before sent plans existed has no key at all and changes
+        // nothing.
+        if let rows = backup.sentPlans?.values, !rows.isEmpty {
+            let existing = Set(try context.fetch(FetchDescriptor<SentPlan>())
+                .map { $0.id.uuidString.lowercased() })
+            var seen = existing
+            var touched: Set<String> = []
+            for row in rows {
+                let id = row.id.uuidString.lowercased()
+                guard !seen.contains(id), !row.clientId.isEmpty,
+                      let payload = row.payload.data else { continue }
+                seen.insert(id)
+                touched.insert(row.clientId)
+                context.insert(SentPlan(
+                    id: row.id, clientID: row.clientId, sentAtEpochSec: row.sentAt,
+                    // A file that carries no hash gets one computed here, so a
+                    // re-send of a restored plan still replaces rather than
+                    // duplicates.
+                    payloadHash: row.payloadHash.isEmpty ? SentPlans.hash(payload: payload)
+                                                         : row.payloadHash,
+                    payloadData: payload))
+            }
+            // The cap is applied after the merge, so restoring two files
+            // cannot leave a client with more rows than sending would.
+            for clientID in touched { SentPlans.prune(clientID: clientID, in: context) }
         }
 
         let existingSessions = Set(try context.fetch(FetchDescriptor<ScheduledSession>()).map(\.id))

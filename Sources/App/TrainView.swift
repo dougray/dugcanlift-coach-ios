@@ -156,6 +156,12 @@ struct TrainView: View {
                     Text("No clients yet")
                 } else {
                     ForEach(clients) { client in
+                        // Not recorded as a sent plan: a programme books no
+                        // day at all, so it would show as no group on the
+                        // Booked card while taking one of the 26 rows kept per
+                        // client. The week's send is the one that is recorded
+                        // (`TrainPlanView`), which is where Coach Android
+                        // records too.
                         ShareLink(item: programmeLink(for: client)) {
                             Text(client.name)
                         }

@@ -20,6 +20,9 @@ struct TrainPlanView: View {
     @Binding var clientID: String
     @Binding var weekStart: String
     @Binding var shareLink: String
+    /// Whether the share sheet for this week's link is up. `@State` here
+    /// rather than in `TrainView`: it lives exactly as long as the sheet does.
+    @State private var sharing = false
 
     private var days: [String] { PlanWeek(startDayKey: weekStart).days }
 
@@ -92,8 +95,25 @@ struct TrainPlanView: View {
                 // import prompt offering nothing. A programme with no
                 // bookings yet is still sendable, via "Send programme"
                 // on the Workouts section instead.
-                ShareLink(item: shareLink) { Text("Send this week") }
-                    .tint(Theme.accent)
+                // A `Button` that records and then presents the system
+                // share sheet, rather than a `ShareLink`.
+                //
+                // `ShareLink` has no action of its own, and the usual way to
+                // get one -- a `.simultaneousGesture` beside it -- is a silent
+                // dependency on how two gestures compose: if it ever stops
+                // firing, the sheet still opens, the plan still goes, and
+                // Coach quietly records nothing. This is the same sheet
+                // `ShareLink` presents, handed the same string, with the
+                // record written first. See `PlanLinkEncoder.recordSend`.
+                Button("Send this week") {
+                    recordSend()
+                    sharing = true
+                }
+                .tint(Theme.accent)
+                .sheet(isPresented: $sharing) {
+                    PlanShareSheet(text: shareLink)
+                        .liftAppearance()
+                }
             }
         }
         // The bottom inset for the floating tab bar is applied once, by the
@@ -193,4 +213,25 @@ struct TrainPlanView: View {
             lifterID: clientID, coachName: coachName)
         return "https://www.dugcanlift.com/lift/#" + fragment
     }
+
+    /// The same payload the link carries, filed against this client.
+    private func recordSend() {
+        PlanLinkEncoder.recordSend(routines: usedRoutines, sessions: mineSessions,
+                                   lifterID: clientID, coachName: coachName, in: context)
+    }
+}
+
+/// The system share sheet, presented by the button that records the send.
+///
+/// `UIActivityViewController` is what `ShareLink` itself puts on screen; this
+/// is only the part of it Coach needs, so that the record and the sheet happen
+/// in one action rather than in two gestures that have to agree.
+private struct PlanShareSheet: UIViewControllerRepresentable {
+    let text: String
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: [text], applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }
