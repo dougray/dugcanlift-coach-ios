@@ -415,7 +415,7 @@ struct ClientDetailView: View {
                 ForEach(recent) { day in
                     ForEach(Array(OutdoorDisplay.activities(day.outdoor).enumerated()), id: \.offset) { _, activity in
                         HStack {
-                            Text("\(day.dayKey) · \(OutdoorDisplay.typeLabel(activity.type) ?? "")")
+                            Text("\(OutdoorDisplay.shortDayText(day.dayKey)) · \(OutdoorDisplay.typeLabel(activity.type) ?? "")")
                                 .foregroundStyle(Theme.textPrimary)
                             Spacer()
                             Text(OutdoorDisplay.activityLine(activity, unit: distanceUnit))

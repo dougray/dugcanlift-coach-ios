@@ -210,15 +210,86 @@ private struct RoadFoodLenient<T: Decodable>: Decodable {
 /// Coach does not warn. LIFT does, from the same field, and the three Coach
 /// builds say nothing about staleness at all: this line gains a clause in all
 /// of them or in none.
+///
+/// **Both dates are written the way a person writes one** -- "Sep 20, 2026",
+/// and "Nov 2022" for a document that names only a month. A coach reading the
+/// same chain in LIFT reads the same date there, and an ISO key is a wire
+/// shape rather than a sentence.
 enum RoadFoodDates {
-    static func line(publishedOn: String?, checkedOn: String?) -> String? {
-        let published = publishedOn?.trimmingCharacters(in: .whitespaces)
-        let checked = checkedOn?.trimmingCharacters(in: .whitespaces)
-        switch (published?.isEmpty == false ? published : nil, checked?.isEmpty == false ? checked : nil) {
+    static func line(publishedOn: String?, checkedOn: String?,
+                     locale: Locale = .current) -> String? {
+        let published = documentText(publishedOn, locale: locale)
+        let checked = dayText(checkedOn, locale: locale)
+        switch (published, checked) {
         case let (published?, checked?): return "Published \(published) · checked \(checked)"
         case let (published?, nil): return "Published \(published)"
         case let (nil, checked?): return "Checked \(checked)"
         case (nil, nil): return nil
         }
+    }
+
+    /// "Sep 20, 2026" for a `YYYY-MM-DD`, or nil when the text is not one.
+    /// The day someone read a chart is always a whole day, so this is the
+    /// strict shape -- a port of `lift-ios`'s `RoadFoodRanking.dateText`.
+    static func dayText(_ key: String?, locale: Locale = .current) -> String? {
+        guard let parts = parse(key), parts.day != nil else { return nil }
+        return text(parts, locale: locale)
+    }
+
+    /// A document's own date, printed no more precisely than the document
+    /// wrote it: "Mar 29, 2021" for a chart that gives a day, "Nov 2022" for
+    /// one that names only a month. Never more precise, so no day is invented
+    /// for the reader -- LIFT web's `roadDocDate` and LIFT Android's
+    /// `publishedLabel`, which both make exactly that distinction.
+    static func documentText(_ key: String?, locale: Locale = .current) -> String? {
+        guard let parts = parse(key) else { return nil }
+        return text(parts, locale: locale)
+    }
+
+    // MARK: - Reading the wire's shape
+
+    /// `YYYY-MM-DD` or `YYYY-MM`, and nothing else. Anything the kit's
+    /// `validate-road-food.mjs` would reject reads as no date at all rather
+    /// than reaching a card verbatim, which is what LIFT iOS and LIFT Android
+    /// both do; only LIFT web prints "Invalid Date", and that is the web's
+    /// own bug, not a shape to copy.
+    private static func parse(_ key: String?) -> (year: Int, month: Int, day: Int?)? {
+        guard let text = key?.trimmingCharacters(in: .whitespaces), !text.isEmpty else { return nil }
+        let parts = text.split(separator: "-", omittingEmptySubsequences: false)
+        guard parts.count == 2 || parts.count == 3,
+              let year = digits(parts[0], count: 4),
+              let month = digits(parts[1], count: 2), (1...12).contains(month)
+        else { return nil }
+        guard parts.count == 3 else { return (year, month, nil) }
+        guard let day = digits(parts[2], count: 2), (1...31).contains(day) else { return nil }
+        return (year, month, day)
+    }
+
+    private static func digits(_ text: Substring, count: Int) -> Int? {
+        guard text.count == count, text.allSatisfy({ $0.isASCII && $0.isNumber }) else { return nil }
+        return Int(text)
+    }
+
+    /// Formatted in the reader's own locale, because that is what all three
+    /// LIFT builds do -- the browser's `toLocaleDateString(undefined, ...)`,
+    /// Android's `Locale.getDefault()`, iOS's `Locale.current`. None of them
+    /// pins en-US, so neither does this.
+    ///
+    /// Noon UTC, and the style's time zone pinned to match: a day key is a
+    /// calendar day and not an instant, and midnight in one zone is the day
+    /// before in another.
+    private static func text(_ parts: (year: Int, month: Int, day: Int?),
+                             locale: Locale) -> String? {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        guard let date = calendar.date(from: DateComponents(
+            year: parts.year, month: parts.month, day: parts.day ?? 1, hour: 12))
+        else { return nil }
+        var style = parts.day == nil
+            ? Date.FormatStyle(date: .omitted, time: .omitted).year().month(.abbreviated)
+            : Date.FormatStyle(date: .abbreviated, time: .omitted)
+        style = style.locale(locale)
+        style.timeZone = calendar.timeZone
+        return date.formatted(style)
     }
 }
