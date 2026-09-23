@@ -29,7 +29,42 @@ enum BackupCodec {
         /// backup's sent plans"). Rows with ids of their own, so they merge by
         /// id the way recipes and workouts do. Omitted when there are none, so
         /// a coach who has never sent a plan writes the file they always did.
-        var sentPlans: [BackupSentPlan]?
+        ///
+        /// **A row that will not decode is dropped, not fatal.** Coach web's
+        /// `mergeBackup` skips a row missing an id, a client or a payload and
+        /// keeps going, and a record of one send is not worth failing a file
+        /// that also carries the roster.
+        var sentPlans: LenientRows<BackupSentPlan>?
+    }
+
+    /// An array whose unreadable elements are skipped rather than failing the
+    /// whole file -- the rule `WireDay` follows for `o`, `fx` and `fe`, and
+    /// the one Coach web's own restore follows for these rows.
+    struct LenientRows<Row: Codable>: Codable {
+        var values: [Row]
+
+        init(_ values: [Row]) { self.values = values }
+
+        init(from decoder: Decoder) throws {
+            var container = try decoder.unkeyedContainer()
+            var kept: [Row] = []
+            while !container.isAtEnd {
+                if let row = try? container.decode(Row.self) {
+                    kept.append(row)
+                } else {
+                    // The index only advances on a successful decode, so a bad
+                    // element has to be read as something before the next one
+                    // can be.
+                    _ = try? container.decode(AnyJSON.self)
+                }
+            }
+            values = kept
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.unkeyedContainer()
+            for row in values { try container.encode(row) }
+        }
     }
 
     /// One send, in the five fields BACKUP-FORMAT.md names, under Coach web's
@@ -58,7 +93,11 @@ enum BackupCodec {
 
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
-            id = try c.decode(UUID.self, forKey: .id)
+            // A UUID is kept as itself, so a re-restore is idempotent; any
+            // other spelling another Coach might write is hashed into one
+            // deterministically, the way `WebLibraryImporter` reads the
+            // browser's ids.
+            id = try BackupCodec.rowID(c.decode(String.self, forKey: .id))
             clientId = try c.decodeIfPresent(String.self, forKey: .clientId)
                 ?? c.decode(String.self, forKey: .clientID)
             sentAt = ((try? c.decodeIfPresent(Int.self, forKey: .sentAt)) ?? nil) ?? 0
@@ -74,6 +113,23 @@ enum BackupCodec {
             try c.encode(payloadHash, forKey: .payloadHash)
             try c.encode(payload, forKey: .payload)
         }
+    }
+
+    /// A row id as a UUID: kept as itself when it is one, and hashed into one
+    /// when it is not, so a file another Coach wrote still restores.
+    static func rowID(_ raw: String) throws -> UUID {
+        if let real = UUID(uuidString: raw) { return real }
+        guard !raw.isEmpty else {
+            throw DecodingError.dataCorrupted(
+                .init(codingPath: [], debugDescription: "a row with no id"))
+        }
+        var hash = UInt64(5381)
+        for byte in raw.utf8 { hash = hash &* 33 &+ UInt64(byte) }
+        var bytes = withUnsafeBytes(of: hash.bigEndian, Array.init)
+        bytes += withUnsafeBytes(of: hash.littleEndian, Array.init)
+        return UUID(uuid: (bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5],
+                           bytes[6], bytes[7], bytes[8], bytes[9], bytes[10], bytes[11],
+                           bytes[12], bytes[13], bytes[14], bytes[15]))
     }
 
     /// A day's sets in the order the client logged them: `ExerciseSet
@@ -469,7 +525,7 @@ enum BackupCodec {
             BackupSession(id: session.id, clientID: session.clientID, dayKey: session.dayKey,
                           routineID: session.routineID)
         }, roadPicks: picks.isEmpty ? nil : picks,
-           sentPlans: sentPlans.isEmpty ? nil : sentPlans)
+           sentPlans: sentPlans.isEmpty ? nil : LenientRows(sentPlans))
         return try JSONEncoder().encode(backup)
     }
 
@@ -648,7 +704,7 @@ enum BackupCodec {
         // compare case-insensitively like every other id in this file. A file
         // written before sent plans existed has no key at all and changes
         // nothing.
-        if let rows = backup.sentPlans, !rows.isEmpty {
+        if let rows = backup.sentPlans?.values, !rows.isEmpty {
             let existing = Set(try context.fetch(FetchDescriptor<SentPlan>())
                 .map { $0.id.uuidString.lowercased() })
             var seen = existing
