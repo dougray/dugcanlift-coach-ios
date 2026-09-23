@@ -103,6 +103,28 @@ final class SentPlanTests: XCTestCase {
         XCTAssertEqual(decoded.w?.first?.e.first?.s.first?.first??.rounded(), 220)
     }
 
+    /// A food-only send, or a programme with nothing booked, books no day --
+    /// it would show as no group on the card while taking one of the 26 rows
+    /// kept per client. Coach Android draws the line in the same place.
+    func testASendThatBooksNoDayIsNotRecorded() throws {
+        let context = try context()
+        let routine = Routine(name: "Lower A")
+        context.insert(routine)
+        let exercise = RoutineExercise(name: "Back Squat", equipment: "Barbell", orderIndex: 0)
+        exercise.routine = routine
+        context.insert(exercise)
+
+        // A programme with no bookings at all.
+        XCTAssertNil(PlanLinkEncoder.recordSend(routines: [routine], sessions: [],
+                                                lifterID: "c", coachName: "Sam", in: context))
+        // And a food-only week.
+        let recipe = Recipe(name: "Beef Chilli", servings: 4)
+        context.insert(recipe)
+        XCTAssertNil(PlanLinkEncoder.recordSend(recipes: [recipe], lifterID: "c",
+                                                coachName: "Sam", in: context))
+        XCTAssertTrue(SentPlans.forClient("c", in: context).isEmpty)
+    }
+
     // MARK: - The hash
 
     func testTheHashIsTheCanonicalReEncode() throws {
