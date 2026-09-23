@@ -29,19 +29,81 @@ final class RoadPicksTests: XCTestCase {
     /// - but it does say when a chain's numbers are from, and a chart's own
     /// date and the day someone read it are different facts.
     func testAPlaceSaysWhatTheChainPublishedAndWhenItWasChecked() {
-        XCTAssertEqual(RoadFoodDates.line(publishedOn: "2021-03-29", checkedOn: "2026-09-23"),
-                       "Published 2021-03-29 · checked 2026-09-23")
-        XCTAssertEqual(RoadFoodDates.line(publishedOn: "2022-11", checkedOn: "2026-09-23"),
-                       "Published 2022-11 · checked 2026-09-23")
+        XCTAssertEqual(RoadFoodDates.line(publishedOn: "2021-03-29", checkedOn: "2026-09-23",
+                                          locale: enUS),
+                       "Published Mar 29, 2021 · checked Sep 23, 2026")
+        XCTAssertEqual(RoadFoodDates.line(publishedOn: "2022-11", checkedOn: "2026-09-23",
+                                          locale: enUS),
+                       "Published Nov 2022 · checked Sep 23, 2026")
         // Blank stays blank: a chain whose document states no date reads
         // exactly as it did before the field existed - no empty parenthetical.
-        XCTAssertEqual(RoadFoodDates.line(publishedOn: nil, checkedOn: "2026-09-20"),
-                       "Checked 2026-09-20")
-        XCTAssertEqual(RoadFoodDates.line(publishedOn: "  ", checkedOn: "2026-09-20"),
-                       "Checked 2026-09-20")
-        XCTAssertEqual(RoadFoodDates.line(publishedOn: "2022-11", checkedOn: nil), "Published 2022-11")
-        XCTAssertNil(RoadFoodDates.line(publishedOn: nil, checkedOn: nil))
+        XCTAssertEqual(RoadFoodDates.line(publishedOn: nil, checkedOn: "2026-09-20", locale: enUS),
+                       "Checked Sep 20, 2026")
+        XCTAssertEqual(RoadFoodDates.line(publishedOn: "  ", checkedOn: "2026-09-20", locale: enUS),
+                       "Checked Sep 20, 2026")
+        XCTAssertEqual(RoadFoodDates.line(publishedOn: "2022-11", checkedOn: nil, locale: enUS),
+                       "Published Nov 2022")
+        XCTAssertNil(RoadFoodDates.line(publishedOn: nil, checkedOn: nil, locale: enUS))
     }
+
+    /// The date a person reads, not the key the file stores. LIFT web, LIFT
+    /// Android and LIFT iPhone all print "Sep 20, 2026" for the same chain;
+    /// Coach printed "2026-09-20" because it had no formatter at all.
+    func testADateIsWrittenTheWayAPersonWritesOne() {
+        XCTAssertEqual(RoadFoodDates.dayText("2026-09-20", locale: enUS), "Sep 20, 2026")
+        XCTAssertEqual(RoadFoodDates.documentText("2021-03-29", locale: enUS), "Mar 29, 2021")
+    }
+
+    /// A document that names only a month is printed only to the month. No day
+    /// is invented for the reader: Burger King's chart says "NOVEMBER 2022"
+    /// and never says the 1st, which is LIFT web's `roadDocDate` rule and LIFT
+    /// Android's `publishedLabel` rule both.
+    func testAMonthOnlyDocumentDateStaysAMonth() {
+        XCTAssertEqual(RoadFoodDates.documentText("2022-11", locale: enUS), "Nov 2022")
+        XCTAssertEqual(RoadFoodDates.documentText("2022-01", locale: enUS), "Jan 2022")
+        // The day someone read a chart is a whole day, so a month-only value
+        // is not one -- `checkedOn` is `YYYY-MM-DD` or it is not a check date.
+        XCTAssertNil(RoadFoodDates.dayText("2022-11", locale: enUS))
+    }
+
+    /// A missing date, and anything that is not one. Both read as absent: the
+    /// clause is left out rather than showing a blank or echoing the text, the
+    /// same answer LIFT iPhone and LIFT Android give. The kit's
+    /// `validate-road-food.mjs` is what keeps junk out of the file; this is
+    /// what happens if it ever gets in.
+    func testAMissingOrUnreadableDateSaysNothingAtAll() {
+        XCTAssertNil(RoadFoodDates.dayText(nil, locale: enUS))
+        XCTAssertNil(RoadFoodDates.documentText(nil, locale: enUS))
+        XCTAssertNil(RoadFoodDates.dayText("", locale: enUS))
+        XCTAssertNil(RoadFoodDates.documentText("   ", locale: enUS))
+        for junk in ["2026", "2026-13-01", "2026-09-32", "20 Sept", "2026-9-8", "2026-09-20T00:00:00Z"] {
+            XCTAssertNil(RoadFoodDates.dayText(junk, locale: enUS), junk)
+            XCTAssertNil(RoadFoodDates.documentText(junk, locale: enUS), junk)
+        }
+        XCTAssertNil(RoadFoodDates.line(publishedOn: "20 Sept", checkedOn: nil, locale: enUS))
+    }
+
+    /// A day key is a calendar day, not an instant. It is built at noon UTC
+    /// and printed with the style's time zone pinned to UTC, so the edges of
+    /// a year stay on the day the file wrote wherever the phone is: at
+    /// midnight, every reader west of UTC would read the day before.
+    func testADayKeyStaysOnItsOwnDayAtTheEdgesOfAYear() {
+        XCTAssertEqual(RoadFoodDates.dayText("2026-01-01", locale: enUS), "Jan 1, 2026")
+        XCTAssertEqual(RoadFoodDates.dayText("2026-12-31", locale: enUS), "Dec 31, 2026")
+        XCTAssertEqual(RoadFoodDates.documentText("2026-01", locale: enUS), "Jan 2026")
+        XCTAssertEqual(RoadFoodDates.documentText("2026-12", locale: enUS), "Dec 2026")
+    }
+
+    /// Nothing pins en-US. LIFT web passes `undefined` to
+    /// `toLocaleDateString`, LIFT Android uses `Locale.getDefault()` and LIFT
+    /// iPhone `Locale.current`, so a coach in Berlin reads a Berlin date in
+    /// all four apps. The tests pin a locale only so they can assert a string.
+    func testTheDateIsWrittenInTheReadersOwnLocale() {
+        XCTAssertNotEqual(RoadFoodDates.dayText("2026-09-20", locale: Locale(identifier: "de_DE")),
+                          RoadFoodDates.dayText("2026-09-20", locale: enUS))
+    }
+
+    private let enUS = Locale(identifier: "en_US")
 
     func testTheBundledFileCarriesEachChainsOwnDocumentDateWhereItsDocumentStatesOne() throws {
         let catalog = try catalog()
