@@ -164,6 +164,11 @@ targets:
       - path: Tests
       - path: Tests/Fixtures
         buildPhase: resources
+      # road-food.json is checked against the ids a real plan link carries, so
+      # the test bundle needs the same copy the app ships rather than a
+      # fixture of its own.
+      - path: Resources
+        buildPhase: resources
     dependencies:
       - target: Coach
     settings:
