@@ -76,14 +76,14 @@ final class PlanAndLogTests: XCTestCase {
     func testTheFixturePairProducesExactlyTheCountsAndDayStatesItSays() throws {
         let (result, expected) = try fixtureResult()
         XCTAssertEqual(result.groups.count, 1)
-        let counts = try XCTUnwrap(result.groups.first?.counts)
+        let counts = try XCTUnwrap(result.groups.first?.sends[0].counts)
         XCTAssertEqual(counts, PlanAndLog.Counts(
             booked: expected.counts["booked"] ?? -1, training: expected.counts["training"] ?? -1,
             logged: expected.counts["logged"] ?? -1,
             notLogged: expected.counts["notLogged"] ?? -1, outside: expected.counts["outside"] ?? -1,
             other: expected.counts["other"] ?? -1, meals: expected.counts["meals"] ?? -1))
         XCTAssertEqual(result.groups[0].days.map(\.state.rawValue), expected.dayStates)
-        XCTAssertEqual(result.groups[0].range, "12–17 Oct")
+        XCTAssertEqual(result.groups[0].sends[0].range, "12–17 Oct")
     }
 
     /// The window comes off the link itself, so "outside the log they sent" is
@@ -148,7 +148,7 @@ final class PlanAndLogTests: XCTestCase {
                          [("Lower A", [ex("Back Squat", "Barbell", [[225, 5]])])],
                          ["2026-10-12": day([logged("Back Squat", "Barbell", [set(225, 5)])], name: "Lower A")])
         XCTAssertEqual(try first(result).text, "Mon 12 Oct · Lower A · logged")
-        XCTAssertEqual(result.groups[0].counts,
+        XCTAssertEqual(result.groups[0].sends[0].counts,
                        PlanAndLog.Counts(booked: 1, training: 1, logged: 1, notLogged: 0,
                                          outside: 0, other: 0, meals: 0))
     }
@@ -157,7 +157,7 @@ final class PlanAndLogTests: XCTestCase {
         let result = run([("2026-10-12", 0)],
                          [("Lower A", [ex("Back Squat", "Barbell", [[225, 5]])])], [:])
         XCTAssertEqual(try first(result).text, "Mon 12 Oct · Lower A · not logged")
-        XCTAssertEqual(result.groups[0].head, "Booked 1 day, 12 Oct · logged 0")
+        XCTAssertEqual(result.groups[0].sends[0].head, "Booked 1 day, 12 Oct · logged 0")
     }
 
     func testABookedDayOutsideTheWindowTheClientSentIsNeverCalledNotLogged() throws {
@@ -165,7 +165,7 @@ final class PlanAndLogTests: XCTestCase {
                          [("Lower A", [ex("Back Squat", "Barbell", [[225, 5]])])], [:],
                          coverage: CoveredRange(from: "2026-09-01", to: "2026-10-05"))
         XCTAssertEqual(try first(result).text, "Mon 12 Oct · Lower A · outside the log they sent")
-        XCTAssertEqual(result.groups[0].head, "Booked 1 day, 12 Oct · no log covering them")
+        XCTAssertEqual(result.groups[0].sends[0].head, "Booked 1 day, 12 Oct · no log covering them")
         XCTAssertFalse(PlanAndLog.lines(result).joined(separator: " ").contains("not logged"))
     }
 
@@ -187,8 +187,8 @@ final class PlanAndLogTests: XCTestCase {
             "Tue 13 Oct · Upper B · not booked",
             "Fri 16 Oct · Lower A · not logged",
         ])
-        XCTAssertEqual(result.groups[0].counts.other, 1)
-        XCTAssertTrue(result.groups[0].head.hasSuffix("1 other day logged"))
+        XCTAssertEqual(result.groups[0].sends[0].counts.other, 1)
+        XCTAssertTrue(result.groups[0].sends[0].head.hasSuffix("1 other day logged"))
     }
 
     func testASubstitutionShowsAsOnePairOnNameAloneLabelled() throws {
@@ -242,8 +242,8 @@ final class PlanAndLogTests: XCTestCase {
             plan([("2026-10-05", 0)], workouts, id: "old", sentAt: 1),
             plan([("2026-10-12", 0)], workouts, id: "new", sentAt: 2),
         ])
-        XCTAssertEqual(result.groups.map(\.id), ["new", "old"])
-        XCTAssertEqual(result.groups.map(\.range), ["12 Oct", "5 Oct"])
+        XCTAssertEqual(result.groups.flatMap { $0.sends.map(\.id) }, ["new", "old"])
+        XCTAssertEqual(result.groups.flatMap { $0.sends.map(\.range) }, ["12 Oct", "5 Oct"])
     }
 
     func testAPlanBookingNothingInTheLastEightWeeksIsNotAGroupAtAll() {
@@ -524,7 +524,7 @@ final class PlanAndLogTests: XCTestCase {
         let result = runMeals([recipe("Beef Chilli")],
                               [meal("2026-10-12", Self.dinner, 0, 2)], [:])
         XCTAssertEqual(result.groups.count, 1, "the training-only card skipped this entirely")
-        XCTAssertEqual(result.groups[0].head, "Booked 1 day, 12 Oct · 1 meal booked")
+        XCTAssertEqual(result.groups[0].sends[0].head, "Booked 1 day, 12 Oct · 1 meal booked")
         XCTAssertEqual(try first(result).text, "Mon 12 Oct · 1 meal booked")
         XCTAssertEqual(try first(result).state, .meals)
     }
@@ -535,7 +535,7 @@ final class PlanAndLogTests: XCTestCase {
         let result = runMeals([recipe("Beef Chilli")], [meal("2026-10-12", Self.dinner, 0)], [:])
         let every = PlanAndLog.lines(result).joined(separator: " · ")
         XCTAssertFalse(every.contains("not logged"), every)
-        XCTAssertEqual(result.groups[0].counts,
+        XCTAssertEqual(result.groups[0].sends[0].counts,
                        PlanAndLog.Counts(booked: 1, training: 0, logged: 0, notLogged: 0,
                                          outside: 0, other: 0, meals: 1))
     }
@@ -646,7 +646,7 @@ final class PlanAndLogTests: XCTestCase {
                        "Mon 12 Oct · 1 meal booked · outside the log they sent")
         XCTAssertNil(try first(result).meals[0].logged)
         XCTAssertNil(try first(result).foodContext)
-        XCTAssertEqual(result.groups[0].head,
+        XCTAssertEqual(result.groups[0].sends[0].head,
                        "Booked 1 day, 12 Oct · 1 meal booked · no log covering them")
     }
 
@@ -696,9 +696,9 @@ final class PlanAndLogTests: XCTestCase {
         // "logged 2" under "Booked 5 days" would read as two of five when
         // three of them booked no training at all, so the figure names what it
         // counts.
-        XCTAssertEqual(result.groups[0].head,
+        XCTAssertEqual(result.groups[0].sends[0].head,
                        "Booked 2 days, 12–13 Oct · 3 meals booked · 1 training day, 1 logged")
-        XCTAssertEqual(result.groups[0].counts,
+        XCTAssertEqual(result.groups[0].sends[0].counts,
                        PlanAndLog.Counts(booked: 2, training: 1, logged: 1, notLogged: 0,
                                          outside: 0, other: 0, meals: 3))
     }
@@ -708,7 +708,7 @@ final class PlanAndLogTests: XCTestCase {
                          [("Lower A", [ex("Back Squat", "Barbell", [[225, 5]])])],
                          ["2026-10-12": day([logged("Back Squat", "Barbell", [set(225, 5)])],
                                             name: "Lower A")])
-        XCTAssertEqual(result.groups[0].head, "Booked 1 day, 12 Oct · logged 1")
+        XCTAssertEqual(result.groups[0].sends[0].head, "Booked 1 day, 12 Oct · logged 1")
         XCTAssertTrue(try first(result).meals.isEmpty)
         XCTAssertNil(try first(result).foodContext)
         XCTAssertNil(result.mealFooter, "and no note about meals under a card with none")
@@ -730,7 +730,7 @@ final class PlanAndLogTests: XCTestCase {
             "Mon 12 Oct · 1 meal booked",
             "Wed 14 Oct · 1 meal booked",
         ])
-        XCTAssertEqual(result.groups[0].counts.other, 0)
+        XCTAssertEqual(result.groups[0].sends[0].counts.other, 0)
         XCTAssertFalse(PlanAndLog.lines(result).joined(separator: " ").contains("not booked"))
     }
 
@@ -746,7 +746,7 @@ final class PlanAndLogTests: XCTestCase {
             coverage: CoveredRange(from: "2026-10-01", to: "2026-10-31"),
             unit: "lb", today: "2026-10-20", locale: enUS)
         XCTAssertEqual(result.groups[0].days[1].text, "Tue 13 Oct · Conditioning · not booked")
-        XCTAssertEqual(result.groups[0].counts.other, 1)
+        XCTAssertEqual(result.groups[0].sends[0].counts.other, 1)
     }
 
     func testByLiftStaysAboutLiftsAMealsOnlyPlanHasNone() {
@@ -933,7 +933,7 @@ final class PlanAndLogTests: XCTestCase {
         // total, no trend across weeks.
         XCTAssertEqual(Mirror(reflecting: result).children.compactMap(\.label).sorted(),
                        ["byLift", "footer", "groups", "mealFooter"])
-        XCTAssertEqual(Mirror(reflecting: result.groups[0].counts).children
+        XCTAssertEqual(Mirror(reflecting: result.groups[0].sends[0].counts).children
             .compactMap(\.label).sorted(),
                        ["booked", "logged", "meals", "notLogged", "other", "outside", "training"],
                        "a group counts the days and the meals it booked, and nothing else")
@@ -964,7 +964,7 @@ final class PlanAndLogTests: XCTestCase {
         let meals = mealFixture()
         XCTAssertEqual(Mirror(reflecting: meals).children.compactMap(\.label).sorted(),
                        ["byLift", "footer", "groups", "mealFooter"])
-        XCTAssertEqual(meals.groups[0].counts.meals, 6)
+        XCTAssertEqual(meals.groups[0].sends[0].counts.meals, 6)
         walk(meals, "meals")
     }
 
