@@ -103,9 +103,9 @@ final class SentPlanTests: XCTestCase {
         XCTAssertEqual(decoded.w?.first?.e.first?.s.first?.first??.rounded(), 220)
     }
 
-    /// A food-only send, or a programme with nothing booked, books no day --
-    /// it would show as no group on the card while taking one of the 26 rows
-    /// kept per client. Coach Android draws the line in the same place.
+    /// A library send -- recipes or workouts with nothing scheduled -- books
+    /// no day. It would show as no group on the card while taking one of the
+    /// 26 rows kept per client.
     func testASendThatBooksNoDayIsNotRecorded() throws {
         let context = try context()
         let routine = Routine(name: "Lower A")
@@ -117,12 +117,36 @@ final class SentPlanTests: XCTestCase {
         // A programme with no bookings at all.
         XCTAssertNil(PlanLinkEncoder.recordSend(routines: [routine], sessions: [],
                                                 lifterID: "c", coachName: "Sam", in: context))
-        // And a food-only week.
+        // And a recipe library with nothing booked into a day.
         let recipe = Recipe(name: "Beef Chilli", servings: 4)
         context.insert(recipe)
         XCTAssertNil(PlanLinkEncoder.recordSend(recipes: [recipe], lifterID: "c",
                                                 coachName: "Sam", in: context))
+        // And a picks-only send, which is every key but a booked day.
+        XCTAssertNil(PlanLinkEncoder.recordSend(roadPicks: ["wendys-large-chili"], lifterID: "c",
+                                                coachName: "Sam", in: context))
         XCTAssertTrue(SentPlans.forClient("c", in: context).isEmpty)
+    }
+
+    /// **A booked meal is a booked day.** This read `k` alone until meals
+    /// reached the Booked card, which meant Cook's send -- the only send that
+    /// carries `m` on this platform -- was never filed at all, so a coach who
+    /// plans food had no record of what they sent.
+    func testAWeekThatBooksOnlyMealsIsRecorded() throws {
+        let context = try context()
+        let recipe = Recipe(name: "Beef Chilli", servings: 4)
+        context.insert(recipe)
+        let plannedFor = try XCTUnwrap(DayKey.date(from: "2026-10-12"))
+        let meal = PlannedMeal(recipe: recipe, mealType: .dinner, plannedFor: plannedFor,
+                               servings: 2)
+        context.insert(meal)
+
+        let row = try XCTUnwrap(PlanLinkEncoder.recordSend(
+            recipes: [recipe], meals: [meal], lifterID: "c", coachName: "Sam", in: context))
+        XCTAssertEqual(row.clientID, "c")
+        let decoded = try JSONDecoder().decode(PlanPayload.self, from: row.payloadData)
+        XCTAssertEqual(decoded.m?.first?.d, "2026-10-12")
+        XCTAssertNil(decoded.k, "and it booked no session")
     }
 
     // MARK: - The hash
