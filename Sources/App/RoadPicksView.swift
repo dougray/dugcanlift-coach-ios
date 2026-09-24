@@ -52,6 +52,14 @@ struct RoadPicksView: View {
 
             if let catalog, !clients.isEmpty, !clientID.isEmpty {
                 summaryCard(catalog)
+                // These cards fold open, so they are the one grid in Coach whose
+                // contents do not take `.fillsGridCell()`. A row in an
+                // `AdaptiveGrid` is as tall as its tallest cell, and a cell that
+                // fills its row is what makes a row of cards line up -- right for
+                // a recipe or a client, wrong here: opening Chick-fil-A stretched
+                // the closed card beside it to the same height, an empty card as
+                // long as the open one. Without the fill each card draws its own
+                // height and sits at the top of its row.
                 AdaptiveGrid(places(catalog), id: \.id, columns: columns) { place in
                     placeCard(place)
                 }
@@ -190,7 +198,6 @@ struct RoadPicksView: View {
                 }
                 .tint(Theme.accent)
             }
-            .fillsGridCell()
         }
     }
 
