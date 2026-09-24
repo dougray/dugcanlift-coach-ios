@@ -1179,14 +1179,45 @@ final class PlanAndLogTests: XCTestCase {
         let (result, _) = try fixtureResult()
         let training = PlanAndLog.lines(result)
         let meals = PlanAndLog.lines(mealFixture())
+        // And the shape neither fixture has: two sends read as one list of
+        // days, where a row can carry a training verdict and a meal clause at
+        // once. Every clause in it is one of the above, which is the point --
+        // but a merged row is a sentence the fixtures never produce, so it is
+        // read here rather than assumed to be safe.
+        let merged = PlanAndLog.lines(mergedFixture())
         XCTAssertGreaterThan(meals.count, 15, "the meal fixture should exercise every meal state")
-        let every = (training + meals).joined(separator: " · ").lowercased()
+        XCTAssertTrue(merged.contains { $0.contains("not booked") && $0.contains("meal booked") },
+                      "the merged fixture should produce a row carrying both halves")
+        let every = (training + meals + merged).joined(separator: " · ").lowercased()
         XCTAssertGreaterThan(every.count, 200, "the fixture should exercise the whole card")
         for word in forbidden {
             XCTAssertFalse(every.contains(word), "\"\(word)\" reached a screen")
         }
         XCTAssertFalse(PlanAndLog.footer.lowercased().contains("adherence"))
         XCTAssertFalse(PlanAndLog.mealNote.lowercased().contains("adherence"))
+    }
+
+    /// Two sends read as one list of days, exercising every shape merging can
+    /// make: a day booked by both, a day booked to eat and trained anyway, a
+    /// day one send covers and the other does not, and an edited re-send
+    /// pooled under one row.
+    private func mergedFixture() -> PlanAndLog.Result {
+        runSends([
+            plan([("2026-10-12", 0), ("2026-10-16", 0)],
+                 [("Lower A", [ex("Back Squat", "Barbell", [[225, 5], [225, 5]])])],
+                 id: "train", sentAt: 3000),
+            plan([("2026-10-12", 0)],
+                 [("Lower A", [ex("Back Squat", "Barbell", [[225, 5]])])],
+                 id: "train-before-the-edit", sentAt: 2000),
+            cookPlan([recipe("Beef Chilli")],
+                     (12...18).map { meal("2026-10-\($0)", Self.dinner, 0) }),
+        ], [
+            "2026-10-12": foodDay([food("Beef Chilli", Self.dinner)],
+                                  exercises: [logged("Back Squat", "Barbell", [set(225, 5)])],
+                                  name: "Lower A"),
+            "2026-10-14": foodDay(exercises: [logged("Deadlift", "Barbell", [set(315, 3)])],
+                                  name: "Conditioning"),
+        ])
     }
 
     /// The whole reason the booked and the logged sides of a meal are two
