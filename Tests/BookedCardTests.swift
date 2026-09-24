@@ -48,6 +48,20 @@ final class BookedCardTests: XCTestCase {
         XCTAssertTrue(body.contains("meal.logged"), "what the log holds at that meal")
     }
 
+    /// **Every send's head line, not just the first.** A group is the sends a
+    /// coach reads together, and a card that drew `sends.first` would leave
+    /// the other send's days under a head line that does not account for
+    /// them -- the quiet lie the grouping exists to avoid.
+    func testTheCardDrawsAHeadLineForEverySendInAGroup() throws {
+        let source = try String(contentsOf: sourceFile("BookedCardView.swift"), encoding: .utf8)
+        XCTAssertTrue(source.contains("ForEach(group.sends"),
+                      "the card must draw a head line per send")
+        for wrong in ["group.sends.first", "group.sends[0]"] {
+            XCTAssertFalse(source.contains(wrong),
+                           "\(wrong) draws one send's head line over every send's days")
+        }
+    }
+
     /// Both muted lines under the card, in that order.
     func testTheCardCarriesTheNoteAboutWhatAMealRowDoesNotClaim() throws {
         let source = try String(contentsOf: sourceFile("BookedCardView.swift"), encoding: .utf8)
