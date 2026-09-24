@@ -33,6 +33,10 @@ struct BookedSection: View {
 
     @State private var mode: Mode = .day
 
+    /// By lift is about lifts. A send that booked only meals has none, so the
+    /// chip would open an empty card -- one mode is no choice, so no picker.
+    private var reading: Mode { result.byLift.isEmpty ? .day : mode }
+
     var body: some View {
         if !result.groups.isEmpty {
             Text("Booked")
@@ -40,17 +44,19 @@ struct BookedSection: View {
                 .foregroundStyle(Theme.textPrimary)
                 .padding(.top, 4)
 
-            Picker("How to read it", selection: $mode) {
-                ForEach(Mode.allCases) { Text($0.rawValue).tag($0) }
+            if !result.byLift.isEmpty {
+                Picker("How to read it", selection: $mode) {
+                    ForEach(Mode.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: AdaptiveLayout.readableWidth)
             }
-            .pickerStyle(.segmented)
-            .frame(maxWidth: AdaptiveLayout.readableWidth)
 
             // Two sends sit side by side where there is room; one takes the
             // width it is given, rather than half a row with a hole beside it.
             // (Coach web's card is `span-all`.)
             let fits = AdaptiveLayout.columns(for: width, maxColumns: 2)
-            if mode == .day {
+            if reading == .day {
                 AdaptiveGrid(result.groups, id: \.id,
                              columns: min(fits, max(1, result.groups.count))) { group in
                     LiftCard(title: group.head) {
@@ -86,6 +92,13 @@ struct BookedSection: View {
                 }
             }
 
+            // What a meal row does not claim, once, under the card that has one.
+            if let mealFooter = result.mealFooter {
+                Text(mealFooter)
+                    .font(.caption)
+                    .foregroundStyle(Theme.textSecondary)
+                    .frame(maxWidth: AdaptiveLayout.readableWidth, alignment: .leading)
+            }
             // Permanently, whatever is above it: Coach knows what it put on a
             // share sheet and nothing after that.
             Text(result.footer)
@@ -97,7 +110,7 @@ struct BookedSection: View {
 
     @ViewBuilder
     private func dayRow(_ day: PlanAndLog.DayRow) -> some View {
-        if day.exercises.isEmpty && day.alsoLogged.isEmpty {
+        if day.exercises.isEmpty && day.alsoLogged.isEmpty && day.meals.isEmpty {
             // A day with nothing under it is the same line in the same weight,
             // just without a disclosure triangle.
             Text(day.text)
@@ -115,12 +128,46 @@ struct BookedSection: View {
                             ForEach(day.alsoLogged, id: \.key) { line($0.text) }
                         }
                     }
+                    meals(day)
                 }
                 .padding(.top, 4)
             } label: {
                 Text(day.text).foregroundStyle(Theme.textPrimary)
             }
             .tint(Theme.accent)
+        }
+    }
+
+    /// The meals a day booked, and what the log holds at each slot.
+    ///
+    /// Two separate statements, never one: the bold row is Coach's own record
+    /// of what it booked, the muted row under it is what the client's log
+    /// holds at that meal, and nothing anywhere says they are the same dish.
+    /// The context line above them all is what stops `Nothing logged at lunch`
+    /// being read as `they ate nothing` -- see `PlanAndLog.mealNote`, which
+    /// sits under the card saying so in words.
+    @ViewBuilder
+    private func meals(_ day: PlanAndLog.DayRow) -> some View {
+        if !day.meals.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Meals")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Theme.textPrimary)
+                if let context = day.foodContext { line(context, muted: true) }
+                // By position: a coach may book the same dish at the same slot
+                // twice, and two rows that read alike are still two bookings.
+                ForEach(Array(day.meals.enumerated()), id: \.offset) { _, meal in
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(meal.title)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Theme.textPrimary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if let logged = meal.logged { line(logged, muted: true) }
+                    }
+                    .padding(.top, 6)
+                }
+            }
         }
     }
 
