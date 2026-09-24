@@ -66,7 +66,34 @@ extension PlanAndLog {
                 side: set.side,
                 isWarmup: set.isWarmup))
         }
-        return LoggedDay(name: day.sessionName ?? "", exercises: order.compactMap { byKey[$0] })
+        return LoggedDay(name: day.sessionName ?? "",
+                         exercises: order.compactMap { byKey[$0] },
+                         food: day.foodEntries.map(loggedFood),
+                         foodTotals: FoodTotals(calories: day.foodCalories,
+                                                proteinG: day.foodProteinG,
+                                                fatG: day.foodFatG,
+                                                carbsG: day.foodCarbsG,
+                                                fiberG: day.foodFiberG))
+    }
+
+    /// One logged food, as the card names it: what the client called it, and
+    /// the meal they stamped it with.
+    ///
+    /// `ClientFoodEntry.meal` is the wire's own slot index and is not
+    /// optional, so "tied to no meal" is an index outside `mealSlots` --
+    /// exactly what Coach web reads as the empty string. A future writer's
+    /// fifth slot lands here too, counted as untied rather than printed under
+    /// a name Coach invented for it.
+    ///
+    /// The order is the store's. `foodEntries` is an unordered to-many with
+    /// no recorded index -- unlike `ExerciseSet`, which has `orderIndex`,
+    /// because a set row's position is load-bearing ("245 × 2" is the third
+    /// set) and a list of names at one meal is not. The importer and the
+    /// backup restore both append in the order the client logged, so that is
+    /// what comes back in practice; nothing here depends on it.
+    static func loggedFood(_ entry: ClientFoodEntry) -> LoggedFood {
+        LoggedFood(name: entry.foodName,
+                   slot: mealSlots.indices.contains(entry.meal) ? entry.meal : nil)
     }
 
     /// The whole card for one client: what was sent, what came back, and the
