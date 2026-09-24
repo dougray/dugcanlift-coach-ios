@@ -78,9 +78,10 @@ final class PlanAndLogTests: XCTestCase {
         XCTAssertEqual(result.groups.count, 1)
         let counts = try XCTUnwrap(result.groups.first?.counts)
         XCTAssertEqual(counts, PlanAndLog.Counts(
-            booked: expected.counts["booked"] ?? -1, logged: expected.counts["logged"] ?? -1,
+            booked: expected.counts["booked"] ?? -1, training: expected.counts["training"] ?? -1,
+            logged: expected.counts["logged"] ?? -1,
             notLogged: expected.counts["notLogged"] ?? -1, outside: expected.counts["outside"] ?? -1,
-            other: expected.counts["other"] ?? -1))
+            other: expected.counts["other"] ?? -1, meals: expected.counts["meals"] ?? -1))
         XCTAssertEqual(result.groups[0].days.map(\.state.rawValue), expected.dayStates)
         XCTAssertEqual(result.groups[0].range, "12–17 Oct")
     }
@@ -148,7 +149,8 @@ final class PlanAndLogTests: XCTestCase {
                          ["2026-10-12": day([logged("Back Squat", "Barbell", [set(225, 5)])], name: "Lower A")])
         XCTAssertEqual(try first(result).text, "Mon 12 Oct · Lower A · logged")
         XCTAssertEqual(result.groups[0].counts,
-                       PlanAndLog.Counts(booked: 1, logged: 1, notLogged: 0, outside: 0, other: 0))
+                       PlanAndLog.Counts(booked: 1, training: 1, logged: 1, notLogged: 0,
+                                         outside: 0, other: 0, meals: 0))
     }
 
     func testABookedDayWithNothingLoggedReadsNotLoggedNeverMissed() throws {
@@ -251,8 +253,9 @@ final class PlanAndLogTests: XCTestCase {
         XCTAssertTrue(PlanAndLog.lines(result).isEmpty)
     }
 
-    /// Meals are not compared, now or as a follow-up.
-    func testAPlanSentWithNoTrainingAtAllBooksNothing() {
+    /// `m.x` indexes `r`, exactly as `k.x` indexes `w`. A booking that indexes
+    /// nothing is skipped rather than drawn as a dish with no name.
+    func testAMealBookedAgainstARecipeThePayloadDoesNotCarryBooksNothing() {
         let payload = PlanPayload(v: 1, t: "plan", l: "c", n: "", r: [], m: [
             PlanMeal(d: "2026-10-12", s: 2, x: 0, q: 1)], w: nil, k: nil)
         let result = run([], [], [:], plans: [
@@ -459,6 +462,394 @@ final class PlanAndLogTests: XCTestCase {
                       "working sets are the claim everywhere else")
     }
 
+    // MARK: - Meals
+    //
+    // A booked meal is a recipe in a slot on a day. What comes back is a list
+    // of food entries -- free text, barcode scans, a recipe logged as a meal
+    // -- named out of the client's own food dictionary, with no id joining
+    // them to anything, and itemised only if the client chose to itemise.
+    //
+    // So Coach says what it booked and what the log holds at that slot, and
+    // never that the two are the same dish. The tests that matter most here
+    // are the negative ones: nothing this card produces may tell a coach their
+    // client ate something they did not.
+
+    private static let breakfast = 0, lunch = 1, dinner = 2, snack = 3
+
+    private func recipe(_ name: String) -> PlanRecipe {
+        PlanRecipe(n: name, s: 4, u: [400, 30, 40, 12, 6], i: [], t: [])
+    }
+
+    private func meal(_ date: String, _ slot: Int, _ index: Int,
+                      _ servings: Double = 1) -> PlanMeal {
+        PlanMeal(d: date, s: slot, x: index, q: servings)
+    }
+
+    private func foodPlan(_ recipes: [PlanRecipe], _ meals: [PlanMeal],
+                          _ workouts: [(String, [PlanWorkoutExercise])] = [],
+                          _ bookings: [(String, Int)] = []) -> PlanAndLog.StoredPlan {
+        PlanAndLog.StoredPlan(
+            id: "p1", clientID: "c", sentAtEpochSec: 1000,
+            payload: PlanPayload(v: 1, t: "plan", l: "c", n: "", r: recipes, m: meals,
+                                 w: workouts.map { PlanWorkout(n: $0.0, e: $0.1) },
+                                 k: bookings.map { PlanSession(d: $0.0, x: $0.1) }))
+    }
+
+    /// A day's food as the importer stores it: the name the client wrote, and
+    /// the slot index they stamped it with -- nil for an entry tied to none.
+    private func food(_ name: String, _ slot: Int? = nil) -> PlanAndLog.LoggedFood {
+        PlanAndLog.LoggedFood(name: name, slot: slot)
+    }
+
+    private func foodDay(_ food: [PlanAndLog.LoggedFood] = [],
+                         exercises: [PlanAndLog.Exercise] = [],
+                         name: String = "",
+                         totals: PlanAndLog.FoodTotals? = nil) -> PlanAndLog.LoggedDay {
+        PlanAndLog.LoggedDay(name: name, exercises: exercises, food: food, foodTotals: totals)
+    }
+
+    private let totalsOnly = PlanAndLog.FoodTotals(calories: 2100, proteinG: 160, fatG: 70,
+                                                   carbsG: 210, fiberG: 28)
+
+    private func runMeals(_ recipes: [PlanRecipe], _ meals: [PlanMeal],
+                          _ days: [String: PlanAndLog.LoggedDay],
+                          coverage: CoveredRange? = CoveredRange(from: "2026-10-01",
+                                                                 to: "2026-10-31")
+    ) -> PlanAndLog.Result {
+        PlanAndLog.compare(clientID: "c", sentPlans: [foodPlan(recipes, meals)], days: days,
+                           coverage: coverage, unit: "lb", today: "2026-10-20", locale: enUS)
+    }
+
+    func testAPlanThatBooksMealsAndNoTrainingIsACardNotASkippedGroup() throws {
+        let result = runMeals([recipe("Beef Chilli")],
+                              [meal("2026-10-12", Self.dinner, 0, 2)], [:])
+        XCTAssertEqual(result.groups.count, 1, "the training-only card skipped this entirely")
+        XCTAssertEqual(result.groups[0].head, "Booked 1 day, 12 Oct · 1 meal booked")
+        XCTAssertEqual(try first(result).text, "Mon 12 Oct · 1 meal booked")
+        XCTAssertEqual(try first(result).state, .meals)
+    }
+
+    /// There is no training booked to be logged or not. Saying "not logged"
+    /// against one would be Coach inventing a booking to hold against a client.
+    func testAMealsOnlyDayIsNeverCalledNotLogged() {
+        let result = runMeals([recipe("Beef Chilli")], [meal("2026-10-12", Self.dinner, 0)], [:])
+        let every = PlanAndLog.lines(result).joined(separator: " · ")
+        XCTAssertFalse(every.contains("not logged"), every)
+        XCTAssertEqual(result.groups[0].counts,
+                       PlanAndLog.Counts(booked: 1, training: 0, logged: 0, notLogged: 0,
+                                         outside: 0, other: 0, meals: 1))
+    }
+
+    func testABookedMealNamesTheSlotTheDishAndTheServingsAndNoMacros() throws {
+        let result = runMeals([recipe("Beef Chilli")],
+                              [meal("2026-10-12", Self.dinner, 0, 2)], [:])
+        XCTAssertEqual(try first(result).meals[0].title, "Dinner · Beef Chilli · 2 servings")
+        // The recipe's own figures are in the payload and deliberately not on
+        // the card: a planned calorie beside a logged one is a coach's target
+        // measured against, which is the line this card does not cross.
+        let every = PlanAndLog.lines(result).joined(separator: " · ")
+        for token in ["400", "30", "kcal", "protein"] {
+            XCTAssertFalse(every.contains(token), "\(token) reached the card")
+        }
+    }
+
+    func testOneServingIsOneServingAndTwoDishesAtOneSlotAreTwoRows() throws {
+        let result = runMeals([recipe("Overnight Oats"), recipe("Protein Shake")],
+                              [meal("2026-10-12", Self.breakfast, 0),
+                               meal("2026-10-12", Self.breakfast, 1, 1)], [:])
+        XCTAssertEqual(try first(result).meals.map(\.title), [
+            "Breakfast · Overnight Oats · 1 serving",
+            "Breakfast · Protein Shake · 1 serving",
+        ])
+    }
+
+    func testMealsReadInTheOrderADayIsEatenNotTheOrderTheyWereBooked() throws {
+        let result = runMeals([recipe("Chilli"), recipe("Oats"), recipe("Bar")],
+                              [meal("2026-10-12", Self.snack, 2),
+                               meal("2026-10-12", Self.dinner, 0),
+                               meal("2026-10-12", Self.breakfast, 1)], [:])
+        XCTAssertEqual(try first(result).meals.map(\.slotLabel),
+                       ["Breakfast", "Dinner", "Snack"])
+    }
+
+    // MARK: - What the log can be asked
+
+    func testAnItemisedSlotSaysWhatTheLogHoldsThereAndNeverThatItIsTheDish() throws {
+        let result = runMeals([recipe("Beef Chilli")],
+                              [meal("2026-10-12", Self.dinner, 0, 2)],
+                              ["2026-10-12": foodDay([food("Porridge", Self.breakfast),
+                                                      food("Beef Chilli", Self.dinner),
+                                                      food("Greek yoghurt", Self.dinner)])])
+        XCTAssertEqual(try first(result).foodContext, "3 foods logged that day")
+        XCTAssertEqual(try first(result).meals[0].logged,
+                       "Logged at dinner · Beef Chilli · Greek yoghurt")
+        // The two facts are printed one above the other. Nothing anywhere
+        // claims the logged Beef Chilli is the booked one -- the coach makes
+        // that join, from the same two facts Coach has.
+        let every = PlanAndLog.lines(result).joined(separator: " · ").lowercased()
+        for claim in ["ate", "as booked", "as planned", "matched", "they had"] {
+            XCTAssertFalse(every.contains(claim), "\"\(claim)\" claims a match: \(every)")
+        }
+    }
+
+    func testABookedMealWithNothingAtThatSlotSaysSoAboutTheSlotNotTheClient() throws {
+        let result = runMeals([recipe("Chicken & Rice")],
+                              [meal("2026-10-12", Self.lunch, 0)],
+                              ["2026-10-12": foodDay([food("Porridge", Self.breakfast),
+                                                      food("Steak", Self.dinner)])])
+        XCTAssertEqual(try first(result).meals[0].logged, "Nothing logged at lunch")
+        // And the day's own count sits above it, so "nothing at lunch" cannot
+        // be read as "they ate nothing".
+        XCTAssertEqual(try first(result).foodContext, "2 foods logged that day")
+    }
+
+    func testADayWithMealsBookedAndNoFoodAtAllLoggedSaysExactlyThat() throws {
+        let result = runMeals([recipe("Beef Chilli")], [meal("2026-10-12", Self.dinner, 0)],
+                              ["2026-10-12": foodDay()])
+        XCTAssertEqual(try first(result).foodContext, "No food logged that day")
+        XCTAssertNil(try first(result).meals[0].logged, "nothing to say per slot")
+    }
+
+    /// SHARE-FORMAT: `ft: [0,0,0,0,0]` is a day opened and nothing logged.
+    func testADayOpenedAndLeftEmptyLoggedNoFoodAndIsNotASlotVerdict() throws {
+        let result = runMeals([recipe("Beef Chilli")], [meal("2026-10-12", Self.dinner, 0)],
+                              ["2026-10-12": foodDay(totals: PlanAndLog.FoodTotals(
+                                  calories: 0, proteinG: 0, fatG: 0, carbsG: 0, fiberG: 0))])
+        XCTAssertEqual(try first(result).foodContext, "No food logged that day")
+        XCTAssertNil(try first(result).meals[0].logged)
+    }
+
+    /// Itemisation is a choice the client makes per send. Calling a booked
+    /// dinner "nothing logged at dinner" here would contradict that choice
+    /// with a fact Coach does not have.
+    func testAClientWhoSentTotalsAndNotItemsGetsNoSlotVerdictAtAll() throws {
+        let result = runMeals([recipe("Beef Chilli")], [meal("2026-10-12", Self.dinner, 0)],
+                              ["2026-10-12": foodDay(totals: totalsOnly)])
+        XCTAssertEqual(try first(result).foodContext, "Food logged that day, not itemised")
+        XCTAssertNil(try first(result).meals[0].logged)
+        XCTAssertFalse(PlanAndLog.lines(result).joined(separator: " ").contains("Nothing logged"))
+    }
+
+    func testFoodsTiedToNoMealAreCountedSoAQuietSlotIsNotAVerdict() throws {
+        let result = runMeals([recipe("Chicken & Rice")], [meal("2026-10-12", Self.lunch, 0)],
+                              ["2026-10-12": foodDay([food("Flapjack"), food("Coffee"),
+                                                      food("Steak", Self.dinner)])])
+        XCTAssertEqual(try first(result).foodContext,
+                       "3 foods logged that day · 2 not tied to a meal")
+        XCTAssertEqual(try first(result).meals[0].logged, "Nothing logged at lunch")
+    }
+
+    func testABookedMealOutsideTheLogTheClientSentIsNeverASlotVerdict() throws {
+        let result = runMeals([recipe("Beef Chilli")], [meal("2026-10-12", Self.dinner, 0)], [:],
+                              coverage: CoveredRange(from: "2026-09-01", to: "2026-10-05"))
+        XCTAssertEqual(try first(result).text,
+                       "Mon 12 Oct · 1 meal booked · outside the log they sent")
+        XCTAssertNil(try first(result).meals[0].logged)
+        XCTAssertNil(try first(result).foodContext)
+        XCTAssertEqual(result.groups[0].head,
+                       "Booked 1 day, 12 Oct · 1 meal booked · no log covering them")
+    }
+
+    func testAClientWhoseLogPredatesTheSendGetsNoVerdictOnAnyMealOfIt() {
+        let result = runMeals([recipe("Beef Chilli"), recipe("Oats")],
+                              [meal("2026-10-12", Self.dinner, 0),
+                               meal("2026-10-13", Self.breakfast, 1)], [:],
+                              coverage: CoveredRange(from: "2026-08-01", to: "2026-09-30"))
+        XCTAssertEqual(result.groups[0].days.map(\.text), [
+            "Mon 12 Oct · 1 meal booked · outside the log they sent",
+            "Tue 13 Oct · 1 meal booked · outside the log they sent",
+        ])
+        let every = PlanAndLog.lines(result).joined(separator: " · ")
+        XCTAssertFalse(every.contains("Nothing logged"))
+        XCTAssertFalse(every.contains("not logged"))
+    }
+
+    /// The line discipline is about Coach's sentences, not about the client's
+    /// data: "2% milk" is what they logged and what Coach prints. Never
+    /// rewritten, never trimmed to fit a rule about the app's own words.
+    func testAClientsOwnFoodNameIsPrintedAsTheyWroteItPercentSignAndAll() throws {
+        let result = runMeals([recipe("Porridge")], [meal("2026-10-12", Self.breakfast, 0)],
+                              ["2026-10-12": foodDay([food("2% milk", Self.breakfast)])])
+        XCTAssertEqual(try first(result).meals[0].logged, "Logged at breakfast · 2% milk")
+    }
+
+    // MARK: - Meals beside training
+
+    func testADayThatBooksBothSaysTheTrainingVerdictAndTheMealCount() {
+        let result = PlanAndLog.compare(
+            clientID: "c",
+            sentPlans: [foodPlan([recipe("Beef Chilli"), recipe("Oats")],
+                                 [meal("2026-10-12", Self.dinner, 0, 2),
+                                  meal("2026-10-13", Self.breakfast, 1),
+                                  meal("2026-10-13", Self.dinner, 0)],
+                                 [("Lower A", [ex("Back Squat", "Barbell", [[225, 5]])])],
+                                 [("2026-10-12", 0)])],
+            days: ["2026-10-12": foodDay([food("Beef Chilli", Self.dinner)],
+                                         exercises: [logged("Back Squat", "Barbell", [set(225, 5)])],
+                                         name: "Lower A")],
+            coverage: CoveredRange(from: "2026-10-01", to: "2026-10-31"),
+            unit: "lb", today: "2026-10-20", locale: enUS)
+        XCTAssertEqual(result.groups[0].days.map(\.text), [
+            "Mon 12 Oct · Lower A · logged · 1 meal booked",
+            "Tue 13 Oct · 2 meals booked",
+        ])
+        // "logged 2" under "Booked 5 days" would read as two of five when
+        // three of them booked no training at all, so the figure names what it
+        // counts.
+        XCTAssertEqual(result.groups[0].head,
+                       "Booked 2 days, 12–13 Oct · 3 meals booked · 1 training day, 1 logged")
+        XCTAssertEqual(result.groups[0].counts,
+                       PlanAndLog.Counts(booked: 2, training: 1, logged: 1, notLogged: 0,
+                                         outside: 0, other: 0, meals: 3))
+    }
+
+    func testATrainingOnlySendReadsExactlyAsItDidBeforeMealsExisted() throws {
+        let result = run([("2026-10-12", 0)],
+                         [("Lower A", [ex("Back Squat", "Barbell", [[225, 5]])])],
+                         ["2026-10-12": day([logged("Back Squat", "Barbell", [set(225, 5)])],
+                                            name: "Lower A")])
+        XCTAssertEqual(result.groups[0].head, "Booked 1 day, 12 Oct · logged 1")
+        XCTAssertTrue(try first(result).meals.isEmpty)
+        XCTAssertNil(try first(result).foodContext)
+        XCTAssertNil(result.mealFooter, "and no note about meals under a card with none")
+    }
+
+    /// `not booked` exists so a session lifted the day after the one it was
+    /// booked for sits beside that booking. A send with no training booked
+    /// none for it to sit beside, and listing a client's own sessions under a
+    /// meal plan would be Coach holding up work nobody set out to book.
+    func testAFoodPlanDoesNotHoldUpTheTrainingTheCoachNeverBooked() {
+        let result = runMeals([recipe("Beef Chilli")],
+                              [meal("2026-10-12", Self.dinner, 0),
+                               meal("2026-10-14", Self.dinner, 0)],
+                              ["2026-10-13": foodDay(
+                                  exercises: [logged("Kettlebell Swing", "Kettlebell",
+                                                     [set(53, 20)])],
+                                  name: "Conditioning")])
+        XCTAssertEqual(result.groups[0].days.map(\.text), [
+            "Mon 12 Oct · 1 meal booked",
+            "Wed 14 Oct · 1 meal booked",
+        ])
+        XCTAssertEqual(result.groups[0].counts.other, 0)
+        XCTAssertFalse(PlanAndLog.lines(result).joined(separator: " ").contains("not booked"))
+    }
+
+    func testASendThatBooksBothStillShowsASessionItDidNotBook() {
+        let result = PlanAndLog.compare(
+            clientID: "c",
+            sentPlans: [foodPlan([recipe("Beef Chilli")], [meal("2026-10-12", Self.dinner, 0)],
+                                 [("Lower A", [ex("Back Squat", "Barbell", [[225, 5]])])],
+                                 [("2026-10-12", 0), ("2026-10-14", 0)])],
+            days: ["2026-10-13": foodDay(
+                exercises: [logged("Kettlebell Swing", "Kettlebell", [set(53, 20)])],
+                name: "Conditioning")],
+            coverage: CoveredRange(from: "2026-10-01", to: "2026-10-31"),
+            unit: "lb", today: "2026-10-20", locale: enUS)
+        XCTAssertEqual(result.groups[0].days[1].text, "Tue 13 Oct · Conditioning · not booked")
+        XCTAssertEqual(result.groups[0].counts.other, 1)
+    }
+
+    func testByLiftStaysAboutLiftsAMealsOnlyPlanHasNone() {
+        let result = runMeals([recipe("Beef Chilli")], [meal("2026-10-12", Self.dinner, 0)], [:])
+        XCTAssertTrue(result.byLift.isEmpty)
+        XCTAssertFalse(PlanAndLog.lines(result).contains("By lift"))
+    }
+
+    // MARK: - A plan with nothing booked into a day
+
+    func testALibrarySendRecipesWithNothingBookedIsNotACard() {
+        let result = runMeals([recipe("Beef Chilli"), recipe("Oats")], [], [:])
+        XCTAssertTrue(result.groups.isEmpty)
+        XCTAssertTrue(PlanAndLog.lines(result).isEmpty)
+    }
+
+    /// Road picks ride in Cook's plan link and book no day. A picks-only send
+    /// is still nothing to show.
+    func testAPicksOnlyPlanIsStillNothingToShow() {
+        let payload = PlanPayload(v: 1, t: "plan", l: "c", n: "", r: nil, m: nil, w: nil, k: nil)
+        let result = PlanAndLog.compare(
+            clientID: "c",
+            sentPlans: [PlanAndLog.StoredPlan(id: "p", clientID: "c", sentAtEpochSec: 1,
+                                              payload: payload)],
+            days: ["2026-10-12": foodDay([food("Wendy’s chilli", Self.lunch)])],
+            coverage: CoveredRange(from: "2026-10-01", to: "2026-10-31"),
+            unit: "lb", today: "2026-10-20", locale: enUS)
+        XCTAssertTrue(result.groups.isEmpty)
+        XCTAssertNil(result.mealFooter)
+    }
+
+    func testTheNoteAboutWhatAMealRowDoesNotClaimIsShownOnceUnderACardThatHasOne() {
+        let result = runMeals([recipe("Beef Chilli")], [meal("2026-10-12", Self.dinner, 0)],
+                              ["2026-10-12": foodDay([food("Beef Chilli", Self.dinner)])])
+        XCTAssertEqual(result.mealFooter, PlanAndLog.mealNote)
+        let out = PlanAndLog.lines(result)
+        XCTAssertEqual(out.filter { $0 == PlanAndLog.mealNote }.count, 1)
+        XCTAssertEqual(out[out.count - 2], PlanAndLog.mealNote, "above the permanent footer")
+        XCTAssertEqual(out[out.count - 1], PlanAndLog.footer)
+    }
+
+    // MARK: - How this store answers "which meal was that food?"
+
+    /// `ClientFoodEntry.meal` is the wire's slot index and is not optional, so
+    /// "tied to no meal" is an index outside the four slots -- what Coach web
+    /// reads as the empty string. A future writer's fifth slot lands there
+    /// too, counted rather than printed under a name Coach invented for it.
+    func testTheStoreSMealIndexBecomesASlotOrNothing() {
+        let entry = { (meal: Int) in
+            ClientFoodEntry(foodName: "Porridge", servings: 1, calories: 1, proteinG: 1,
+                            fatG: 1, carbsG: 1, fiberG: 1, meal: meal)
+        }
+        XCTAssertEqual(PlanAndLog.loggedFood(entry(0)).slot, 0)
+        XCTAssertEqual(PlanAndLog.loggedFood(entry(3)).slot, 3)
+        XCTAssertNil(PlanAndLog.loggedFood(entry(4)).slot, "a slot Coach has no word for")
+        XCTAssertNil(PlanAndLog.loggedFood(entry(-1)).slot)
+    }
+
+    /// A real store's day, read back the way the card reads one: the three
+    /// food states come off `foodEntries` and the day's own totals, and
+    /// nothing else.
+    func testAStoredDaysFoodReachesTheCardWithItsSlots() throws {
+        let context = ModelContext(try ModelContainer(
+            for: Schema(CoachSchema.models),
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)))
+        let client = Client(id: "c", name: "Sam", displayUnit: "lb", platform: "ios")
+        context.insert(client)
+
+        func storedDay(_ key: String, foods: [(String, Int)],
+                       calories: Double?) throws -> TrainingDay {
+            let day = TrainingDay(client: client, dayKey: key)
+            day.foodCalories = calories
+            context.insert(day)
+            client.trainingDays.append(day)
+            for (name, meal) in foods {
+                let entry = ClientFoodEntry(day: day, foodName: name, servings: 1, calories: 400,
+                                            proteinG: 30, fatG: 12, carbsG: 40, fiberG: 6,
+                                            meal: meal)
+                context.insert(entry)
+                day.foodEntries.append(entry)
+            }
+            return day
+        }
+
+        let itemised = try storedDay("2026-10-12",
+                                     foods: [("Beef Chilli", Self.dinner), ("Flapjack", 7)],
+                                     calories: 2100)
+        let totals = try storedDay("2026-10-13", foods: [], calories: 2100)
+        let empty = try storedDay("2026-10-14", foods: [], calories: 0)
+        try context.save()
+
+        let read = PlanAndLog.loggedDay(itemised)
+        XCTAssertEqual(Set(read.food.map(\.name)), ["Beef Chilli", "Flapjack"])
+        XCTAssertEqual(PlanAndLog.foodIn(read).state, .items)
+        // A slot Coach has no word for is counted, never printed under one it
+        // made up.
+        XCTAssertEqual(PlanAndLog.foodContext(PlanAndLog.foodIn(read)),
+                       "2 foods logged that day · 1 not tied to a meal")
+        XCTAssertEqual(PlanAndLog.foodIn(PlanAndLog.loggedDay(totals)).state, .totals)
+        XCTAssertEqual(PlanAndLog.foodIn(PlanAndLog.loggedDay(empty)).state, .none,
+                       "a day opened and left empty logged no food")
+    }
+
     // MARK: - The line discipline
 
     /// The spirit of `PerLimbTests.testNothingInTheseLinesTellsACoachWhatToDo`
@@ -467,18 +858,71 @@ final class PlanAndLogTests: XCTestCase {
                              "missed", "skipped", "failed", "poor", "behind", "compliance",
                              "adherence", "streak", "%"]
 
+    /// Every meal state the card has, in one send: a slot the log holds
+    /// something at, a slot it holds nothing at, a day with no food at all, a
+    /// day whose client sent totals and not items, a day outside the window
+    /// they sent, an entry tied to no meal, and a meal day beside a training
+    /// one.
+    ///
+    /// The food names here are plain on purpose. A client's own "2% milk" is
+    /// printed as they wrote it and would fail the list above -- the
+    /// discipline is about the sentences Coach writes, not about the client's
+    /// data, and `testAClientsOwnFoodNameIsPrintedAsTheyWroteItPercentSignAndAll`
+    /// pins the passthrough.
+    private func mealFixture() -> PlanAndLog.Result {
+        PlanAndLog.compare(
+            clientID: "c",
+            sentPlans: [foodPlan(
+                [recipe("Beef Chilli"), recipe("Overnight Oats"), recipe("Chicken & Rice")],
+                [meal("2026-10-12", Self.dinner, 0, 2), meal("2026-10-12", Self.breakfast, 1),
+                 meal("2026-10-13", Self.lunch, 2), meal("2026-10-14", Self.dinner, 0),
+                 meal("2026-10-15", Self.lunch, 2), meal("2026-10-19", Self.dinner, 0)],
+                [("Lower A", [ex("Back Squat", "Barbell", [[225, 5]])])],
+                [("2026-10-12", 0)])],
+            days: [
+                "2026-10-12": foodDay([food("Beef Chilli", Self.dinner),
+                                       food("Greek yoghurt", Self.dinner),
+                                       food("Porridge", Self.breakfast)],
+                                      exercises: [logged("Back Squat", "Barbell", [set(225, 5)])],
+                                      name: "Lower A"),
+                "2026-10-13": foodDay([food("Steak", Self.dinner), food("Flapjack")]),
+                "2026-10-14": foodDay(),
+                "2026-10-15": foodDay(totals: totalsOnly),
+            ],
+            coverage: CoveredRange(from: "2026-10-01", to: "2026-10-16"),
+            unit: "lb", today: "2026-10-20", locale: enUS)
+    }
+
     func testNothingInThisCardTellsACoachWhatToDo() throws {
         // Every state the card has: a logged day, a day with nothing logged, a
         // day outside the window the client sent, a day logged and not booked;
         // and a matched lift, a substituted one, one short on a side, one short
         // on sets, one not logged at all and one nobody asked for.
         let (result, _) = try fixtureResult()
-        let every = PlanAndLog.lines(result).joined(separator: " · ").lowercased()
+        let training = PlanAndLog.lines(result)
+        let meals = PlanAndLog.lines(mealFixture())
+        XCTAssertGreaterThan(meals.count, 15, "the meal fixture should exercise every meal state")
+        let every = (training + meals).joined(separator: " · ").lowercased()
         XCTAssertGreaterThan(every.count, 200, "the fixture should exercise the whole card")
         for word in forbidden {
             XCTAssertFalse(every.contains(word), "\"\(word)\" reached a screen")
         }
         XCTAssertFalse(PlanAndLog.footer.lowercased().contains("adherence"))
+        XCTAssertFalse(PlanAndLog.mealNote.lowercased().contains("adherence"))
+    }
+
+    /// The whole reason the booked and the logged sides of a meal are two
+    /// separate statements. Coach can see a dish it booked and a list of foods
+    /// stamped with a slot; it cannot see that they are the same dinner, and a
+    /// wrong claim here tells a coach their client ate something they did not.
+    func testNoMealSentenceClaimsAClientAteAnything() {
+        let every = PlanAndLog.lines(mealFixture()).joined(separator: " · ").lowercased()
+        for claim in ["ate", "eaten", "as booked", "as planned", "matched", "they had",
+                      "on plan", "off plan", "followed", "complied"] {
+            XCTAssertFalse(every.contains(claim), "\"\(claim)\" claims a meal was eaten: \(every)")
+        }
+        // And the one sentence that says what the rows do not claim is there.
+        XCTAssertTrue(every.contains(PlanAndLog.mealNote.lowercased()))
     }
 
     func testNothingHereAggregatesAClientIntoAScore() throws {
@@ -488,11 +932,11 @@ final class PlanAndLogTests: XCTestCase {
         // the top of the result to aggregate: no roster figure, no all-time
         // total, no trend across weeks.
         XCTAssertEqual(Mirror(reflecting: result).children.compactMap(\.label).sorted(),
-                       ["byLift", "footer", "groups"])
+                       ["byLift", "footer", "groups", "mealFooter"])
         XCTAssertEqual(Mirror(reflecting: result.groups[0].counts).children
             .compactMap(\.label).sorted(),
-                       ["booked", "logged", "notLogged", "other", "outside"],
-                       "a group counts days and nothing else")
+                       ["booked", "logged", "meals", "notLogged", "other", "outside", "training"],
+                       "a group counts the days and the meals it booked, and nothing else")
 
         // And nothing anywhere in the tree is a score, a rate or a percentage.
         let banned = ["score", "percent", "rate", "ratio", "average", "total",
@@ -513,6 +957,15 @@ final class PlanAndLogTests: XCTestCase {
             }
         }
         walk(result, "result")
+
+        // Meals are counted the same way and scored no more than training is:
+        // a number of meals booked, and no figure beside it claiming how many
+        // of them were eaten, because there is no such figure.
+        let meals = mealFixture()
+        XCTAssertEqual(Mirror(reflecting: meals).children.compactMap(\.label).sorted(),
+                       ["byLift", "footer", "groups", "mealFooter"])
+        XCTAssertEqual(meals.groups[0].counts.meals, 6)
+        walk(meals, "meals")
     }
 
 }

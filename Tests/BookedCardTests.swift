@@ -30,6 +30,33 @@ final class BookedCardTests: XCTestCase {
         XCTAssertTrue(body.contains("row.suffix"), "setRow must draw the suffix")
     }
 
+    /// The same guard as the one above, for the half of the card where getting
+    /// it wrong is worse: a view that drew the booked dish and dropped the line
+    /// saying what the log holds at that meal would read as a claim the dish
+    /// was eaten, which is the one thing this feature refuses to say.
+    func testTheCardDrawsBothHalvesOfAMealRowAndTheContextAboveThem() throws {
+        let source = try String(contentsOf: sourceFile("BookedCardView.swift"), encoding: .utf8)
+        let start = try XCTUnwrap(source.range(of: "private func meals("))
+        let rest = source[start.upperBound...]
+        // To the end of that function and no further, so this cannot pass on
+        // a token that belongs to the one after it.
+        let end = try XCTUnwrap(rest.range(of: "\n    }\n"))
+        let body = String(rest[..<end.lowerBound])
+        XCTAssertTrue(body.contains("day.foodContext"),
+                      "the day's own food count sits above the rows")
+        XCTAssertTrue(body.contains("meal.title"), "what was booked")
+        XCTAssertTrue(body.contains("meal.logged"), "what the log holds at that meal")
+    }
+
+    /// Both muted lines under the card, in that order.
+    func testTheCardCarriesTheNoteAboutWhatAMealRowDoesNotClaim() throws {
+        let source = try String(contentsOf: sourceFile("BookedCardView.swift"), encoding: .utf8)
+        let mealFooter = try XCTUnwrap(source.range(of: "result.mealFooter"))
+        let footer = try XCTUnwrap(source.range(of: "Text(result.footer)"))
+        XCTAssertTrue(mealFooter.lowerBound < footer.lowerBound,
+                      "the meal note sits above the permanent footer")
+    }
+
     private func sourceFile(_ name: String) -> URL {
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()      // Tests
