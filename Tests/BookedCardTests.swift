@@ -57,6 +57,22 @@ final class BookedCardTests: XCTestCase {
                       "the meal note sits above the permanent footer")
     }
 
+    /// Both send buttons file the send before presenting the sheet.
+    ///
+    /// A `ShareLink` has no action of its own, so a screen that sends a plan
+    /// and records nothing looks exactly like one that works: the link goes,
+    /// and the card is simply empty forever. Cook's send was in that state
+    /// until meals reached the card.
+    func testEverySendButtonRecordsBeforeItShares() throws {
+        for name in ["CookPlanView.swift", "TrainPlanView.swift"] {
+            let source = try String(contentsOf: sourceFile(name), encoding: .utf8)
+            XCTAssertTrue(source.contains("recordSend("),
+                          "\(name) sends a plan and files no record of it")
+            XCTAssertFalse(source.contains("ShareLink(item:"),
+                           "\(name) must present the sheet itself, after recording")
+        }
+    }
+
     private func sourceFile(_ name: String) -> URL {
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()      // Tests

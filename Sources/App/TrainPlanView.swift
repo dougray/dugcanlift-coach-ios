@@ -226,7 +226,7 @@ struct TrainPlanView: View {
 /// `UIActivityViewController` is what `ShareLink` itself puts on screen; this
 /// is only the part of it Coach needs, so that the record and the sheet happen
 /// in one action rather than in two gestures that have to agree.
-private struct PlanShareSheet: UIViewControllerRepresentable {
+struct PlanShareSheet: UIViewControllerRepresentable {
     let text: String
 
     func makeUIViewController(context: Context) -> UIActivityViewController {

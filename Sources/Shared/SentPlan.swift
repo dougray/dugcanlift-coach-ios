@@ -281,13 +281,22 @@ extension PlanLinkEncoder {
     /// from, so the bytes recorded are the bytes that went. A record that
     /// cannot be written must never stop a plan being sent.
     ///
-    /// **A send that books no day is not recorded.** Coach iOS sends two links
-    /// where Coach web sends one -- Cook's week and Train's -- and a food-only
-    /// send, or a programme with nothing booked yet, shows as no group on the
-    /// card while taking one of the 26 rows kept per client. Coach Android
-    /// draws the line in the same place, so the three builds hold the same
-    /// rows. The guard lives here rather than at a call site for the reason
-    /// `json` reads prescribed sides itself: a screen cannot get it wrong.
+    /// **A send that books no day is not recorded**, and a day is `k` or `m`:
+    /// a session booked, or a meal booked. A library send -- recipes or
+    /// workouts with nothing scheduled -- and a picks-only send book no day,
+    /// show as no group on the card, and would take one of the 26 rows kept
+    /// per client for nothing.
+    ///
+    /// `m` counts as of the day meals reached the Booked card. Before that
+    /// this read `k` alone, which meant **Cook's send was never filed at
+    /// all** -- so a coach who plans food had no record of what they sent,
+    /// and the meal rows could never appear however the card was written.
+    /// Coach iOS sends two links where Coach web sends one, Cook's week and
+    /// Train's, so on this platform a group is meals or training and not
+    /// both; the rule reads a payload either way.
+    ///
+    /// The guard lives here rather than at a call site for the reason `json`
+    /// reads prescribed sides itself: a screen cannot get it wrong.
     @discardableResult
     static func recordSend(routines: [Routine] = [], sessions: [ScheduledSession] = [],
                            recipes: [Recipe] = [], meals: [PlannedMeal] = [],
@@ -299,7 +308,7 @@ extension PlanLinkEncoder {
                                  meals: meals, sides: sides, roadPicks: roadPicks,
                                  lifterID: lifterID, coachName: coachName),
               let decoded = try? JSONDecoder().decode(PlanPayload.self, from: payload),
-              decoded.k?.isEmpty == false
+              decoded.k?.isEmpty == false || decoded.m?.isEmpty == false
         else { return nil }
         let row = SentPlans.record(payload: payload, clientID: lifterID, in: context, now: now)
         try? context.save()
