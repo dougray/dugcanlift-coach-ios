@@ -338,7 +338,16 @@ enum PlanAndLog {
         var booked: [ExerciseRow]
     }
 
-    struct Group: Equatable {
+    /// One send, as its own head line reads it.
+    ///
+    /// **Two sends are two records.** Coach iPhone sends a client two links --
+    /// Train's `w`/`k` and Cook's `r`/`m` -- so a week a coach booked to train
+    /// and to eat files two `SentPlan` rows, each a real thing that left the
+    /// phone on its own date carrying its own days. A head line describes the
+    /// send it belongs to and no other: its own range, the days it booked, the
+    /// meals it booked, and what became of the days *it* booked. Nothing here
+    /// is ever a sum across sends.
+    struct Send: Equatable {
         var id: String
         var sentAt: Int
         var from: String
@@ -346,7 +355,39 @@ enum PlanAndLog {
         var range: String
         var counts: Counts
         var head: String
+    }
+
+    /// The sends a coach reads together, and one row per date across all of
+    /// them.
+    ///
+    /// **A day is the unit a coach reads.** Coach web sends one link carrying
+    /// training and meals together, so a booked Tuesday has always been one
+    /// row there. On iPhone and Android that same Tuesday arrives as two
+    /// sends, and the card grouped per send: `Tue 22 Sep · Upper B · logged`
+    /// under one head line and `Tue 22 Sep · 2 meals booked` under another,
+    /// each reading quieter than the day really was. Sends whose booked spans
+    /// overlap are therefore drawn together, one row per date, carrying what
+    /// every one of them booked for it.
+    ///
+    /// **The sends themselves are not merged.** `sends` keeps each one's own
+    /// head line, its own range and its own counts, newest first. Folding one
+    /// send's dates into another send's group instead would leave a head line
+    /// saying `Booked 4 days` above rows it does not account for, which is the
+    /// kind of quiet lie this card exists to avoid. The invariant that
+    /// replaces it: **every row under a group is counted by at least one head
+    /// line above it, and every head line counts only days its own send
+    /// booked.**
+    struct Group: Equatable {
+        /// Newest send first, the order the card reads in.
+        var sends: [Send]
+        /// The first and last day any of these sends booked.
+        var from: String
+        var to: String
         var days: [DayRow]
+
+        /// Stable for a list: the sends that made this group, in the order
+        /// they read. A group of one is that send's id, as it always was.
+        var id: String { sends.map(\.id).joined(separator: "+") }
     }
 
     struct LiftEntry: Equatable {
@@ -388,9 +429,12 @@ enum PlanAndLog {
     /// two facts on the same seven days and says nothing about cause.
     ///
     /// The eight weeks are the Weeks table's own window, so the card and the
-    /// table look at the same stretch. A group is one send, and its range is
-    /// the first and last day that send booked -- not a calendar week, because
-    /// a coach sends the days they book.
+    /// table look at the same stretch. A send's range is the first and last
+    /// day *it* booked -- not a calendar week, because a coach sends the days
+    /// they book -- and a group is every send whose range overlaps another's,
+    /// drawn as one list of days. See `Group`: a date booked by Train's send
+    /// and by Cook's send is one row, and each send keeps its own head line
+    /// above it.
     static func compare(clientID: String,
                         sentPlans: [StoredPlan],
                         days: [String: LoggedDay],
@@ -400,113 +444,273 @@ enum PlanAndLog {
                         weeks: Int = 8,
                         locale: Locale = .current) -> Result {
         let from = DayKey.adding(days: -(7 * weeks - 1), to: today) ?? today
-        var groups: [Group] = []
+
+        /// One send's bookings inside the window. A send that booked no day in
+        /// it -- a library send, or one older than the window -- is no group.
+        struct Sent {
+            var plan: StoredPlan
+            var booked: [Booking]
+            var first: String
+            var last: String
+        }
 
         // This client's rows, newest first -- the order the card reads in.
-        for plan in sentPlans.filter({ $0.clientID == clientID })
-            .sorted(by: { $0.sentAtEpochSec > $1.sentAtEpochSec }) {
-            let booked = bookings(in: plan.payload).filter { $0.date >= from && $0.date <= today }
-            guard let first = booked.first?.date, let last = booked.last?.date else { continue }
-
-            let bookedDates = Set(booked.map(\.date))
-            var counts = Counts()
-            counts.booked = booked.count
-
-            var rows: [DayRow] = booked.map { booking in
-                let day = days[booking.date]
-                let isCovered = coverage?.covers(booking.date) ?? false
-                let state: DayState
-                if booking.workout { counts.training += 1 }
-                counts.meals += booking.meals.count
-                if !isCovered {
-                    state = .outside
-                    counts.outside += 1
-                } else if !booking.workout {
-                    // A day that booked no training gets no training verdict.
-                    state = .meals
-                } else if hasTraining(day) {
-                    state = .logged
-                    counts.logged += 1
-                } else {
-                    state = .notLogged
-                    counts.notLogged += 1
-                }
-
-                let word = self.word(for: state)
-                let joined = state == .logged
-                    ? join(asked: booking.exercises, logged: working(in: day), unit: unit, locale: locale)
-                    : (exercises: [ExerciseRow](), alsoLogged: [AlsoLoggedRow]())
-                let food = isCovered ? foodIn(day) : nil
-                let meals: [MealBooking] = booking.meals.map { meal in
-                    var out = meal
-                    out.logged = food.flatMap { slotLine(meal, in: $0) }
-                    return out
-                }
-                let mealsClause = meals.isEmpty
-                    ? "" : plural(meals.count, "meal booked", "meals booked")
-                // The training word hugs the session it judges; the meal clause
-                // follows it. A day that booked only meals has no session for
-                // it to hug, so what is left -- `outside the log they sent`, or
-                // nothing -- goes last instead.
-                let head = booking.name.isEmpty
-                    ? [dayLabel(booking.date, locale: locale), mealsClause, word]
-                    : [dayLabel(booking.date, locale: locale), booking.name, word, mealsClause]
-                return DayRow(
-                    key: booking.date,
-                    state: state,
-                    name: booking.name,
-                    text: head.filter { !$0.isEmpty }.joined(separator: " · "),
-                    exercises: joined.exercises,
-                    alsoLogged: joined.alsoLogged,
-                    meals: meals,
-                    foodContext: meals.isEmpty ? nil : food.map(foodContext),
-                    booked: state == .logged ? [] : booking.exercises.map {
-                        pairRow(asked: $0, logged: nil, unit: unit, substituted: false,
-                                absentWord: word, locale: locale)
-                    })
+        let sent: [Sent] = sentPlans.filter { $0.clientID == clientID }
+            .sorted { $0.sentAtEpochSec > $1.sentAtEpochSec }
+            .compactMap { plan in
+                let booked = bookings(in: plan.payload)
+                    .filter { $0.date >= from && $0.date <= today }
+                guard let first = booked.first?.date, let last = booked.last?.date
+                else { return nil }
+                return Sent(plan: plan, booked: booked, first: first, last: last)
             }
 
-            // A day inside this send's span that was trained and not booked.
-            // Shown beside the bookings, saying nothing about cause: a session
-            // lifted the day after the one it was booked for looks exactly
-            // like this, and so does a session the client added themselves.
+        var groups: [Group] = []
+        for cluster in clusters(of: sent.map { (first: $0.first, last: $0.last) }) {
+            // `sent` is already newest first, so ascending indices keep that.
+            let members = cluster.sorted().map { sent[$0] }
+            let span = (first: members.map(\.first).min() ?? "",
+                        last: members.map(\.last).max() ?? "")
+
+            // What the group booked for each date. A coach who booked
+            // Tuesday's session in one link and Tuesday's dinners in another
+            // booked one Tuesday.
+            var byDate: [String: [Booking]] = [:]
+            var trainedDates: Set<String> = []
+            for member in members {
+                for booking in member.booked {
+                    byDate[booking.date, default: []].append(booking)
+                    if booking.workout { trainedDates.insert(booking.date) }
+                }
+            }
+
+            // A day inside a send's span that was trained and that **no send
+            // in the group booked a session for**. Shown beside the bookings,
+            // saying nothing about cause: a session lifted the day after the
+            // one it was booked for looks exactly like this, and so does a
+            // session the client added themselves.
             //
-            // Only when this send booked training at all. A food plan booked
-            // no session for a logged one to be a displaced version of, and
-            // listing a client's own training under it as `not booked` would
-            // be Coach holding up work nobody set out to book.
-            if counts.training > 0 {
+            // Counted per send, over that send's own span and only when that
+            // send booked training at all -- a food plan booked no session for
+            // a logged one to be a displaced version of, and holding up a
+            // client's own training under it as `not booked` would be Coach
+            // holding up work nobody set out to book. Two sends whose spans
+            // both hold the day each count it, because each is saying
+            // something true about its own week; the day itself is one row.
+            //
+            // The test is training, not booking. Cook's send books meals on
+            // every day of the week, so a stray session would otherwise land
+            // on a date already booked for dinner and vanish -- the row would
+            // read `1 meal booked` and say nothing about the session at all.
+            var other: [Int] = Array(repeating: 0, count: members.count)
+            var unbookedTraining: Set<String> = []
+            for (index, member) in members.enumerated()
+            where member.booked.contains(where: \.workout) {
                 for key in days.keys.sorted() {
-                    guard key >= first, key <= last, !bookedDates.contains(key),
+                    guard key >= member.first, key <= member.last,
+                          !trainedDates.contains(key),
                           let day = days[key], hasTraining(day) else { continue }
-                    counts.other += 1
-                    rows.append(DayRow(
-                        key: key,
-                        state: .notBooked,
-                        name: day.name,
-                        text: [dayLabel(key, locale: locale), day.name, "not booked"]
-                            .filter { !$0.isEmpty }.joined(separator: " · "),
-                        exercises: [],
-                        alsoLogged: working(in: day).filter { !$0.sets.isEmpty }.map(alsoLoggedRow),
-                        meals: [],
-                        foodContext: nil,
-                        booked: []))
+                    other[index] += 1
+                    unbookedTraining.insert(key)
                 }
             }
+
+            // The verdict is the day's, read once from what the group booked
+            // for it and what the log holds. Each send's counts then read it
+            // back for the days that send booked.
+            var states: [String: DayState] = [:]
+            var rows: [DayRow] = Set(byDate.keys).union(unbookedTraining).sorted()
+                .map { date in merge(byDate[date] ?? [emptyBooking(on: date)]) }
+                .map { booking in
+                    let day = days[booking.date]
+                    let isCovered = coverage?.covers(booking.date) ?? false
+                    let state: DayState
+                    if !booking.workout && booking.meals.isEmpty {
+                        // A date no send booked at all, swept in above.
+                        state = .notBooked
+                    } else if !isCovered {
+                        state = .outside
+                    } else if booking.workout {
+                        state = hasTraining(day) ? .logged : .notLogged
+                    } else if unbookedTraining.contains(booking.date) {
+                        // Booked to eat and trained anyway. The meals are
+                        // still this day's, and so is the session -- one row
+                        // says both, rather than the session being swallowed
+                        // by the dinner booked over it.
+                        state = .notBooked
+                    } else {
+                        // A day that booked no training gets no training
+                        // verdict: `not logged` against a day nobody was asked
+                        // to train would be Coach inventing a booking to hold
+                        // against a client.
+                        state = .meals
+                    }
+                    states[booking.date] = state
+
+                    // A session nobody booked is named by the log, because
+                    // there is no booking to name it.
+                    let name = state == .notBooked ? (day?.name ?? "") : booking.name
+                    let word = self.word(for: state)
+                    let joined: (exercises: [ExerciseRow], alsoLogged: [AlsoLoggedRow])
+                    switch state {
+                    case .logged:
+                        joined = join(asked: booking.exercises, logged: working(in: day),
+                                      unit: unit, locale: locale)
+                    case .notBooked:
+                        joined = ([], working(in: day).filter { !$0.sets.isEmpty }
+                            .map(alsoLoggedRow))
+                    default:
+                        joined = ([], [])
+                    }
+                    let food = isCovered ? foodIn(day) : nil
+                    let meals: [MealBooking] = booking.meals.map { meal in
+                        var out = meal
+                        out.logged = food.flatMap { slotLine(meal, in: $0) }
+                        return out
+                    }
+                    let mealsClause = meals.isEmpty
+                        ? "" : plural(meals.count, "meal booked", "meals booked")
+                    // The training word hugs the session it judges; the meal
+                    // clause follows it. A day that booked only meals has no
+                    // session for it to hug, so what is left -- `outside the
+                    // log they sent`, or nothing -- goes last instead.
+                    let head = name.isEmpty
+                        ? [dayLabel(booking.date, locale: locale), mealsClause, word]
+                        : [dayLabel(booking.date, locale: locale), name, word, mealsClause]
+                    return DayRow(
+                        key: booking.date,
+                        state: state,
+                        name: name,
+                        text: head.filter { !$0.isEmpty }.joined(separator: " · "),
+                        exercises: joined.exercises,
+                        alsoLogged: joined.alsoLogged,
+                        meals: meals,
+                        foodContext: meals.isEmpty ? nil : food.map(foodContext),
+                        booked: state == .logged ? [] : booking.exercises.map {
+                            pairRow(asked: $0, logged: nil, unit: unit, substituted: false,
+                                    absentWord: word, locale: locale)
+                        })
+                }
             rows.sort { $0.key < $1.key }
 
-            let range = rangeText(from: first, to: last, locale: locale)
-            groups.append(Group(id: plan.id, sentAt: plan.sentAtEpochSec, from: first, to: last,
-                                range: range, counts: counts,
-                                head: headLine(range: range, counts: counts),
-                                days: rows))
+            let sends: [Send] = members.enumerated().map { index, member in
+                var counts = Counts()
+                counts.booked = member.booked.count
+                counts.other = other[index]
+                for booking in member.booked {
+                    if booking.workout { counts.training += 1 }
+                    counts.meals += booking.meals.count
+                    switch states[booking.date] {
+                    case .outside: counts.outside += 1
+                    // What became of a day this send booked a session on. A
+                    // session another send booked is that send's to count.
+                    case .logged where booking.workout: counts.logged += 1
+                    case .notLogged where booking.workout: counts.notLogged += 1
+                    default: break
+                    }
+                }
+                let range = rangeText(from: member.first, to: member.last, locale: locale)
+                return Send(id: member.plan.id, sentAt: member.plan.sentAtEpochSec,
+                            from: member.first, to: member.last, range: range,
+                            counts: counts, head: headLine(range: range, counts: counts))
+            }
+
+            groups.append(Group(sends: sends, from: span.first, to: span.last, days: rows))
         }
 
         // Only when there is a meal row for it to be about. A training-only
         // card is byte for byte what it was.
-        let anyMeal = groups.contains { $0.counts.meals > 0 }
+        let anyMeal = groups.contains { group in group.sends.contains { $0.counts.meals > 0 } }
         return Result(groups: groups, byLift: byLift(groups, locale: locale),
                       mealFooter: anyMeal ? mealNote : nil, footer: footer)
+    }
+
+    /// A date the group booked nothing for, carried through the same path as a
+    /// booked one so a day is built in one place and not two.
+    private static func emptyBooking(on date: String) -> Booking {
+        Booking(date: date, name: "", workout: false, exercises: [], meals: [])
+    }
+
+    /// The sends whose booked spans overlap, as indices into `spans`.
+    ///
+    /// Two sends that book the same stretch of days are one week to a coach,
+    /// even though they left the phone as two links, so their days are drawn
+    /// as one list. Two that book different weeks are two weeks and stay
+    /// apart -- the card has always read a week at a time and still does.
+    ///
+    /// Touching is not overlapping: Train booking Mon-Fri and Cook booking the
+    /// Saturday after are two stretches, and a group is only ever the days a
+    /// coach reads together.
+    static func clusters(of spans: [(first: String, last: String)]) -> [[Int]] {
+        let order = spans.indices.sorted {
+            spans[$0].first == spans[$1].first
+                ? spans[$0].last < spans[$1].last
+                : spans[$0].first < spans[$1].first
+        }
+        var out: [[Int]] = []
+        var reach = ""
+        for index in order {
+            if !out.isEmpty, spans[index].first <= reach {
+                out[out.count - 1].append(index)
+                reach = max(reach, spans[index].last)
+            } else {
+                out.append([index])
+                reach = spans[index].last
+            }
+        }
+        // A group reads newest send first, so the groups do too: the cluster
+        // holding the newest send is the one at the top of the card.
+        return out.sorted { ($0.min() ?? 0) < ($1.min() ?? 0) }
+    }
+
+    /// Two sends booking the same date are one day.
+    ///
+    /// **Training pools**, exactly as two sessions booked on one date inside a
+    /// single payload already pool -- SHARE-FORMAT gives a day one `w` array,
+    /// so the log has already merged two sessions into one before Coach sees
+    /// it, and the asked side has to be read the same way. A plan edited and
+    /// re-sent for the same day is therefore one row whose Asked rows carry
+    /// both prescriptions: Coach knows both links went out and cannot know
+    /// which one the client opened, so it shows what was asked across them and
+    /// picks no winner. An identical re-send never reaches here -- `SentPlan`
+    /// replaces a send whose payload hashes the same.
+    ///
+    /// **Meals do not pool**: two dishes at one dinner are two dishes, and a
+    /// coach who booked both wants to see both.
+    ///
+    /// A session name repeated across sends is said once. Inside one payload,
+    /// two sessions of a name are two sessions a coach booked twice and both
+    /// are named; across sends it is one session re-sent, and `Upper B · Upper
+    /// B` would read as a mistake rather than as a fact.
+    ///
+    /// One booking merges to itself, unchanged, so a client sent one link a
+    /// week reads byte for byte as they always have.
+    static func merge(_ list: [Booking]) -> Booking {
+        guard let first = list.first else {
+            return Booking(date: "", name: "", workout: false, exercises: [], meals: [])
+        }
+        guard list.count > 1 else { return first }
+
+        var names: [String] = []
+        for name in list.map(\.name) where !name.isEmpty && !names.contains(name) {
+            names.append(name)
+        }
+        // Breakfast, lunch, dinner, snack, whichever link carried which -- the
+        // order a day is eaten in, as one payload's own meals are already
+        // sorted. A slot Coach cannot read sorts last rather than being
+        // dropped.
+        let meals = list.flatMap(\.meals).enumerated()
+            .sorted { left, right in
+                let a = left.element.slot < 0 ? 9 : left.element.slot
+                let b = right.element.slot < 0 ? 9 : right.element.slot
+                return a == b ? left.offset < right.offset : a < b
+            }
+            .map(\.element)
+        return Booking(date: first.date,
+                       name: names.joined(separator: " · "),
+                       workout: list.contains(where: \.workout),
+                       exercises: pooled(list.flatMap(\.exercises)),
+                       meals: meals)
     }
 
     /// The same lines grouped the other way: each prescribed lift across the
@@ -1053,7 +1257,9 @@ enum PlanAndLog {
     static func lines(_ result: Result) -> [String] {
         var out: [String] = []
         for group in result.groups {
-            out.append(group.head)
+            // One head line per send, each describing its own send, above the
+            // days they were read together on -- see `Group`.
+            out.append(contentsOf: group.sends.map(\.head))
             for day in group.days {
                 out.append(day.text)
                 for exercise in day.exercises {

@@ -59,7 +59,23 @@ struct BookedSection: View {
             if reading == .day {
                 AdaptiveGrid(result.groups, id: \.id,
                              columns: min(fits, max(1, result.groups.count))) { group in
-                    LiftCard(title: group.head) {
+                    LiftCard {
+                        // One head line per send. Two sends are two records --
+                        // see `PlanAndLog.Group` -- so a week a coach booked to
+                        // train in one link and to eat in another says both,
+                        // above the one list of days they made between them.
+                        // **A view that draws only the first leaves rows under
+                        // a head line that does not account for them**, which
+                        // is the quiet lie the group exists to avoid.
+                        VStack(alignment: .leading, spacing: 3) {
+                            ForEach(group.sends, id: \.id) { send in
+                                Text(send.head)
+                                    .font(Theme.cardTitle)
+                                    .foregroundStyle(Theme.accent)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
                         VStack(alignment: .leading, spacing: 8) {
                             ForEach(group.days, id: \.key) { day in
                                 dayRow(day)

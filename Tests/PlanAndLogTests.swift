@@ -76,14 +76,14 @@ final class PlanAndLogTests: XCTestCase {
     func testTheFixturePairProducesExactlyTheCountsAndDayStatesItSays() throws {
         let (result, expected) = try fixtureResult()
         XCTAssertEqual(result.groups.count, 1)
-        let counts = try XCTUnwrap(result.groups.first?.counts)
+        let counts = try XCTUnwrap(result.groups.first?.sends[0].counts)
         XCTAssertEqual(counts, PlanAndLog.Counts(
             booked: expected.counts["booked"] ?? -1, training: expected.counts["training"] ?? -1,
             logged: expected.counts["logged"] ?? -1,
             notLogged: expected.counts["notLogged"] ?? -1, outside: expected.counts["outside"] ?? -1,
             other: expected.counts["other"] ?? -1, meals: expected.counts["meals"] ?? -1))
         XCTAssertEqual(result.groups[0].days.map(\.state.rawValue), expected.dayStates)
-        XCTAssertEqual(result.groups[0].range, "12–17 Oct")
+        XCTAssertEqual(result.groups[0].sends[0].range, "12–17 Oct")
     }
 
     /// The window comes off the link itself, so "outside the log they sent" is
@@ -148,7 +148,7 @@ final class PlanAndLogTests: XCTestCase {
                          [("Lower A", [ex("Back Squat", "Barbell", [[225, 5]])])],
                          ["2026-10-12": day([logged("Back Squat", "Barbell", [set(225, 5)])], name: "Lower A")])
         XCTAssertEqual(try first(result).text, "Mon 12 Oct · Lower A · logged")
-        XCTAssertEqual(result.groups[0].counts,
+        XCTAssertEqual(result.groups[0].sends[0].counts,
                        PlanAndLog.Counts(booked: 1, training: 1, logged: 1, notLogged: 0,
                                          outside: 0, other: 0, meals: 0))
     }
@@ -157,7 +157,7 @@ final class PlanAndLogTests: XCTestCase {
         let result = run([("2026-10-12", 0)],
                          [("Lower A", [ex("Back Squat", "Barbell", [[225, 5]])])], [:])
         XCTAssertEqual(try first(result).text, "Mon 12 Oct · Lower A · not logged")
-        XCTAssertEqual(result.groups[0].head, "Booked 1 day, 12 Oct · logged 0")
+        XCTAssertEqual(result.groups[0].sends[0].head, "Booked 1 day, 12 Oct · logged 0")
     }
 
     func testABookedDayOutsideTheWindowTheClientSentIsNeverCalledNotLogged() throws {
@@ -165,7 +165,7 @@ final class PlanAndLogTests: XCTestCase {
                          [("Lower A", [ex("Back Squat", "Barbell", [[225, 5]])])], [:],
                          coverage: CoveredRange(from: "2026-09-01", to: "2026-10-05"))
         XCTAssertEqual(try first(result).text, "Mon 12 Oct · Lower A · outside the log they sent")
-        XCTAssertEqual(result.groups[0].head, "Booked 1 day, 12 Oct · no log covering them")
+        XCTAssertEqual(result.groups[0].sends[0].head, "Booked 1 day, 12 Oct · no log covering them")
         XCTAssertFalse(PlanAndLog.lines(result).joined(separator: " ").contains("not logged"))
     }
 
@@ -187,8 +187,8 @@ final class PlanAndLogTests: XCTestCase {
             "Tue 13 Oct · Upper B · not booked",
             "Fri 16 Oct · Lower A · not logged",
         ])
-        XCTAssertEqual(result.groups[0].counts.other, 1)
-        XCTAssertTrue(result.groups[0].head.hasSuffix("1 other day logged"))
+        XCTAssertEqual(result.groups[0].sends[0].counts.other, 1)
+        XCTAssertTrue(result.groups[0].sends[0].head.hasSuffix("1 other day logged"))
     }
 
     func testASubstitutionShowsAsOnePairOnNameAloneLabelled() throws {
@@ -242,8 +242,8 @@ final class PlanAndLogTests: XCTestCase {
             plan([("2026-10-05", 0)], workouts, id: "old", sentAt: 1),
             plan([("2026-10-12", 0)], workouts, id: "new", sentAt: 2),
         ])
-        XCTAssertEqual(result.groups.map(\.id), ["new", "old"])
-        XCTAssertEqual(result.groups.map(\.range), ["12 Oct", "5 Oct"])
+        XCTAssertEqual(result.groups.flatMap { $0.sends.map(\.id) }, ["new", "old"])
+        XCTAssertEqual(result.groups.flatMap { $0.sends.map(\.range) }, ["12 Oct", "5 Oct"])
     }
 
     func testAPlanBookingNothingInTheLastEightWeeksIsNotAGroupAtAll() {
@@ -524,7 +524,7 @@ final class PlanAndLogTests: XCTestCase {
         let result = runMeals([recipe("Beef Chilli")],
                               [meal("2026-10-12", Self.dinner, 0, 2)], [:])
         XCTAssertEqual(result.groups.count, 1, "the training-only card skipped this entirely")
-        XCTAssertEqual(result.groups[0].head, "Booked 1 day, 12 Oct · 1 meal booked")
+        XCTAssertEqual(result.groups[0].sends[0].head, "Booked 1 day, 12 Oct · 1 meal booked")
         XCTAssertEqual(try first(result).text, "Mon 12 Oct · 1 meal booked")
         XCTAssertEqual(try first(result).state, .meals)
     }
@@ -535,7 +535,7 @@ final class PlanAndLogTests: XCTestCase {
         let result = runMeals([recipe("Beef Chilli")], [meal("2026-10-12", Self.dinner, 0)], [:])
         let every = PlanAndLog.lines(result).joined(separator: " · ")
         XCTAssertFalse(every.contains("not logged"), every)
-        XCTAssertEqual(result.groups[0].counts,
+        XCTAssertEqual(result.groups[0].sends[0].counts,
                        PlanAndLog.Counts(booked: 1, training: 0, logged: 0, notLogged: 0,
                                          outside: 0, other: 0, meals: 1))
     }
@@ -646,7 +646,7 @@ final class PlanAndLogTests: XCTestCase {
                        "Mon 12 Oct · 1 meal booked · outside the log they sent")
         XCTAssertNil(try first(result).meals[0].logged)
         XCTAssertNil(try first(result).foodContext)
-        XCTAssertEqual(result.groups[0].head,
+        XCTAssertEqual(result.groups[0].sends[0].head,
                        "Booked 1 day, 12 Oct · 1 meal booked · no log covering them")
     }
 
@@ -696,9 +696,9 @@ final class PlanAndLogTests: XCTestCase {
         // "logged 2" under "Booked 5 days" would read as two of five when
         // three of them booked no training at all, so the figure names what it
         // counts.
-        XCTAssertEqual(result.groups[0].head,
+        XCTAssertEqual(result.groups[0].sends[0].head,
                        "Booked 2 days, 12–13 Oct · 3 meals booked · 1 training day, 1 logged")
-        XCTAssertEqual(result.groups[0].counts,
+        XCTAssertEqual(result.groups[0].sends[0].counts,
                        PlanAndLog.Counts(booked: 2, training: 1, logged: 1, notLogged: 0,
                                          outside: 0, other: 0, meals: 3))
     }
@@ -708,7 +708,7 @@ final class PlanAndLogTests: XCTestCase {
                          [("Lower A", [ex("Back Squat", "Barbell", [[225, 5]])])],
                          ["2026-10-12": day([logged("Back Squat", "Barbell", [set(225, 5)])],
                                             name: "Lower A")])
-        XCTAssertEqual(result.groups[0].head, "Booked 1 day, 12 Oct · logged 1")
+        XCTAssertEqual(result.groups[0].sends[0].head, "Booked 1 day, 12 Oct · logged 1")
         XCTAssertTrue(try first(result).meals.isEmpty)
         XCTAssertNil(try first(result).foodContext)
         XCTAssertNil(result.mealFooter, "and no note about meals under a card with none")
@@ -730,7 +730,7 @@ final class PlanAndLogTests: XCTestCase {
             "Mon 12 Oct · 1 meal booked",
             "Wed 14 Oct · 1 meal booked",
         ])
-        XCTAssertEqual(result.groups[0].counts.other, 0)
+        XCTAssertEqual(result.groups[0].sends[0].counts.other, 0)
         XCTAssertFalse(PlanAndLog.lines(result).joined(separator: " ").contains("not booked"))
     }
 
@@ -746,7 +746,7 @@ final class PlanAndLogTests: XCTestCase {
             coverage: CoveredRange(from: "2026-10-01", to: "2026-10-31"),
             unit: "lb", today: "2026-10-20", locale: enUS)
         XCTAssertEqual(result.groups[0].days[1].text, "Tue 13 Oct · Conditioning · not booked")
-        XCTAssertEqual(result.groups[0].counts.other, 1)
+        XCTAssertEqual(result.groups[0].sends[0].counts.other, 1)
     }
 
     func testByLiftStaysAboutLiftsAMealsOnlyPlanHasNone() {
@@ -850,6 +850,284 @@ final class PlanAndLogTests: XCTestCase {
                        "a day opened and left empty logged no food")
     }
 
+    // MARK: - One day, however many sends booked it
+
+    // Coach web sends one link carrying training and meals together, so a
+    // booked Tuesday has always been one row there. Coach iPhone sends two --
+    // Train's `w`/`k` and Cook's `r`/`m` -- so the same Tuesday filed two
+    // `SentPlan` rows and the card grouped per send: `Tue 13 Oct · Upper B ·
+    // logged` under one head line and `Tue 13 Oct · 2 meals booked` under
+    // another, each reading quieter than the day really was.
+    //
+    // Sends whose booked spans overlap are now read together, one row per
+    // date. The sends are not merged: each keeps its own head line, its own
+    // range and its own counts.
+
+    private func cookPlan(_ recipes: [PlanRecipe], _ meals: [PlanMeal],
+                          id: String = "cook", sentAt: Int = 1000) -> PlanAndLog.StoredPlan {
+        var out = foodPlan(recipes, meals)
+        out.id = id
+        out.sentAtEpochSec = sentAt
+        return out
+    }
+
+    private func runSends(_ plans: [PlanAndLog.StoredPlan],
+                          _ days: [String: PlanAndLog.LoggedDay],
+                          coverage: CoveredRange? = CoveredRange(from: "2026-10-01",
+                                                                 to: "2026-10-31")
+    ) -> PlanAndLog.Result {
+        PlanAndLog.compare(clientID: "c", sentPlans: plans, days: days, coverage: coverage,
+                           unit: "lb", today: "2026-10-20", locale: enUS)
+    }
+
+    /// Train's send and Cook's send, one Tuesday.
+    private func twoSends(_ days: [String: PlanAndLog.LoggedDay]) -> PlanAndLog.Result {
+        runSends([
+            plan([("2026-10-13", 0)], [("Upper B", [ex("Bench Press", "Barbell", [[185, 5]])])],
+                 id: "train", sentAt: 2000),
+            cookPlan([recipe("Beef Chilli"), recipe("Overnight Oats")],
+                     [meal("2026-10-13", Self.dinner, 0, 2),
+                      meal("2026-10-13", Self.breakfast, 1)]),
+        ], days)
+    }
+
+    func testADayBookedByTwoSendsIsOneRowCarryingBoth() throws {
+        let result = twoSends(
+            ["2026-10-13": foodDay([food("Beef Chilli", Self.dinner)],
+                                   exercises: [logged("Bench Press", "Barbell", [set(185, 5)])],
+                                   name: "Upper B")])
+        XCTAssertEqual(result.groups.count, 1, "one day, one group")
+        // Web's own order and separator: the training verdict, then the meals.
+        XCTAssertEqual(result.groups[0].days.map(\.text),
+                       ["Tue 13 Oct · Upper B · logged · 2 meals booked"])
+        let row = try first(result)
+        XCTAssertEqual(row.exercises.count, 1, "the session Train booked")
+        XCTAssertEqual(row.meals.map(\.title),
+                       ["Breakfast · Overnight Oats · 1 serving",
+                        "Dinner · Beef Chilli · 2 servings"],
+                       "both links' meals, in the order a day is eaten")
+    }
+
+    /// Two sends are two records. Each head line describes the send it belongs
+    /// to -- its own range, its own days, its own meals -- and neither is ever
+    /// a sum across the two.
+    func testEachSendKeepsItsOwnHeadLineAboveTheDaysTheyShare() {
+        let result = twoSends(
+            ["2026-10-13": foodDay([food("Beef Chilli", Self.dinner)],
+                                   exercises: [logged("Bench Press", "Barbell", [set(185, 5)])],
+                                   name: "Upper B")])
+        XCTAssertEqual(result.groups[0].sends.map(\.head), [
+            "Booked 1 day, 13 Oct · logged 1",
+            "Booked 1 day, 13 Oct · 2 meals booked",
+        ])
+        // Newest first, and the meal count belongs only to the send that
+        // booked the meals.
+        XCTAssertEqual(result.groups[0].sends.map(\.id), ["train", "cook"])
+        XCTAssertEqual(result.groups[0].sends.map(\.counts.meals), [0, 2])
+        XCTAssertEqual(result.groups[0].sends.map(\.counts.training), [1, 0])
+        // Both head lines reach the lines the discipline tests read.
+        XCTAssertEqual(Array(PlanAndLog.lines(result).prefix(2)),
+                       result.groups[0].sends.map(\.head))
+    }
+
+    /// Train books three days of a week; Cook books all seven. One list of
+    /// seven days, and each head line still prints the range it counted over.
+    func testADateOneSendCoversAndTheOtherDoesNotIsStillOneListOfDays() {
+        let result = runSends([
+            plan([("2026-10-12", 0), ("2026-10-14", 0), ("2026-10-16", 0)],
+                 [("Lower A", [ex("Back Squat", "Barbell", [[225, 5]])])],
+                 id: "train", sentAt: 2000),
+            cookPlan([recipe("Beef Chilli")],
+                     (12...18).map { meal("2026-10-\($0)", Self.dinner, 0) }),
+        ], ["2026-10-12": day([logged("Back Squat", "Barbell", [set(225, 5)])], name: "Lower A")])
+
+        XCTAssertEqual(result.groups.count, 1)
+        XCTAssertEqual(result.groups[0].days.map(\.key),
+                       (12...18).map { "2026-10-\($0)" }, "seven dates, seven rows")
+        XCTAssertEqual(result.groups[0].sends.map(\.head), [
+            "Booked 3 days, 12–16 Oct · logged 1",
+            "Booked 7 days, 12–18 Oct · 7 meals booked",
+        ])
+        XCTAssertEqual(result.groups[0].days.map(\.text), [
+            "Mon 12 Oct · Lower A · logged · 1 meal booked",
+            "Tue 13 Oct · 1 meal booked",
+            "Wed 14 Oct · Lower A · not logged · 1 meal booked",
+            "Thu 15 Oct · 1 meal booked",
+            "Fri 16 Oct · Lower A · not logged · 1 meal booked",
+            "Sat 17 Oct · 1 meal booked",
+            "Sun 18 Oct · 1 meal booked",
+        ])
+    }
+
+    /// Sends that book different weeks are different weeks, and stay apart --
+    /// the card has always read a week at a time. Touching is not overlapping.
+    func testSendsThatBookDifferentWeeksStayTwoGroups() {
+        let workouts = [("Lower A", [ex("Back Squat", "Barbell", [[225, 5]])])]
+        let result = runSends([
+            plan([("2026-10-12", 0)], workouts, id: "week2", sentAt: 2),
+            plan([("2026-10-05", 0)], workouts, id: "week1", sentAt: 1),
+        ], [:])
+        XCTAssertEqual(result.groups.count, 2)
+        XCTAssertEqual(result.groups.map(\.id), ["week2", "week1"])
+        XCTAssertEqual(result.groups.map { $0.sends.count }, [1, 1])
+    }
+
+    /// The edited re-send. `SentPlan` replaces a send whose payload hashes the
+    /// same, so two rows on one date are two *different* plans that both left
+    /// the phone. Coach cannot know which link the client opened, so it pools
+    /// them exactly as two sessions booked on one date inside one payload
+    /// already pool, and picks no winner.
+    func testTwoSendsBookingOneDayWithDifferentWorkoutsPoolAndPickNoWinner() throws {
+        let result = runSends([
+            plan([("2026-10-13", 0)],
+                 [("Upper B", [ex("Bench Press", "Barbell", [[185, 5], [185, 5], [205, 3]])])],
+                 id: "edited", sentAt: 2000),
+            plan([("2026-10-13", 0)],
+                 [("Upper B", [ex("Bench Press", "Barbell", [[185, 5], [185, 5]])])],
+                 id: "first", sentAt: 1000),
+        ], ["2026-10-13": day([logged("Bench Press", "Barbell", [set(185, 5), set(185, 5)])],
+                              name: "Upper B")])
+
+        XCTAssertEqual(result.groups.count, 1)
+        // The name is said once. Inside one payload two sessions of a name are
+        // two sessions a coach booked twice; across sends it is one session
+        // re-sent, and "Upper B · Upper B" would read as a mistake.
+        XCTAssertEqual(result.groups[0].days.map(\.text), ["Tue 13 Oct · Upper B · logged"])
+        let exercises = try first(result).exercises
+        XCTAssertEqual(exercises.count, 1)
+        XCTAssertEqual(exercises[0].asked?.text,
+                       "185 × 5 · 185 × 5 · 205 × 3 · 185 × 5 · 185 × 5",
+                       "what was asked across both links, newest first")
+        XCTAssertEqual(exercises[0].logged?.text, "185 × 5 · 185 × 5")
+        XCTAssertEqual(exercises[0].countLine, "Asked 5 sets · logged 2")
+        // And each send still says, truthfully, what it booked.
+        XCTAssertEqual(result.groups[0].sends.map(\.head),
+                       ["Booked 1 day, 13 Oct · logged 1", "Booked 1 day, 13 Oct · logged 1"])
+    }
+
+    /// A different workout on the same date reads as the two lifts it is,
+    /// pooled under the one day -- there is no arithmetic on the difference,
+    /// and nothing says one plan replaced the other.
+    func testAReSendThatChangedTheLiftsShowsBothPlansLifts() throws {
+        let result = runSends([
+            plan([("2026-10-13", 0)], [("Upper B", [ex("Overhead Press", "Barbell", [[95, 8]])])],
+                 id: "edited", sentAt: 2000),
+            plan([("2026-10-13", 0)], [("Upper B", [ex("Bench Press", "Barbell", [[185, 5]])])],
+                 id: "first", sentAt: 1000),
+        ], ["2026-10-13": day([logged("Overhead Press", "Barbell", [set(95, 8)])], name: "Upper B")])
+        XCTAssertEqual(try first(result).exercises.map(\.title),
+                       ["Overhead Press (Barbell)", "Bench Press (Barbell) · not logged"])
+        let every = PlanAndLog.lines(result).joined(separator: " · ").lowercased()
+        for word in ["replaced", "superseded", "instead of", "changed"] {
+            XCTAssertFalse(every.contains(word), "\"\(word)\" claims one send replaced another")
+        }
+    }
+
+    /// **The session must not be swallowed by the dinner booked over it.**
+    /// Cook's send books every day of the week, so a stray session lands on a
+    /// date that is already booked. It still reads as the session it was.
+    func testASessionNobodyBookedIsStillSaidOnADayBookedToEat() throws {
+        let result = runSends([
+            plan([("2026-10-12", 0), ("2026-10-16", 0)],
+                 [("Lower A", [ex("Back Squat", "Barbell", [[225, 5]])])],
+                 id: "train", sentAt: 2000),
+            cookPlan([recipe("Beef Chilli")],
+                     (12...16).map { meal("2026-10-\($0)", Self.dinner, 0) }),
+        ], ["2026-10-13": foodDay(exercises: [logged("Deadlift", "Barbell", [set(315, 3)])],
+                                  name: "Conditioning")])
+
+        XCTAssertEqual(result.groups[0].days.map(\.text), [
+            "Mon 12 Oct · Lower A · not logged · 1 meal booked",
+            "Tue 13 Oct · Conditioning · not booked · 1 meal booked",
+            "Wed 14 Oct · 1 meal booked",
+            "Thu 15 Oct · 1 meal booked",
+            "Fri 16 Oct · Lower A · not logged · 1 meal booked",
+        ])
+        XCTAssertEqual(try first(result, 1).alsoLogged.map(\.text), ["Deadlift (Barbell) · 1 set"])
+        // Counted by the send that booked training, not by the food plan.
+        XCTAssertEqual(result.groups[0].sends.map(\.counts.other), [1, 0])
+        XCTAssertTrue(result.groups[0].sends[0].head.hasSuffix("1 other day logged"))
+    }
+
+    /// A client sent nothing but a food plan keeps the old answer: a food plan
+    /// booked no session for a logged one to be a displaced version of, so
+    /// their own training is not held up under it as `not booked`.
+    func testAFoodPlanAloneStillNeverCallsAClientsOwnTrainingNotBooked() {
+        let result = runSends(
+            [cookPlan([recipe("Beef Chilli")], [meal("2026-10-13", Self.dinner, 0)])],
+            ["2026-10-13": foodDay(exercises: [logged("Deadlift", "Barbell", [set(315, 3)])],
+                                   name: "Conditioning")])
+        XCTAssertEqual(result.groups[0].days.map(\.text), ["Tue 13 Oct · 1 meal booked"])
+        XCTAssertEqual(try? first(result).state, .meals)
+        XCTAssertFalse(PlanAndLog.lines(result).joined(separator: " · ").contains("not booked"))
+    }
+
+    /// The invariant that replaces "one head line, one list of days":
+    /// **every row is accounted for by at least one head line above it**, and
+    /// a `not booked` row appears exactly where a head line counts one.
+    func testEveryRowUnderAGroupIsAccountedForByAHeadLineAboveIt() {
+        let result = runSends([
+            plan([("2026-10-12", 0), ("2026-10-16", 0)],
+                 [("Lower A", [ex("Back Squat", "Barbell", [[225, 5]])])],
+                 id: "train", sentAt: 2000),
+            cookPlan([recipe("Beef Chilli")],
+                     (12...18).map { meal("2026-10-\($0)", Self.dinner, 0) }),
+        ], ["2026-10-13": foodDay(exercises: [logged("Deadlift", "Barbell", [set(315, 3)])],
+                                  name: "Conditioning"),
+            "2026-10-12": day([logged("Back Squat", "Barbell", [set(225, 5)])], name: "Lower A")])
+
+        for group in result.groups {
+            let booked = group.sends.map(\.counts.booked).max() ?? 0
+            let counted = group.sends.reduce(0) { $0 + $1.counts.booked + $1.counts.other }
+            XCTAssertGreaterThanOrEqual(counted, group.days.count,
+                                        "a row under \(group.id) no head line counts")
+            XCTAssertLessThanOrEqual(booked, group.days.count)
+            XCTAssertEqual(group.days.contains { $0.state == .notBooked },
+                           group.sends.contains { $0.counts.other > 0 },
+                           "`not booked` and `other day logged` are the same fact")
+            // A head line's range is its own send's, never the group's.
+            XCTAssertTrue(group.sends.allSatisfy { $0.head.contains($0.range) })
+        }
+    }
+
+    /// A client sent one link a week -- every Coach web client, and every
+    /// Coach iPhone client who is only trained or only fed -- reads exactly as
+    /// they did: one send per group, and `merge` of one booking is that
+    /// booking.
+    func testAClientSentOneLinkAWeekIsOneSendPerGroup() {
+        let training = run([("2026-10-12", 0)],
+                           [("Lower A", [ex("Back Squat", "Barbell", [[225, 5]])])],
+                           ["2026-10-12": day([logged("Back Squat", "Barbell", [set(225, 5)])],
+                                              name: "Lower A")])
+        XCTAssertEqual(training.groups.map { $0.sends.count }, [1])
+        XCTAssertEqual(training.groups[0].sends[0].head, "Booked 1 day, 12 Oct · logged 1")
+        XCTAssertEqual(training.groups[0].days.map(\.text), ["Mon 12 Oct · Lower A · logged"])
+
+        let meals = runMeals([recipe("Beef Chilli")],
+                             [meal("2026-10-12", Self.dinner, 0, 2)], [:])
+        XCTAssertEqual(meals.groups.map { $0.sends.count }, [1])
+        XCTAssertEqual(meals.groups[0].sends[0].head, "Booked 1 day, 12 Oct · 1 meal booked")
+        XCTAssertEqual(meals.groups[0].days.map(\.text), ["Mon 12 Oct · 1 meal booked"])
+
+        let one = PlanAndLog.Booking(date: "2026-10-12", name: "Lower A", workout: true,
+                                     exercises: [], meals: [])
+        XCTAssertEqual(PlanAndLog.merge([one]), one)
+    }
+
+    /// Two overlapping sends are still two records in the by-lift view, and
+    /// the day they share is one entry under each lift rather than two.
+    func testTheByLiftViewReadsTheSharedDayOnce() {
+        let result = runSends([
+            plan([("2026-10-13", 0)], [("Upper B", [ex("Bench Press", "Barbell", [[185, 5]])])],
+                 id: "train", sentAt: 2000),
+            cookPlan([recipe("Beef Chilli")], [meal("2026-10-13", Self.dinner, 0)]),
+        ], ["2026-10-13": foodDay([food("Beef Chilli", Self.dinner)],
+                                  exercises: [logged("Bench Press", "Barbell", [set(185, 5)])],
+                                  name: "Upper B")])
+        XCTAssertEqual(result.byLift.map(\.title), ["Bench Press (Barbell)"])
+        XCTAssertEqual(result.byLift[0].entries.map(\.when), ["13 Oct"])
+    }
+
     // MARK: - The line discipline
 
     /// The spirit of `PerLimbTests.testNothingInTheseLinesTellsACoachWhatToDo`
@@ -901,14 +1179,45 @@ final class PlanAndLogTests: XCTestCase {
         let (result, _) = try fixtureResult()
         let training = PlanAndLog.lines(result)
         let meals = PlanAndLog.lines(mealFixture())
+        // And the shape neither fixture has: two sends read as one list of
+        // days, where a row can carry a training verdict and a meal clause at
+        // once. Every clause in it is one of the above, which is the point --
+        // but a merged row is a sentence the fixtures never produce, so it is
+        // read here rather than assumed to be safe.
+        let merged = PlanAndLog.lines(mergedFixture())
         XCTAssertGreaterThan(meals.count, 15, "the meal fixture should exercise every meal state")
-        let every = (training + meals).joined(separator: " · ").lowercased()
+        XCTAssertTrue(merged.contains { $0.contains("not booked") && $0.contains("meal booked") },
+                      "the merged fixture should produce a row carrying both halves")
+        let every = (training + meals + merged).joined(separator: " · ").lowercased()
         XCTAssertGreaterThan(every.count, 200, "the fixture should exercise the whole card")
         for word in forbidden {
             XCTAssertFalse(every.contains(word), "\"\(word)\" reached a screen")
         }
         XCTAssertFalse(PlanAndLog.footer.lowercased().contains("adherence"))
         XCTAssertFalse(PlanAndLog.mealNote.lowercased().contains("adherence"))
+    }
+
+    /// Two sends read as one list of days, exercising every shape merging can
+    /// make: a day booked by both, a day booked to eat and trained anyway, a
+    /// day one send covers and the other does not, and an edited re-send
+    /// pooled under one row.
+    private func mergedFixture() -> PlanAndLog.Result {
+        runSends([
+            plan([("2026-10-12", 0), ("2026-10-16", 0)],
+                 [("Lower A", [ex("Back Squat", "Barbell", [[225, 5], [225, 5]])])],
+                 id: "train", sentAt: 3000),
+            plan([("2026-10-12", 0)],
+                 [("Lower A", [ex("Back Squat", "Barbell", [[225, 5]])])],
+                 id: "train-before-the-edit", sentAt: 2000),
+            cookPlan([recipe("Beef Chilli")],
+                     (12...18).map { meal("2026-10-\($0)", Self.dinner, 0) }),
+        ], [
+            "2026-10-12": foodDay([food("Beef Chilli", Self.dinner)],
+                                  exercises: [logged("Back Squat", "Barbell", [set(225, 5)])],
+                                  name: "Lower A"),
+            "2026-10-14": foodDay(exercises: [logged("Deadlift", "Barbell", [set(315, 3)])],
+                                  name: "Conditioning"),
+        ])
     }
 
     /// The whole reason the booked and the logged sides of a meal are two
@@ -933,7 +1242,7 @@ final class PlanAndLogTests: XCTestCase {
         // total, no trend across weeks.
         XCTAssertEqual(Mirror(reflecting: result).children.compactMap(\.label).sorted(),
                        ["byLift", "footer", "groups", "mealFooter"])
-        XCTAssertEqual(Mirror(reflecting: result.groups[0].counts).children
+        XCTAssertEqual(Mirror(reflecting: result.groups[0].sends[0].counts).children
             .compactMap(\.label).sorted(),
                        ["booked", "logged", "meals", "notLogged", "other", "outside", "training"],
                        "a group counts the days and the meals it booked, and nothing else")
@@ -964,7 +1273,7 @@ final class PlanAndLogTests: XCTestCase {
         let meals = mealFixture()
         XCTAssertEqual(Mirror(reflecting: meals).children.compactMap(\.label).sorted(),
                        ["byLift", "footer", "groups", "mealFooter"])
-        XCTAssertEqual(meals.groups[0].counts.meals, 6)
+        XCTAssertEqual(meals.groups[0].sends[0].counts.meals, 6)
         walk(meals, "meals")
     }
 
