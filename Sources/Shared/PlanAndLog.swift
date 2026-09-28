@@ -258,6 +258,11 @@ enum PlanAndLog {
         var servings: Double
         var title: String
         var logged: String?
+        /// The booked row and the logged row stay two announcements, as they
+        /// are two statements: joining them would claim the join this card
+        /// exists to refuse.
+        var spokenTitle: String { PlanAndLog.plainly(title) }
+        var spokenLogged: String? { logged.map(PlanAndLog.plainly) }
     }
 
     /// One side's sets -- "L 40 × 8 · 40 × 8 · 40 × 5" -- or one unlabelled
@@ -265,6 +270,8 @@ enum PlanAndLog {
     struct SetGroup: Equatable {
         var label: String
         var text: String
+        /// The same sets, said: `×` read as "by" and the separators as commas.
+        var spoken: String = ""
     }
 
     /// An Asked or a Logged row. `suffix` carries "each side", which is a
@@ -276,6 +283,9 @@ enum PlanAndLog {
         var groups: [SetGroup]
         var suffix: String
         var text: String
+        /// The label **and** the groups in one string: read apart, "Asked" and
+        /// a list of numbers are two announcements with no relationship.
+        var spoken: String = ""
     }
 
     struct ExerciseRow: Equatable {
@@ -287,9 +297,35 @@ enum PlanAndLog {
         var state: ExerciseState
         var substitution: String?
         var sideLine: String?
+        /// `sideLine` said: "L 3/3 · R 2/3" is a column heading read literally.
+        var spokenSideLine: String?
         var countLine: String?
         var asked: SetRow?
         var logged: SetRow?
+
+        /// The whole block as one announcement.
+        ///
+        /// **The two rows are a comparison, and read apart they are two lists
+        /// of numbers with nothing between them.** One element carrying the
+        /// lift and both rows is what makes the relationship audible: a reader
+        /// hears what was asked and what came back in one breath, under the
+        /// name of the lift they are about.
+        var spoken: String {
+            ([PlanAndLog.plainly(title)] + spokenDetailParts).joined(separator: ". ")
+        }
+
+        /// The same sentence without the lift's name, for a view that already
+        /// announces the name and would otherwise say it twice.
+        var spokenDetail: String { spokenDetailParts.joined(separator: ". ") }
+
+        private var spokenDetailParts: [String] {
+            [spokenSideLine,
+             countLine.map(PlanAndLog.plainly),
+             asked?.spoken,
+             logged?.spoken,
+             substitution.map(PlanAndLog.plainly)]
+                .compactMap { $0 }.filter { !$0.isEmpty }
+        }
     }
 
     /// A lift the log has and the plan does not: its name and how many working
@@ -298,6 +334,7 @@ enum PlanAndLog {
         var key: String
         var title: String
         var text: String
+        var spoken: String { PlanAndLog.plainly(text) }
     }
 
     /// The days and the meals a send booked, and nothing else. `training` is
@@ -320,6 +357,9 @@ enum PlanAndLog {
         var state: DayState
         var name: String
         var text: String
+        /// `text` said: four clauses separated by ` · ` are four fragments to
+        /// a screen reader, and a day row is one thing a coach reads.
+        var spoken: String = ""
         var exercises: [ExerciseRow]
         var alsoLogged: [AlsoLoggedRow]
         /// What this day booked to eat, and what the log holds at each of
@@ -330,6 +370,8 @@ enum PlanAndLog {
         /// `they ate nothing`: a day with seven foods on it, none of them
         /// stamped lunch, says both facts one above the other.
         var foodContext: String?
+        /// `foodContext` said.
+        var spokenFoodContext: String? { foodContext.map(PlanAndLog.plainly) }
         /// What this day booked, whatever became of it. The day view does not
         /// draw these on a day nobody logged -- the row above already says so,
         /// and reciting the prescription under it turns a fact into a list of
@@ -355,6 +397,9 @@ enum PlanAndLog {
         var range: String
         var counts: Counts
         var head: String
+        /// `head` with the range said as a range: "21–23 Sep" is a dash and an
+        /// abbreviation aloud.
+        var spokenHead: String = ""
     }
 
     /// The sends a coach reads together, and one row per date across all of
@@ -393,6 +438,8 @@ enum PlanAndLog {
     struct LiftEntry: Equatable {
         var key: String
         var when: String
+        /// `when` said: "13 Oct" is an abbreviation aloud.
+        var spokenWhen: String = ""
         var exercise: ExerciseRow
     }
 
@@ -400,6 +447,9 @@ enum PlanAndLog {
         var key: String
         var title: String
         var entries: [LiftEntry]
+        /// `title` said -- a lift heading carries " · each side", which is a
+        /// clause and not a character.
+        var spokenTitle: String { PlanAndLog.plainly(title) }
     }
 
     struct Result: Equatable {
@@ -582,6 +632,12 @@ enum PlanAndLog {
                         state: state,
                         name: name,
                         text: head.filter { !$0.isEmpty }.joined(separator: " · "),
+                        // The same clauses, in the same order, with the date
+                        // said in words -- one sentence rather than four
+                        // fragments. Built here beside `text` rather than from
+                        // it, so a clause can never be in one and not the other.
+                        spoken: said([spokenDayLabel(booking.date, locale: locale)]
+                            + head.dropFirst()),
                         exercises: joined.exercises,
                         alsoLogged: joined.alsoLogged,
                         meals: meals,
@@ -612,7 +668,11 @@ enum PlanAndLog {
                 let range = rangeText(from: member.first, to: member.last, locale: locale)
                 return Send(id: member.plan.id, sentAt: member.plan.sentAtEpochSec,
                             from: member.first, to: member.last, range: range,
-                            counts: counts, head: headLine(range: range, counts: counts))
+                            counts: counts, head: headLine(range: range, counts: counts),
+                            spokenHead: plainly(headLine(
+                                range: spokenRange(from: member.first, to: member.last,
+                                                   locale: locale),
+                                counts: counts)))
             }
 
             groups.append(Group(sends: sends, from: span.first, to: span.last, days: rows))
@@ -730,6 +790,7 @@ enum PlanAndLog {
                     }
                     byKey[exercise.key]?.entries.append(
                         LiftEntry(key: day.key, when: dayMonth(day.key, locale: locale),
+                                  spokenWhen: spokenDayMonth(day.key, locale: locale),
                                   exercise: exercise))
                 }
             }
@@ -974,6 +1035,7 @@ enum PlanAndLog {
                 ? "Asked \(equipmentWord(asked.equipment)) · logged \(equipmentWord(logged?.equipment ?? ""))"
                 : nil,
             sideLine: side,
+            spokenSideLine: spokenSideLine(asked: asked, logged: logged),
             countLine: nil,
             // A lift with nothing logged against it is one line and no rows:
             // the day row above already says the session was not logged, and
@@ -1000,7 +1062,8 @@ enum PlanAndLog {
                                suffix: String, locale: Locale) -> SetRow {
         let groups = setGroups(sets, unit: unit, locale: locale)
         return SetRow(label: label, groups: groups, suffix: suffix,
-                      text: groupsText(groups) + suffix)
+                      text: groupsText(groups) + suffix,
+                      spoken: label + " " + groupsSpoken(groups) + suffix)
     }
 
     /// The side counts LIFT already shows in its own header: "L 3/3 · R 2/3",
@@ -1024,6 +1087,20 @@ enum PlanAndLog {
         return text
     }
 
+    /// `sideLine`, said, from the same two counts -- never by picking the
+    /// drawn line apart. "L 3/3 · R 2/3" read literally is a letter, a slash
+    /// and the name of a character, on the one line of the card that says what
+    /// one side of a person's body did.
+    private static func spokenSideLine(asked: Exercise, logged: Exercise?) -> String? {
+        let targets = PrescribedTargets(sides: asked.sets.map(\.side), eachSide: asked.eachSide)
+        let counts = PrescribedTargets(sides: (logged?.sets ?? []).map(\.side), eachSide: false)
+        guard targets.left != 0 || targets.right != 0 || counts.left != 0 || counts.right != 0
+        else { return nil }
+        var text = "left \(counts.left) of \(targets.left), right \(counts.right) of \(targets.right)"
+        if counts.both > 0 { text += ", \(counts.both) both" }
+        return text
+    }
+
     // MARK: - How a set reads
 
     /// Sets as one group per side, or a single unlabelled group when nothing
@@ -1035,7 +1112,9 @@ enum PlanAndLog {
             return sets.isEmpty ? []
                 : [SetGroup(label: "",
                             text: sets.map { setText($0, unit: unit, locale: locale) }
-                                .joined(separator: " · "))]
+                                .joined(separator: " · "),
+                            spoken: sets.map { spokenSetText($0, unit: unit, locale: locale) }
+                                .joined(separator: ", "))]
         }
         var groups: [SetGroup] = []
         for side in [SetSide.left, SetSide.right, nil] {
@@ -1043,13 +1122,23 @@ enum PlanAndLog {
             guard !mine.isEmpty else { continue }
             groups.append(SetGroup(
                 label: side?.shortLabel ?? "Both",
-                text: mine.map { setText($0, unit: unit, locale: locale) }.joined(separator: " · ")))
+                text: mine.map { setText($0, unit: unit, locale: locale) }.joined(separator: " · "),
+                spoken: mine.map { spokenSetText($0, unit: unit, locale: locale) }
+                    .joined(separator: ", ")))
         }
         return groups
     }
 
     static func groupsText(_ groups: [SetGroup]) -> String {
         groups.map { ($0.label.isEmpty ? "" : $0.label + " ") + $0.text }.joined(separator: "   ")
+    }
+
+    /// The groups said, one limb after the other. A semicolon between them,
+    /// because the sets inside a group are already separated by commas and
+    /// "right" has to land as a new column.
+    static func groupsSpoken(_ groups: [SetGroup]) -> String {
+        groups.map { ($0.label.isEmpty ? "" : sideWord($0.label) + " ") + $0.spoken }
+            .joined(separator: "; ")
     }
 
     /// One set, asked or logged, in the same shape.
@@ -1081,6 +1170,31 @@ enum PlanAndLog {
         }
         if let rpe = set.rpe { bits.append("@\(number(rpe))") }
         return bits.isEmpty ? "as written" : bits.joined(separator: " · ")
+    }
+
+    /// The same set, said. `×` is the only difference that matters: read
+    /// literally it is the name of a character, and "225 by 5" is what a
+    /// trainer says out loud anyway.
+    static func spokenSetText(_ set: SetValues, unit: String, locale: Locale = .current) -> String {
+        var bits: [String] = []
+        if let weight = set.weightLb, let reps = set.reps {
+            bits.append("\(weightText(weight, unit: unit, locale: locale)) by \(number(reps))")
+        } else if let reps = set.reps {
+            bits.append("\(number(reps)) reps")
+        } else if let weight = set.weightLb {
+            bits.append("\(weightText(weight, unit: unit, locale: locale)) \(unit)")
+        }
+        if let distance = set.distanceM {
+            bits.append("\(rounded(distance, locale: locale)) m")
+        }
+        if let seconds = set.durationSec {
+            let minutes = Int((seconds / 60).rounded(.down))
+            bits.append(minutes > 0
+                ? String(format: "%d:%02d", minutes, Int(seconds) % 60)
+                : "\(number(seconds))s")
+        }
+        if let rpe = set.rpe { bits.append("@\(number(rpe))") }
+        return bits.isEmpty ? "as written" : bits.joined(separator: ", ")
     }
 
     /// A stored pound weight in the client's own unit, rounded to a whole
@@ -1118,6 +1232,68 @@ enum PlanAndLog {
 
     private static func equipmentWord(_ equipment: String) -> String {
         equipment.isEmpty ? "no equipment" : equipment
+    }
+
+    // MARK: - How a line reads aloud
+    //
+    // Every line on this card is written with ` · ` between its clauses, which
+    // is a comma that takes no vertical space. Aloud it is not a comma:
+    // VoiceOver either names the character or passes over it, and either way
+    // "Mon 21 Sep · Lower A · logged" arrives as three unrelated fragments.
+    // So every line that reaches a screen also carries a spoken form, composed
+    // here from the same parts the written one is composed from -- never by a
+    // regex over the finished string, which would have to guess whether the
+    // `x` in a name the client typed is a multiplication sign.
+    //
+    // ` · ` becomes a comma, `×` becomes "by", `L`/`R` become "left"/"right",
+    // `3/3` becomes "3 of 3", and an abbreviated date becomes the words a
+    // person says. **Nothing else.** No word is added that the card does not
+    // draw, and `not logged` is as flat aloud as it is on screen.
+    //
+    // Here rather than in `BookedCardView`, for the reason everything else on
+    // this card is here: a sentence a coach reads is a rule, and a rule in a
+    // view's `@State` cannot be tested.
+
+    /// ` · ` is the only thing this may touch -- for the lines this type no
+    /// longer has the parts of by the time a view asks.
+    static func plainly(_ text: String?) -> String {
+        (text ?? "").replacingOccurrences(of: " · ", with: ", ")
+    }
+
+    private static func said(_ parts: [String?]) -> String {
+        parts.compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
+    }
+
+    /// "Monday 21 September" -- `dayLabel` in the words a person says. The
+    /// locale is the reader's, as everywhere else here.
+    static func spokenDayLabel(_ key: String, locale: Locale = .current) -> String {
+        guard let weekday = text(key, locale: locale, style: .fullWeekday),
+              let month = text(key, locale: locale, style: .fullMonth),
+              let day = dayNumber(key) else { return key }
+        return "\(weekday) \(day) \(month)"
+    }
+
+    /// "21 to 23 September", "28 September to 4 October", "12 October" for one
+    /// day. The en dash in `rangeText` is a range sighted and a dash aloud.
+    static func spokenRange(from: String, to: String, locale: Locale = .current) -> String {
+        guard let left = parts(from), let right = parts(to),
+              let leftMonth = text(from, locale: locale, style: .fullMonth),
+              let rightMonth = text(to, locale: locale, style: .fullMonth)
+        else { return rangeText(from: from, to: to, locale: locale) }
+        if from == to { return "\(left.day) \(leftMonth)" }
+        if left.year == right.year, left.month == right.month {
+            return "\(left.day) to \(right.day) \(rightMonth)"
+        }
+        return "\(left.day) \(leftMonth) to \(right.day) \(rightMonth)"
+    }
+
+    /// "L" and "R" are a column heading, not a word.
+    private static func sideWord(_ label: String) -> String {
+        switch label {
+        case "L": return "left"
+        case "R": return "right"
+        default: return label.lowercased()
+        }
     }
 
     private static func plural(_ count: Int, _ one: String, _ many: String) -> String {
@@ -1198,6 +1374,13 @@ enum PlanAndLog {
         return "\(weekday) \(dayMonth(key, locale: locale))"
     }
 
+    /// "13 October" -- `dayMonth` in the words a person says.
+    static func spokenDayMonth(_ key: String, locale: Locale = .current) -> String {
+        guard let month = text(key, locale: locale, style: .fullMonth),
+              let day = dayNumber(key) else { return key }
+        return "\(day) \(month)"
+    }
+
     /// "13 Oct" -- for the by-lift view, where rows cross weeks. Written
     /// day-then-month by hand rather than through a locale's own ordering,
     /// because "12–18 Oct" has to read as a range and a US ordering would put
@@ -1219,7 +1402,7 @@ enum PlanAndLog {
         return "\(dayMonth(from, locale: locale))–\(dayMonth(to, locale: locale))"
     }
 
-    private enum DateStyle { case weekday, month }
+    private enum DateStyle { case weekday, month, fullWeekday, fullMonth }
 
     /// Formatted in the reader's own locale, because that is what Coach web's
     /// `toLocaleDateString(undefined, ...)` does. Noon UTC with the style's
@@ -1232,7 +1415,12 @@ enum PlanAndLog {
         guard let date = calendar.date(from: DateComponents(
             year: parts.year, month: parts.month, day: parts.day, hour: 12)) else { return nil }
         var format = Date.FormatStyle(date: .omitted, time: .omitted)
-        format = style == .weekday ? format.weekday(.abbreviated) : format.month(.abbreviated)
+        switch style {
+        case .weekday: format = format.weekday(.abbreviated)
+        case .month: format = format.month(.abbreviated)
+        case .fullWeekday: format = format.weekday(.wide)
+        case .fullMonth: format = format.month(.wide)
+        }
         format = format.locale(locale)
         format.timeZone = calendar.timeZone
         return date.formatted(format)
@@ -1295,6 +1483,52 @@ enum PlanAndLog {
                     out.append(contentsOf: exerciseLines(entry.exercise,
                                                          sayTitle: entry.exercise.state != .logged))
                 }
+            }
+        }
+        if !out.isEmpty, let mealFooter = result.mealFooter { out.append(mealFooter) }
+        if !out.isEmpty { out.append(result.footer) }
+        return out
+    }
+
+    /// Every sentence a screen reader can be handed, in the order it is read
+    /// -- `lines`, said.
+    ///
+    /// Its own list rather than a widening of `lines`, which is checked
+    /// against `plan-log-expected.json`, the fixture all three Coach builds
+    /// share. This exists so the line-discipline tests -- nothing here tells a
+    /// coach what to do, nothing here aggregates a client into a score -- run
+    /// over what is announced as well as over what is drawn. An accessibility
+    /// label is a sentence a coach reads, and it is held to the same rule.
+    static func spokenLines(_ result: Result) -> [String] {
+        var out: [String] = []
+        for group in result.groups {
+            out.append(contentsOf: group.sends.map(\.spokenHead))
+            for day in group.days {
+                out.append(day.spoken)
+                out.append(contentsOf: day.exercises.map(\.spoken))
+                if !day.alsoLogged.isEmpty {
+                    out.append("Also logged")
+                    out.append(contentsOf: day.alsoLogged.map(\.spoken))
+                }
+                if !day.meals.isEmpty {
+                    out.append("Meals")
+                    if let context = day.spokenFoodContext { out.append(context) }
+                    for meal in day.meals {
+                        out.append(meal.spokenTitle)
+                        if let logged = meal.spokenLogged { out.append(logged) }
+                    }
+                }
+            }
+        }
+        if !result.byLift.isEmpty {
+            out.append("By lift")
+            for lift in result.byLift {
+                out.append(lift.spokenTitle)
+                for entry in lift.entries {
+                    out.append(entry.spokenWhen)
+                    out.append(entry.exercise.spoken)
+                }
+
             }
         }
         if !out.isEmpty, let mealFooter = result.mealFooter { out.append(mealFooter) }
