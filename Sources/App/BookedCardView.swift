@@ -74,6 +74,7 @@ struct BookedSection: View {
                                     .foregroundStyle(Theme.accent)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .fixedSize(horizontal: false, vertical: true)
+                                    .accessibilityLabel(send.spokenHead)
                             }
                         }
                         VStack(alignment: .leading, spacing: 8) {
@@ -87,7 +88,17 @@ struct BookedSection: View {
             } else {
                 AdaptiveGrid(result.byLift, id: \.key,
                              columns: min(fits, max(1, result.byLift.count))) { lift in
-                    LiftCard(title: lift.title) {
+                    // The title is drawn here rather than handed to
+                    // `LiftCard(title:)`, which builds its own `Text` in a
+                    // package pinned to a tag: the same font, the same colour
+                    // and the same place in the same `VStack`, with a label
+                    // that reads " · each side" as the clause it is.
+                    LiftCard {
+                        Text(lift.title)
+                            .font(Theme.cardTitle)
+                            .foregroundStyle(Theme.accent)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .accessibilityLabel(lift.spokenTitle)
                         VStack(alignment: .leading, spacing: 12) {
                             ForEach(lift.entries, id: \.key) { entry in
                                 VStack(alignment: .leading, spacing: 4) {
@@ -101,6 +112,10 @@ struct BookedSection: View {
                                     }
                                     exercise(entry.exercise, sayTitle: false)
                                 }
+                                // One date and one lift, read as one thing.
+                                .accessibilityElement(children: .ignore)
+                                .accessibilityLabel(
+                                    entry.spokenWhen + ". " + entry.exercise.spoken)
                             }
                         }
                         .fillsGridCell()
@@ -132,6 +147,7 @@ struct BookedSection: View {
             Text(day.text)
                 .foregroundStyle(Theme.textPrimary)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityLabel(day.spoken)
         } else {
             DisclosureGroup {
                 VStack(alignment: .leading, spacing: 12) {
@@ -141,14 +157,21 @@ struct BookedSection: View {
                             Text("Also logged")
                                 .font(.system(size: 15, weight: .semibold))
                                 .foregroundStyle(Theme.textPrimary)
-                            ForEach(day.alsoLogged, id: \.key) { line($0.text) }
+                            ForEach(day.alsoLogged, id: \.key) { row in
+                                line(row.text).accessibilityLabel(row.spoken)
+                            }
                         }
                     }
                     meals(day)
                 }
                 .padding(.top, 4)
             } label: {
-                Text(day.text).foregroundStyle(Theme.textPrimary)
+                // One name for the row, not four fragments. `DisclosureGroup`
+                // carries open and closed by itself, which is why this card
+                // needs nothing added for that.
+                Text(day.text)
+                    .foregroundStyle(Theme.textPrimary)
+                    .accessibilityLabel(day.spoken)
             }
             .tint(Theme.accent)
         }
@@ -169,17 +192,27 @@ struct BookedSection: View {
                 Text("Meals")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Theme.textPrimary)
-                if let context = day.foodContext { line(context, muted: true) }
+                if let context = day.foodContext {
+                    line(context, muted: true)
+                        .accessibilityLabel(day.spokenFoodContext ?? context)
+                }
                 // By position: a coach may book the same dish at the same slot
                 // twice, and two rows that read alike are still two bookings.
                 ForEach(Array(day.meals.enumerated()), id: \.offset) { _, meal in
+                    // The booked row and the logged row stay two elements, as
+                    // they are two statements: one label joining them would
+                    // claim the join this card exists to refuse.
                     VStack(alignment: .leading, spacing: 1) {
                         Text(meal.title)
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(Theme.textPrimary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .fixedSize(horizontal: false, vertical: true)
-                        if let logged = meal.logged { line(logged, muted: true) }
+                            .accessibilityLabel(meal.spokenTitle)
+                        if let logged = meal.logged {
+                            line(logged, muted: true)
+                                .accessibilityLabel(meal.spokenLogged ?? logged)
+                        }
                     }
                     .padding(.top, 6)
                 }
@@ -187,6 +220,15 @@ struct BookedSection: View {
         }
     }
 
+    /// One lift, drawn as it always was and **said as one sentence**.
+    ///
+    /// Every `Text` in a `VStack` is its own accessibility element, so the
+    /// seven lines of a lift arrive as seven stops with the word that named
+    /// the numbers two swipes behind them. `accessibilityElement(children:
+    /// .ignore)` with the rule's own sentence makes the block one element, so
+    /// a reader hears what was asked and what came back in one breath, under
+    /// the name of the lift they are about. The label is `PlanAndLog`'s; this
+    /// only decides that the block is one thing.
     @ViewBuilder
     private func exercise(_ row: PlanAndLog.ExerciseRow, sayTitle: Bool) -> some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -203,6 +245,10 @@ struct BookedSection: View {
             // says what the two rows above it are.
             if let substitution = row.substitution { line(substitution, muted: true) }
         }
+        .accessibilityElement(children: .ignore)
+        // In the by-lift view the date above already names the lift, and the
+        // caller labels the pair of them; here the block says its own name.
+        .accessibilityLabel(sayTitle ? row.spoken : row.spokenDetail)
     }
 
     /// An Asked or a Logged row: its label, its groups, and the clause that
