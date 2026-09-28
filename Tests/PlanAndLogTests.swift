@@ -1277,4 +1277,107 @@ final class PlanAndLogTests: XCTestCase {
         walk(meals, "meals")
     }
 
+
+    // MARK: - How it reads aloud
+    //
+    // The card is built out of short muted lines with `·` between their
+    // clauses, which is a comma sighted and a fragment aloud, and every `Text`
+    // in a `VStack` is its own accessibility element. `spokenLines` is the same
+    // card said; these pin the rules rather than the strings.
+
+    func testADayRowIsOneSentenceNotFourFragments() throws {
+        let (result, _) = try fixtureResult()
+        let spoken = PlanAndLog.spokenLines(result)
+        XCTAssertFalse(spoken.contains { $0.contains(" · ") }, "\(spoken)")
+        XCTAssertTrue(spoken.contains("Monday 12 October, Lower A, logged"),
+                      "no spoken day row: \(spoken.prefix(6))")
+    }
+
+    func testTheDateADayRowSaysIsTheDateItDrawsInWords() {
+        XCTAssertEqual(PlanAndLog.dayLabel("2026-09-21", locale: enUS), "Mon 21 Sep")
+        XCTAssertEqual(PlanAndLog.spokenDayLabel("2026-09-21", locale: enUS),
+                       "Monday 21 September")
+    }
+
+    func testARangeIsARangeAloudNotAnEnDash() {
+        XCTAssertEqual(PlanAndLog.rangeText(from: "2026-10-12", to: "2026-10-17", locale: enUS),
+                       "12–17 Oct")
+        XCTAssertEqual(PlanAndLog.spokenRange(from: "2026-10-12", to: "2026-10-17", locale: enUS),
+                       "12 to 17 October")
+        XCTAssertEqual(PlanAndLog.spokenRange(from: "2026-09-28", to: "2026-10-04", locale: enUS),
+                       "28 September to 4 October")
+        XCTAssertEqual(PlanAndLog.spokenRange(from: "2026-10-12", to: "2026-10-12", locale: enUS),
+                       "12 October")
+    }
+
+    func testTheAskedRowAndTheLoggedRowAreOneComparisonUnderTheLift() throws {
+        let result = run([("2026-10-12", 0)],
+                         [("Lower A", [ex("Back Squat", "Barbell", [[225, 5], [225, 5], [245, 3]])])],
+                         ["2026-10-12": day([logged("Back Squat", "Barbell",
+                                                    [set(225, 5), set(225, 5)])], name: "Lower A")])
+        let lift = try XCTUnwrap(try first(result).exercises.first)
+        // One string: a reader hears what was asked and what came back in one
+        // breath rather than two lists of numbers two swipes apart.
+        XCTAssertEqual(lift.spoken,
+                       "Back Squat (Barbell). Asked 3 sets, logged 2. "
+                       + "Asked 225 by 5, 225 by 5, 245 by 3. Logged 225 by 5, 225 by 5")
+        // And `×` never reaches it: read literally it is the name of a character.
+        XCTAssertFalse(lift.spoken.contains("×"))
+        // The by-lift view names the lift above the block, so the block does
+        // not name it twice.
+        XCTAssertFalse(lift.spokenDetail.contains("Back Squat"))
+    }
+
+    func testTheSideLineIsSaidInWords() throws {
+        let result = run([("2026-10-12", 0)],
+                         [("Lower A", [ex("Split Squat", "Dumbbell",
+                                          [[40, 8], [40, 8], [40, 8]], eachSide: true)])],
+                         ["2026-10-12": day([logged("Split Squat", "Dumbbell", [
+                            set(40, 8, side: .left), set(40, 8, side: .left),
+                            set(40, 8, side: .left), set(40, 8, side: .right),
+                            set(40, 8, side: .right)])], name: "Lower A")])
+        let lift = try XCTUnwrap(try first(result).exercises.first)
+        XCTAssertEqual(lift.sideLine, "L 3/3 · R 2/3", "the drawn line is unchanged")
+        XCTAssertEqual(lift.spokenSideLine, "left 3 of 3, right 2 of 3")
+        XCTAssertEqual(lift.logged?.spoken,
+                       "Logged left 40 by 8, 40 by 8, 40 by 8; right 40 by 8, 40 by 8")
+        // "each side" is a clause on the ask and is said, or the plan asks for
+        // half of what it asks for.
+        XCTAssertTrue(lift.asked?.spoken.hasSuffix(" each side") == true,
+                      lift.asked?.spoken ?? "nil")
+    }
+
+    func testASetRowSaysItsLabelAndItsNumbersInOneBreath() throws {
+        let result = run([("2026-10-12", 0)],
+                         [("Lower A", [ex("Back Squat", "Barbell", [[225, 5]])])],
+                         ["2026-10-12": day([logged("Back Squat", "Barbell", [set(225, 5)])],
+                                            name: "Lower A")])
+        let lift = try XCTUnwrap(try first(result).exercises.first)
+        let asked = try XCTUnwrap(lift.asked)
+        XCTAssertEqual(asked.label + " " + asked.text, "Asked 225 × 5")
+        XCTAssertEqual(asked.spoken, "Asked 225 by 5")
+    }
+
+    func testNothingAScreenReaderIsHandedChangesWhatTheCardDraws() throws {
+        let (result, expected) = try fixtureResult()
+        // The spoken layer is labels. The lines the fixture pins are untouched
+        // by it, which is the whole contract with Coach web and Coach Android.
+        XCTAssertEqual(PlanAndLog.lines(result), expected.lines)
+    }
+
+    func testNothingAScreenReaderIsHandedTellsACoachWhatToDo() throws {
+        // The same discipline as the drawn lines, over the announced ones: an
+        // accessibility label is a sentence a coach reads, and "not logged"
+        // must be as flat aloud as it is on screen.
+        let (result, _) = try fixtureResult()
+        let every = (PlanAndLog.spokenLines(result)
+                     + PlanAndLog.spokenLines(mealFixture())
+                     + PlanAndLog.spokenLines(mergedFixture()))
+            .joined(separator: " · ").lowercased()
+        XCTAssertGreaterThan(every.count, 200, "the fixture should exercise the whole card")
+        for word in forbidden {
+            XCTAssertFalse(every.contains(word), "\"\(word)\" reached a screen reader")
+        }
+    }
+
 }
