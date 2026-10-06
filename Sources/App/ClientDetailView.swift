@@ -409,7 +409,7 @@ struct ClientDetailView: View {
 
     /// Shown only when there is something in it, as on the web.
     ///
-    /// `wide` puts the route and the bests side by side, with a taller map.
+    /// `wide` puts the route and the bests side by side, with a taller route.
     @ViewBuilder
     private func outdoorSection(wide: Bool) -> some View {
         let route = client.lastRoute
@@ -424,7 +424,7 @@ struct ClientDetailView: View {
                 .padding(.top, 4)
 
             if wide, let route, let points, let bests {
-                // The map beside the numbers, and the recent list under the
+                // The route beside the numbers, and the recent list under the
                 // bests rather than one long line stretched across the page.
                 Grid(alignment: .topLeading, horizontalSpacing: AdaptiveLayout.gutter) {
                     GridRow {
