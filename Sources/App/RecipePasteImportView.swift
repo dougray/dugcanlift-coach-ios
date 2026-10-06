@@ -116,7 +116,7 @@ struct RecipePasteImportView: View {
                 Text(CookFormat.servingsLabel(servings)).foregroundStyle(Theme.textPrimary)
             }
             if !yieldWasStated {
-                // The same rule the link import and TheMealDB both follow: a
+                // The same rule the Safari import follows: a
                 // guessed yield silently divides every macro by a number
                 // nobody chose.
                 Text("The text didn't say how many this serves. Set it before saving.")
