@@ -193,7 +193,8 @@ folding iPhone gets the wide one as soon as it is wide enough.
   navigation bar makes that room itself; a custom header does not.
 - **Keyboard**: `CoachCommands` -- ⌘1-4 for the sections, ⌘N for New Recipe /
   New Workout where that screen is showing, ⇧⌘V for Paste a Link (not ⌘V, which
-  belongs to text fields). Screens publish what the commands act on as focused
+  belongs to text fields; it does nothing while a Safari recipe is under
+  review). Screens publish what the commands act on as focused
   scene values.
 - Sheets use the system's iPad form-sheet presentation; nothing sizes them.
 
