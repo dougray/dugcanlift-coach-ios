@@ -204,7 +204,7 @@ cover one.
 
 `Resources/PrivacyInfo.xcprivacy` declares no tracking and no collected data,
 which stays true only while nothing reaches the developer — see "Coach makes
-exactly two network calls". Adding any request, SDK or required-reason API
+exactly one network call". Adding any request, SDK or required-reason API
 (`UserDefaults` is CA92.1; file timestamps C617.1, for SQLite) means revisiting
 it. `ITSAppUsesNonExemptEncryption` is `false` in `project.yml`: HTTPS only.
 Listing text is in `fastlane/metadata/en-US`, screenshots in
@@ -434,28 +434,24 @@ Cook has a fourth section, **Road** -- see "Road picks" below. It reads
 bundled data and sends nothing of its own, so the network count below is
 unchanged.
 
-**Coach makes exactly two network calls, both in Cook's imports.** Neither
-talks to a server DUGCANLIFT operates, and both have explicit offline and
-failure states.
+**Coach makes exactly one network call, in Cook's imports.** It talks to no
+server DUGCANLIFT operates, and it has explicit offline and failure states.
 
-1. **TheMealDB** (`MealDBClient`), searched by dish name. An imported dish
-   carries no nutrition of its own — servings stays at 1, because TheMealDB
-   does not say how many a dish feeds and guessing four would divide every
-   macro by a number nobody chose.
-2. **A recipe page the coach pastes** (`RecipeLinkImportView`), read as
+1. **A recipe page the coach pastes** (`RecipeLinkImportView`), read as
    schema.org JSON-LD by `LiftCore.RecipeJSONLD`. Servings come from the
    page's own yield when it states one and from a stepper when it does not,
-   for the same reason TheMealDB's stays at 1.
+   because guessing how many a dish feeds would divide every macro by a
+   number nobody chose.
 
-Both send a `User-Agent` naming the app rather than impersonating a browser.
+It sends a `User-Agent` naming the app rather than impersonating a browser.
 Several large recipe sites answer 403 regardless — measured, and they refuse a
 browser string identically, so the block is not about the agent — and an
 honest refusal the coach can read beats a disguise.
 
-Cook has **four** import sources; the other two need no connection. The
+Cook has **three** import sources; the other two need no connection. The
 catalogue (`RecipeCatalogView`) reads bundled data, and a pasted caption
 (`RecipePasteImportView`) reads text the coach supplies. The network count is
-the one to keep at two.
+the one to keep at one.
 
 **A pasted caption is edited, not reviewed.** `RecipeLinkImportView` can review
 because JSON-LD is labelled — the publisher already said which strings are
