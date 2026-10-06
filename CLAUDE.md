@@ -60,11 +60,11 @@ text:
    (`CFBundleURLTypes` in project.yml, `RootView.onOpenURL`). It needs no
    entitlement.
 3. **The share extension** (`CoachShare`, `Sources/ShareExtension/`). "Coach"
-   appears in the share sheet for a URL or text; it decodes the link to show
-   "Add Jordan Reyes's log · 56 days" (or says it isn't a LIFT link), and on
-   Add queues the *fragment* in the App Group `group.com.dugcanlift.coach`
-   (`PendingShareLinks`). `RootView` drains the queue whenever the scene
-   becomes active and imports each one.
+   appears in the share sheet for a URL or text, or a web page in Safari; it
+   decodes the link to show "Add Jordan Reyes's log · 56 days" (or says it
+   isn't a LIFT link), and on Add queues the *fragment* in the App Group
+   `group.com.dugcanlift.coach` (`PendingShareLinks`). `RootView` drains the
+   queue whenever the scene becomes active and imports each one.
 
 The extension **does not open the app and does not write SwiftData.** iOS
 gives a share extension no supported way to open its containing app
@@ -443,7 +443,9 @@ requests anything from any server — the in-house rule (LIFT superproject,
 `2026-10-06-in-house-runtime-design.md`), enforced by `NoNetworkTests`, which
 fails the build on `URLSession`, `URLRequest`, `NWConnection`, `import Network`,
 `import MapKit`, `import WebKit` or `AsyncImage(` in any Swift file under
-`Sources/`, the share extension's included.
+`Sources/`, the share extension's included, and on `fetch(`, `XMLHttpRequest`,
+`WebSocket`, `sendBeacon` or `import(` in any JavaScript file there
+(`RecipePage.js`).
 
 Cook has **three** import sources: the bundled catalogue
 (`RecipeCatalogView`), a pasted caption (`RecipePasteImportView`), and a recipe
@@ -453,6 +455,27 @@ page and hands over its schema.org JSON-LD; the extension queues the raw block
 and opens `RecipeLinkImportView` to review it. Coach never fetches the page.
 Servings come from the page's own yield when it states one and from a stepper
 when it does not — never guessed.
+
+**A shared recipe opens through `RecipeReviewQueue`, one at a time.** A recipe
+drained from the App Group is gone from disk, and SwiftUI shows one
+presentation at a time on a view and silently drops a second: presenting a
+review behind another sheet or alert could strand it, with nothing left to
+retry from. So the queue holds the rules, as a value type with no view in it
+for the reason `MacroFields` is one. One review at a time. A review waits for
+the link report's alert and the ⇧⌘V Paste a Link sheet, and ⇧⌘V does nothing
+while a review is open. A review whose sheet never appeared (`markAppeared`
+never came) was dropped, and is retried on the next activation as a new item,
+so the sheet sees something new to present. A link report arriving mid-review
+is held, and every held report is shown in order, before the next recipe. The
+same recipe queued twice is one review. The sheet closes only by Cancel or
+Save — no swipe. `RecipeReviewQueueTests` pins all of it. Do not simplify back
+to binding the sheet to the first waiting item: that is the version that loses
+a recipe whenever anything else is on screen.
+
+**The loss window is accepted, and it is this one.** The App Group queue is
+emptied when it is drained, not when a review is saved, so Cancel, or the app
+being killed mid-review, means sharing the page from Safari again — the step
+the coach took the first time. Accepted, not an oversight to work around.
 
 **A pasted caption is edited, not reviewed.** `RecipeLinkImportView` can review
 because JSON-LD is labelled — the publisher already said which strings are
