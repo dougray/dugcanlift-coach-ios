@@ -23,7 +23,9 @@ struct SharedRecipePage: Equatable {
               let address = dictionary["url"] as? String,
               let url = URL(string: address)
         else { return nil }
-        self.init(url: url, blocks: (dictionary["jsonld"] as? [String]) ?? [])
+        // Tolerant: one non-string entry must not drop every good block.
+        let blocks = ((dictionary["jsonld"] as? [Any]) ?? []).compactMap { $0 as? String }
+        self.init(url: url, blocks: blocks)
     }
 
     /// The first block that holds a schema.org Recipe, and the recipe read

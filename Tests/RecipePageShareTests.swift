@@ -19,6 +19,20 @@ final class RecipePageShareTests: XCTestCase {
         XCTAssertNil(SharedRecipePage(preprocessingResults: ["jsonld": [Self.bare]]), "no address")
         XCTAssertNil(SharedRecipePage(preprocessingResults: "not a dictionary"))
         XCTAssertEqual(SharedRecipePage(preprocessingResults: ["url": "https://example.org/a"])?.blocks, [])
+        XCTAssertEqual(SharedRecipePage(preprocessingResults: ["url": "https://example.org/a", "jsonld": [Self.bare, 42]])?.blocks,
+                       [Self.bare], "one non-string entry must not drop the good blocks")
+    }
+
+    /// Blank stays blank: a page that states no yield is an unknown number of
+    /// servings, never 1 and never 4.
+    func testAnUnstatedYieldIsUnknown() {
+        let toast = #"{"@type":"Recipe","name":"Plain Toast","recipeIngredient":["2 slices bread"]}"#
+        let page = SharedRecipePage(url: recipePage, blocks: [toast])
+        let decision = RecipeShareDecision.decide(candidates: [recipePage.absoluteString], page: page, isLink: noLinks)
+        guard case let .recipe(name, servings, item) = decision else { return XCTFail("expected a recipe, got \(decision)") }
+        XCTAssertEqual(name, "Plain Toast")
+        XCTAssertNil(servings)
+        XCTAssertEqual(item, .init(block: toast, pageURL: recipePage.absoluteString))
     }
 
     func testFindsTheRecipeInEveryShape() {
