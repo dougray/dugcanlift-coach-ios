@@ -9,11 +9,10 @@
 	<array/>
 	<!-- Empty because nothing reaches the developer. Coach has no backend: a
 	     client's log arrives as a pasted link and stays in SwiftData on this
-	     device. Its only two network requests are both started by the coach
-	     and go straight to a third party, never to DUGCANLIFT: a TheMealDB
-	     search for a dish name (MealDBClient), and a fetch of a recipe page
-	     whose address the coach pasted (RecipeLinkImportView). Neither sends
-	     anything about the coach or a client, and nothing is retained by the
+	     device. Its only network request is started by the coach and goes
+	     straight to a third party, never to DUGCANLIFT: a fetch of a recipe
+	     page whose address the coach pasted (RecipeLinkImportView). It sends
+	     nothing about the coach or a client, and nothing is retained by the
 	     developer. MapKit's tile requests for a client's route card are the
 	     system framework's, not Coach's. -->
 	<key>NSPrivacyCollectedDataTypes</key>
