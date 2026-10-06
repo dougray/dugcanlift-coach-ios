@@ -2,84 +2,71 @@ import SwiftUI
 import SwiftData
 import LiftCore
 
-/// Import a recipe from a link, then cost whatever the page did not price.
+/// Review a recipe Safari handed over, then cost whatever the page did not
+/// price. The page was never fetched by Coach: Safari's `RecipePage.js` passed
+/// its JSON-LD to the share extension, which queued the raw block
+/// (`PendingRecipeImports`), and this re-reads it with `LiftCore`'s
+/// `RecipeJSONLD` -- the same labels a fetch used to read.
 ///
-/// This one takes an address: most recipe sites publish their ingredients and
-/// method as schema.org JSON-LD for Google's rich results, and `LiftCore`'s
-/// `RecipeJSONLD` reads those labels rather than scraping a layout.
-///
-/// Where it differs from LIFT's copy of this screen: a coach sends these to
-/// clients, so a macro figure has to say where it came from. A page that
-/// publishes its own nutrition is taken at its word and flagged as an
-/// estimate. A page that publishes none is costed here against the reference
-/// database, and the transcript says how much of the dish that costing
-/// actually covered, because macros built from three of seventeen ingredients
-/// are worse than useless if they look whole.
+/// Where it differs from LIFT's copy: a coach sends these to clients, so a
+/// macro figure has to say where it came from. A page that publishes its own
+/// nutrition is taken at its word and flagged as an estimate; one that
+/// publishes none is costed against the reference database, and the
+/// transcript says how much of the dish that costing covered.
 struct RecipeLinkImportView: View {
+
+    let item: PendingRecipeImports.Item
 
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
 
-    @State private var address = ""
     @State private var found: ImportedRecipe?
-    @State private var sourceURL: URL?
     @State private var servings: Double = 1
     @State private var pageDidNotStateServings = false
     @State private var note = ""
     @State private var busy = false
 
+    private var sourceURL: URL? { URL(string: item.pageURL) }
+
     var body: some View {
         NavigationStack {
             Form {
-                if let found, let sourceURL {
+                if let found {
                     review(found, sourceURL)
                 } else {
-                    entry
+                    Section {
+                        Text("This recipe couldn't be read. Share the page from Safari again, or use Paste the text.")
+                            .foregroundStyle(Theme.textSecondary)
+                    }
                 }
             }
-            .navigationTitle("Import from a link")
+            .navigationTitle("Import from Safari")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    if let found, let sourceURL {
+                    if let found {
                         Button("Save") { Task { await take(found, sourceURL) } }
                             .disabled(busy)
                     }
                 }
             }
+            .onAppear(perform: load)
         }
     }
 
-    // MARK: - Entry
-
-    private var entry: some View {
-        Section {
-            HStack {
-                TextField("Recipe address", text: $address)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .keyboardType(.URL)
-                    .onSubmit { Task { await fetch() } }
-                Button("Fetch") { Task { await fetch() } }
-                    .tint(Theme.accent)
-                    .disabled(busy || normalisedURL == nil)
-            }
-            if !note.isEmpty {
-                Text(note).font(.caption).foregroundStyle(Theme.textSecondary)
-            }
-        } footer: {
-            Text("Uses the internet. Nothing is saved until you have "
-                 + "read what the page published — check the macros before you send it to anyone.")
-                .font(.caption)
-        }
+    private func load() {
+        guard found == nil, let imported = RecipeJSONLD.recipe(fromJSON: item.block) else { return }
+        servings = imported.servings ?? 1
+        pageDidNotStateServings = imported.servings == nil
+        found = imported
     }
 
     // MARK: - Review
 
     @ViewBuilder
-    private func review(_ imported: ImportedRecipe, _ url: URL) -> some View {
+    private func review(_ imported: ImportedRecipe, _ url: URL?) -> some View {
         Section("Recipe") {
             Text(imported.name).foregroundStyle(Theme.textPrimary)
             if let author = imported.author {
@@ -135,56 +122,18 @@ struct RecipeLinkImportView: View {
         }
 
         Section("Source") {
-            Text(url.absoluteString).font(.caption).foregroundStyle(Theme.textSecondary)
+            if let url {
+                // Safari can hand over any scheme; only a web address is
+                // offered as a link, and anything else is shown as text.
+                if ["http", "https"].contains(url.scheme?.lowercased()) {
+                    Link(url.absoluteString, destination: url).font(.caption)
+                } else {
+                    Text(url.absoluteString).font(.caption).foregroundStyle(Theme.textSecondary)
+                }
+            }
             if !note.isEmpty {
                 Text(note).font(.caption).foregroundStyle(Theme.textSecondary)
             }
-        }
-    }
-
-    // MARK: - Fetch
-
-    private var normalisedURL: URL? {
-        let trimmed = address.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        let candidate = trimmed.contains("://") ? trimmed : "https://\(trimmed)"
-        guard let url = URL(string: candidate), let host = url.host(), host.contains(".") else { return nil }
-        return url
-    }
-
-    private func fetch() async {
-        guard let url = normalisedURL else { return }
-        busy = true
-        defer { busy = false }
-        note = "Reading the page…"
-
-        do {
-            var request = URLRequest(url: url)
-            // Names Coach rather than impersonating a browser. A site that
-            // refuses it produces an honest error.
-            request.setValue("Coach (recipe import)", forHTTPHeaderField: "User-Agent")
-            request.timeoutInterval = 20
-
-            let (data, response) = try await URLSession.shared.data(for: request)
-            if let http = response as? HTTPURLResponse, !(200 ..< 300).contains(http.statusCode) {
-                note = "The site answered with \(http.statusCode)."
-                return
-            }
-            guard let html = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .windowsCP1252) else {
-                note = "That page wasn't readable as text."
-                return
-            }
-            guard let imported = RecipeJSONLD.recipe(fromHTML: html) else {
-                note = "That page doesn't publish a recipe in a form this can read. A recipe card usually works where a blog post often doesn't — you can still write it by hand."
-                return
-            }
-            servings = imported.servings ?? 1
-            pageDidNotStateServings = imported.servings == nil
-            sourceURL = url
-            found = imported
-            note = ""
-        } catch {
-            note = "Could not reach that page. Check your connection, or write the recipe by hand."
         }
     }
 
@@ -195,7 +144,7 @@ struct RecipeLinkImportView: View {
     ///
     /// `busy` guards the whole await because a second tap during a slow costing
     /// pass would insert the recipe twice.
-    private func take(_ imported: ImportedRecipe, _ url: URL) async {
+    private func take(_ imported: ImportedRecipe, _ url: URL?) async {
         guard !busy else { return }
         busy = true
         defer { busy = false }
