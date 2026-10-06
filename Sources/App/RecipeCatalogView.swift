@@ -5,7 +5,7 @@ import LiftReference
 
 /// Browse the bundled recipe catalogue and copy one into the library.
 ///
-/// The third import source, beside TheMealDB search and a pasted link, and the
+/// One of the import sources, beside Safari and pasted text, and the
 /// only one that needs no network at all: 622 recipes ship in `recipes.db`.
 ///
 /// Nothing is costed here. `RecipeCosting` applies the same weight-only rules
@@ -210,8 +210,8 @@ struct RecipeCatalogView: View {
     }
 
     /// Copies the entry into the library, inserting the recipe and each
-    /// ingredient before wiring the relationship -- the order
-    /// `RecipeImportView.take(_:)` uses.
+    /// ingredient before wiring the relationship, so each is already in the
+    /// store when it is attached.
     private func add(_ entry: CatalogEntry) {
         let (recipe, ingredients) = entry.makeRecipe(servings: entry.recipe.servings ?? servings)
         context.insert(recipe)

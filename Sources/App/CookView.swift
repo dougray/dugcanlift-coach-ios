@@ -13,7 +13,6 @@ struct CookView: View {
     /// phantom row; `editing` alone (an `Identifiable` item) has no room for
     /// that second fact without changing its type.
     @State private var editingIsNew = false
-    @State private var importing = false
     @State private var importingLink = false
     @State private var browsingCatalogue = false
     @State private var pasting = false
@@ -79,7 +78,6 @@ struct CookView: View {
             .focusedSceneValue(\.coachNewItem, section == .recipes
                                ? CoachNewItem(title: "New Recipe", action: newRecipe) : nil)
             .sheet(item: $editing) { RecipeEditorView(recipe: $0, isNew: editingIsNew) }
-            .sheet(isPresented: $importing) { RecipeImportView() }
             .sheet(isPresented: $importingLink) { RecipeLinkImportView() }
             .sheet(isPresented: $browsingCatalogue) { RecipeCatalogView() }
             .sheet(isPresented: $pasting) { RecipePasteImportView() }
@@ -157,9 +155,8 @@ struct CookView: View {
             .tint(Theme.accent)
     }
 
-    // A Menu rather than a row of buttons: four import
-    // sources would not fit the line at iPhone width, and
-    // "Send recipes" below is the same shape.
+    // A Menu rather than a row of buttons: the import sources would not fit
+    // the line at iPhone width, and "Send recipes" below is the same shape.
     private var importMenu: some View {
         Menu("Import") {
             // First: it needs no connection and no typing.
@@ -170,7 +167,6 @@ struct CookView: View {
             // does not -- a caption, an email, a photo retyped.
             Button("From a link") { importingLink = true }
             Button("Paste the text") { pasting = true }
-            Button("A dish by name") { importing = true }
         }
         .tint(Theme.accent)
     }
