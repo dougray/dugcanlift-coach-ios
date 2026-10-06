@@ -13,8 +13,7 @@
 	     straight to a third party, never to DUGCANLIFT: a fetch of a recipe
 	     page whose address the coach pasted (RecipeLinkImportView). It sends
 	     nothing about the coach or a client, and nothing is retained by the
-	     developer. MapKit's tile requests for a client's route card are the
-	     system framework's, not Coach's. -->
+	     developer. -->
 	<key>NSPrivacyCollectedDataTypes</key>
 	<array/>
 	<key>NSPrivacyAccessedAPITypes</key>

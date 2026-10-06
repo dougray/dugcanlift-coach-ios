@@ -823,14 +823,12 @@ miles for a client whose unit is `lb`, kilometres for `kg`; a pace only from
 `toFixed`'s rounding of the binary value (2795 m is "2.79 km"), which
 `OutdoorShareTests` pins against the web app's own output.
 
-**The map is MapKit, as LIFT iOS's Last route card draws it**: a non-interactive
-`Map(initialPosition: .automatic, interactionModes: [])` with
-`.allowsHitTesting(false)`, so scrolling the client screen scrolls it. Unlike
-the web Coach, which draws on a canvas so no tile server learns where a client
-runs, MapKit fetches Apple's map tiles for that area. That is the system
-framework's request, not one Coach makes, so the two-network-call count in Cook
-is unchanged — but it is a deliberate trade, and a reason not to add a second
-map anywhere casually.
+**The route is drawn by the app, with no map behind it** — the kit's
+`RouteCanvas`, a port of Coach web's canvas and LIFT Android's
+`RoutePolylineCanvas`, through `RouteProjection`, which is checked point for
+point against a fixture Coach web's `route.js` wrote. No tile server learns
+where a client runs, on any Coach build. This is the in-house rule (LIFT
+superproject, `2026-10-06-in-house-runtime-design.md`).
 
 `Tests/Fixtures/outdoor-share-link.txt` and `outdoor-share-expected.json` were
 written by LIFT web. Do not regenerate them from Swift.
