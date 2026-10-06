@@ -57,7 +57,7 @@ enum LinkImportMacros {
             return Outcome(
                 nutritionPerServing: published,
                 // The site's figure, not one resolved against the food
-                // database. True for the same reason TheMealDB imports are.
+                // database. True of every import that publishes no nutrition of its own.
                 isEstimated: true,
                 transcript: source.isEmpty
                     ? "Macros are the site's own figures, per serving."
