@@ -62,6 +62,9 @@ struct RootView: View {
         .focusedSceneValue(\.coachNavigation, CoachNavigation(
             select: { item in withAnimation(.easeOut(duration: 0.18)) { tab = item } },
             pasteLink: {
+                // A second sheet over a recipe under review would be dropped,
+                // and could strand the review: ⇧⌘V waits until it closes.
+                guard recipes.reviewing == nil else { return }
                 tab = .roster
                 pastingFromCommand = true
             }))
@@ -97,6 +100,9 @@ struct RootView: View {
                onDismiss: afterRecipeReview) { queued in
             RecipeLinkImportView(item: queued.item)
                 .onAppear { recipes.markAppeared() }
+                // Cancel and Save only: a swipe that ended the review would
+                // drop a recipe that is already gone from the App Group.
+                .interactiveDismissDisabled()
                 .liftAppearance()
         }
         .alert(intakeReport?.title ?? "", isPresented: Binding(
