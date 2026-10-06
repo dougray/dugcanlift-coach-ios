@@ -94,13 +94,13 @@ struct RecipePasteImportView: View {
                 Text(note).font(.caption).foregroundStyle(Theme.textSecondary)
             }
         } footer: {
-            // Says plainly where this works, because the link importer is the
-            // better tool whenever a page has a recipe card and the coach
+            // Says plainly where this works, because sharing from Safari is the
+            // better way in whenever a page has a recipe card and the coach
             // should not paste a URL in here and wonder why it read as one
             // ingredient.
             Text("For a recipe written out as text — a video caption, an email, a "
                  + "handwritten card. No connection needed. For a recipe website, "
-                 + "\"From a link\" reads the page properly.")
+                 + "share the page from Safari to Coach: it reads the page's recipe card.")
                 .font(.caption)
         }
     }
@@ -247,7 +247,7 @@ struct RecipePasteImportView: View {
         let costed = await RecipeCosting.cost(lines: ingredientLines,
                                              lookup: RecipeCosting.databaseLookup)
 
-        // The same decision the link import makes, unchanged: a pasted recipe
+        // The same decision the Safari import makes, unchanged: a pasted recipe
         // states no macros, so this is always the costing branch.
         let outcome = LinkImportMacros.resolve(imported: imported,
                                                servings: servings,
