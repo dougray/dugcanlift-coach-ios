@@ -78,7 +78,6 @@ struct CookView: View {
             .focusedSceneValue(\.coachNewItem, section == .recipes
                                ? CoachNewItem(title: "New Recipe", action: newRecipe) : nil)
             .sheet(item: $editing) { RecipeEditorView(recipe: $0, isNew: editingIsNew) }
-            .sheet(isPresented: $importingLink) { RecipeLinkImportView() }
             .sheet(isPresented: $browsingCatalogue) { RecipeCatalogView() }
             .sheet(isPresented: $pasting) { RecipePasteImportView() }
         }

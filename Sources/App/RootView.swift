@@ -46,6 +46,16 @@ struct RootView: View {
     /// `dugcanliftcoach://` URL or the share extension's queue. Paste a Link
     /// reports in its own sheet instead.
     @State private var intakeReport: IntakeReport?
+    /// Recipes Safari handed over, waiting to be reviewed one at a time.
+    @State private var safariRecipes: [QueuedRecipe] = []
+    /// The recipe whose review sheet is open. Held apart from the waiting list
+    /// so that an alert arriving while it is open cannot close it and lose it.
+    @State private var reviewing: QueuedRecipe?
+
+    struct QueuedRecipe: Identifiable {
+        let id = UUID()
+        let item: PendingRecipeImports.Item
+    }
     @Environment(\.horizontalSizeClass) private var sizeClass
     /// Paste a Link, when it is asked for from the keyboard rather than from
     /// the Roster's own button.
@@ -68,11 +78,27 @@ struct RootView: View {
             report(importing: [url.absoluteString])
         }
         // `.active` covers both a cold launch and returning from the share
-        // sheet, which is when the extension's queue has something in it.
+        // sheet, which is when the extension's queues have something in them.
+        // Links first, then recipes, the order the extension decides in.
         .onChange(of: scenePhase, initial: true) { _, phase in
-            guard phase == .active, let inbox = PendingShareLinks.shared else { return }
-            let queued = inbox.takeAll()
-            if !queued.isEmpty { report(importing: queued) }
+            guard phase == .active else { return }
+            if let inbox = PendingShareLinks.shared {
+                let queued = inbox.takeAll()
+                if !queued.isEmpty { report(importing: queued) }
+            }
+            if let recipes = PendingRecipeImports.shared {
+                safariRecipes += recipes.takeAll().map { QueuedRecipe(item: $0) }
+            }
+            presentNextRecipe()
+        }
+        // One presentation at a time on this view: a recipe waits for the link
+        // report's alert to be dismissed, then opens (see `presentNextRecipe`).
+        .onChange(of: intakeReport == nil) { _, clear in
+            if clear { presentNextRecipe() }
+        }
+        .sheet(item: $reviewing, onDismiss: presentNextRecipe) { queued in
+            RecipeLinkImportView(item: queued.item)
+                .liftAppearance()
         }
         .alert(intakeReport?.title ?? "", isPresented: Binding(
             get: { intakeReport != nil },
@@ -178,6 +204,16 @@ struct RootView: View {
         .scrollContentBackground(.hidden)
         .background(Theme.background)
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    /// Opens the next waiting recipe, unless something is already on screen.
+    /// The link report is an alert on this same view, and a second
+    /// presentation started beside it is dropped by UIKit -- so a link import
+    /// and a Safari recipe arriving on one activation both reach the coach,
+    /// the recipe after the alert's OK.
+    private func presentNextRecipe() {
+        guard reviewing == nil, intakeReport == nil, !safariRecipes.isEmpty else { return }
+        reviewing = safariRecipes.removeFirst()
     }
 
     private struct IntakeReport {
