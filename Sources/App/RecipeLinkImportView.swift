@@ -21,10 +21,21 @@ struct RecipeLinkImportView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var found: ImportedRecipe?
-    @State private var servings: Double = 1
-    @State private var pageDidNotStateServings = false
+    @State private var servings: Double
+    @State private var pageDidNotStateServings: Bool
     @State private var note = ""
     @State private var busy = false
+
+    /// Reads the queued block here rather than on appear, so the first frame
+    /// is already the review (or already the "couldn't be read" note) and the
+    /// note never flashes before the recipe.
+    init(item: PendingRecipeImports.Item) {
+        self.item = item
+        let imported = RecipeJSONLD.recipe(fromJSON: item.block)
+        _found = State(initialValue: imported)
+        _servings = State(initialValue: imported?.servings ?? 1)
+        _pageDidNotStateServings = State(initialValue: imported != nil && imported?.servings == nil)
+    }
 
     private var sourceURL: URL? { URL(string: item.pageURL) }
 
@@ -44,6 +55,8 @@ struct RecipeLinkImportView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                        // Not mid-costing: Save is about to write the recipe.
+                        .disabled(busy)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     if let found {
@@ -52,15 +65,7 @@ struct RecipeLinkImportView: View {
                     }
                 }
             }
-            .onAppear(perform: load)
         }
-    }
-
-    private func load() {
-        guard found == nil, let imported = RecipeJSONLD.recipe(fromJSON: item.block) else { return }
-        servings = imported.servings ?? 1
-        pageDidNotStateServings = imported.servings == nil
-        found = imported
     }
 
     // MARK: - Review
