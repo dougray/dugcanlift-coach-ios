@@ -87,7 +87,7 @@ struct RootView: View {
         // One presentation at a time on this view: a recipe waits for the link
         // report's alert and the paste sheet (see `RecipeReviewQueue`).
         .onChange(of: intakeReport == nil) { _, clear in
-            if clear { presentNextRecipe() }
+            if clear { advance() }
         }
         .onChange(of: pastingFromCommand) { _, showing in
             if !showing { presentNextRecipe() }
@@ -210,11 +210,17 @@ struct RootView: View {
         _ = recipes.next(canPresent: intakeReport == nil && !pastingFromCommand)
     }
 
-    /// A review ended. A link report that arrived during it is shown now, and
-    /// the next recipe opens after that alert's OK; otherwise it opens at once.
+    /// A review ended: end it (idempotently), then `advance()`.
     private func afterRecipeReview() {
         recipes.dismissed()
-        if let held = recipes.takeHeldReport() { intakeReport = held }
+        advance()
+    }
+
+    /// Whatever is on screen has gone. A link report that arrived during a
+    /// review is shown first, one alert at a time, and the next recipe opens
+    /// after the last alert's OK; with none held, it opens at once.
+    private func advance() {
+        if let held = recipes.takeHeldReport() { intakeReport = held; return }
         presentNextRecipe()
     }
 

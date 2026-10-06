@@ -28,7 +28,7 @@ struct RecipeReviewQueue<Report> {
     private(set) var waiting: [QueuedRecipe] = []
     private(set) var reviewing: QueuedRecipe?
     private(set) var reviewingAppeared = false
-    private(set) var heldReport: Report?
+    private(set) var heldReports: [Report] = []
 
     mutating func enqueue(_ items: [PendingRecipeImports.Item]) {
         waiting += items.map { QueuedRecipe(item: $0) }
@@ -50,10 +50,11 @@ struct RecipeReviewQueue<Report> {
     }
 
     /// The app became active. A review that never appeared was dropped by
-    /// SwiftUI and will never report its own dismissal: retry it first.
+    /// SwiftUI and will never report its own dismissal: retry it first, as a
+    /// new `QueuedRecipe` so the sheet's item changes identity.
     mutating func activated() {
         guard let stuck = reviewing, !reviewingAppeared else { return }
-        waiting.insert(stuck, at: 0)
+        waiting.insert(QueuedRecipe(item: stuck.item), at: 0)
         reviewing = nil
     }
 
@@ -68,16 +69,17 @@ struct RecipeReviewQueue<Report> {
     }
 
     /// A link report is ready: returned to be shown now, or held (nil) while a
-    /// recipe is under review. A second report held over the first replaces it;
-    /// both imports have already happened and the Roster shows them.
+    /// recipe is under review or earlier reports are still waiting to be shown.
+    /// Every held report is kept, in arrival order: a "Couldn't import" must
+    /// never be replaced by a later "Log imported".
     mutating func report(_ report: Report) -> Report? {
-        guard reviewing != nil else { return report }
-        heldReport = report
+        guard reviewing != nil || !heldReports.isEmpty else { return report }
+        heldReports.append(report)
         return nil
     }
 
+    /// The oldest held report, to be shown next -- before the next recipe.
     mutating func takeHeldReport() -> Report? {
-        defer { heldReport = nil }
-        return heldReport
+        heldReports.isEmpty ? nil : heldReports.removeFirst()
     }
 }
