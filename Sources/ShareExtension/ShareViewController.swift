@@ -34,18 +34,26 @@ final class ShareViewController: UIViewController {
 
         let items = (extensionContext?.inputItems as? [NSExtensionItem]) ?? []
         Task { @MainActor in
-            model.resolve(candidates: await Self.candidateTexts(in: items))
+            let shared = await Self.sharedContent(in: items)
+            model.resolve(candidates: shared.texts, page: shared.page)
         }
     }
 
-    /// Every string the share could be carrying a link in: shared URLs,
-    /// shared text, and the item's own text (Messages and Mail put the
-    /// message body there). Order is only a preference; the first that
+    /// Every string the share could be carrying a link in -- shared URLs,
+    /// shared text, the item's own text (Messages and Mail put the message
+    /// body there) -- and, when the share came from Safari, what RecipePage.js
+    /// returned. Order of the strings is only a preference; the first that
     /// decodes wins.
-    private static func candidateTexts(in items: [NSExtensionItem]) async -> [String] {
+    private static func sharedContent(in items: [NSExtensionItem]) async -> (texts: [String], page: SharedRecipePage?) {
         var texts: [String] = []
+        var page: SharedRecipePage?
         for item in items {
             for provider in item.attachments ?? [] {
+                if provider.hasItemConformingToTypeIdentifier(UTType.propertyList.identifier),
+                   let loaded = try? await provider.loadItem(forTypeIdentifier: UTType.propertyList.identifier),
+                   let results = (loaded as? NSDictionary)?[NSExtensionJavaScriptPreprocessingResultsKey] {
+                    page = page ?? SharedRecipePage(preprocessingResults: results)
+                }
                 if provider.hasItemConformingToTypeIdentifier(UTType.url.identifier),
                    let url = try? await provider.loadItem(forTypeIdentifier: UTType.url.identifier) as? URL {
                     texts.append(url.absoluteString)
@@ -60,7 +68,7 @@ final class ShareViewController: UIViewController {
                 texts.append(body)
             }
         }
-        return texts
+        return (texts, page)
     }
 }
 
@@ -70,6 +78,10 @@ final class ShareModel: ObservableObject {
     enum State {
         case reading
         case ready(summary: String, fragment: String)
+        /// A schema.org recipe on the page Safari shared.
+        case recipe(name: String, servings: Double?, item: PendingRecipeImports.Item)
+        /// A page from Safari with no link and no recipe card.
+        case noRecipe
         case notALink
         /// The web Coach page with no log in its address. The web app strips
         /// the fragment as soon as it loads a link, so this is what Safari
@@ -83,7 +95,31 @@ final class ShareModel: ObservableObject {
     @Published var state: State = .reading
     var finish: () -> Void = {}
 
-    func resolve(candidates: [String]) {
+    /// A LIFT log link or the web Coach page, which the link flow answers.
+    static func isLink(_ text: String) -> Bool {
+        ShareLinkExtractor.fragment(in: text) != nil || ShareLinkExtractor.isCoachPageWithoutLog(text)
+    }
+
+    func resolve(candidates: [String], page: SharedRecipePage?) {
+        switch RecipeShareDecision.decide(candidates: candidates, page: page, isLink: Self.isLink) {
+        case .useLinkFlow:
+            resolveLink(candidates: candidates)
+        case let .recipe(name, servings, item):
+            state = .recipe(name: name, servings: servings, item: item)
+        case .noRecipe:
+            state = .noRecipe
+        }
+    }
+
+    func addRecipe(_ item: PendingRecipeImports.Item) {
+        guard let inbox = PendingRecipeImports.shared, (try? inbox.add(item)) != nil else {
+            state = .noSharedStorage
+            return
+        }
+        finish()
+    }
+
+    func resolveLink(candidates: [String]) {
         for text in candidates {
             guard let fragment = ShareLinkExtractor.fragment(in: text),
                   let payload = try? ShareLinkCodec.decode(fragment: fragment)
@@ -123,6 +159,13 @@ struct ShareConfirmView: View {
                     Button("Cancel") { model.finish() }
                         .foregroundStyle(Theme.textSecondary)
                 }
+                if case .recipe(_, _, let item) = model.state {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Add") { model.addRecipe(item) }
+                            .fontWeight(.semibold)
+                            .foregroundStyle(Theme.accent)
+                    }
+                }
                 if case .ready(_, let fragment) = model.state {
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Add") { model.add(fragment) }
@@ -149,6 +192,29 @@ struct ShareConfirmView: View {
                     .font(.headline)
                     .foregroundStyle(Theme.textPrimary)
                 Text("Coach imports it the next time you open the app.")
+                    .font(.subheadline)
+                    .foregroundStyle(Theme.textSecondary)
+            }
+        case let .recipe(name, servings, _):
+            LiftCard(title: "Add to Coach") {
+                Text("Add \(name)")
+                    .font(.headline)
+                    .foregroundStyle(Theme.textPrimary)
+                if let servings {
+                    Text("Serves \(CookFormat.trimmed(servings))")
+                        .font(.subheadline)
+                        .foregroundStyle(Theme.textPrimary)
+                }
+                Text("Coach shows it for review the next time you open it.")
+                    .font(.subheadline)
+                    .foregroundStyle(Theme.textSecondary)
+            }
+        case .noRecipe:
+            LiftCard {
+                Text("There's no recipe card on this page")
+                    .font(.headline)
+                    .foregroundStyle(Theme.textPrimary)
+                Text("Copy the recipe's text and use Paste the text in Coach instead.")
                     .font(.subheadline)
                     .foregroundStyle(Theme.textSecondary)
             }
