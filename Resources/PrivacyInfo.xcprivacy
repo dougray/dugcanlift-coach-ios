@@ -9,11 +9,10 @@
 	<array/>
 	<!-- Empty because nothing reaches the developer. Coach has no backend: a
 	     client's log arrives as a pasted link and stays in SwiftData on this
-	     device. Its only network request is started by the coach and goes
-	     straight to a third party, never to DUGCANLIFT: a fetch of a recipe
-	     page whose address the coach pasted (RecipeLinkImportView). It sends
-	     nothing about the coach or a client, and nothing is retained by the
-	     developer. -->
+	     device. Coach makes no network requests: a recipe arrives through
+	     Safari's share sheet, and a client's route is drawn on the device.
+	     Nothing about the coach or a client leaves the device, and nothing is
+	     retained by the developer. -->
 	<key>NSPrivacyCollectedDataTypes</key>
 	<array/>
 	<key>NSPrivacyAccessedAPITypes</key>
