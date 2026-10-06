@@ -70,7 +70,7 @@ struct RecipeLinkImportView: View {
                 Text(note).font(.caption).foregroundStyle(Theme.textSecondary)
             }
         } footer: {
-            Text("Uses the internet, like importing a dish. Nothing is saved until you have "
+            Text("Uses the internet. Nothing is saved until you have "
                  + "read what the page published — check the macros before you send it to anyone.")
                 .font(.caption)
         }
