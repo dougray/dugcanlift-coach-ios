@@ -90,6 +90,9 @@ final class ShareModel: ObservableObject {
         /// The build is missing the App Group entitlement, so nothing written
         /// here would reach the app. Said plainly rather than failing quietly.
         case noSharedStorage
+        /// The same missing App Group, met while adding a recipe: the way
+        /// round is Paste the text, not Paste a Link.
+        case noSharedStorageForRecipe
     }
 
     @Published var state: State = .reading
@@ -113,7 +116,7 @@ final class ShareModel: ObservableObject {
 
     func addRecipe(_ item: PendingRecipeImports.Item) {
         guard let inbox = PendingRecipeImports.shared, (try? inbox.add(item)) != nil else {
-            state = .noSharedStorage
+            state = .noSharedStorageForRecipe
             return
         }
         finish()
@@ -242,6 +245,15 @@ struct ShareConfirmView: View {
                 Text("This build of Coach can't pass links from the share sheet. Copy the link and use Paste a Link in Coach instead.")
                     .font(.subheadline)
                     .foregroundStyle(Theme.textPrimary)
+            }
+        case .noSharedStorageForRecipe:
+            LiftCard {
+                Text("This build of Coach can't pass recipes from the share sheet")
+                    .font(.headline)
+                    .foregroundStyle(Theme.textPrimary)
+                Text("Copy the recipe's text and use Paste the text in Coach instead.")
+                    .font(.subheadline)
+                    .foregroundStyle(Theme.textSecondary)
             }
         }
     }
