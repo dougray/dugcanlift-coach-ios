@@ -1,7 +1,6 @@
 import SwiftUI
 import SwiftData
 import Charts
-import MapKit
 import LiftCore
 
 struct ClientDetailView: View {
@@ -410,7 +409,7 @@ struct ClientDetailView: View {
 
     /// Shown only when there is something in it, as on the web.
     ///
-    /// `wide` puts the route and the bests side by side, with a taller map.
+    /// `wide` puts the route and the bests side by side, with a taller route.
     @ViewBuilder
     private func outdoorSection(wide: Bool) -> some View {
         let route = client.lastRoute
@@ -425,7 +424,7 @@ struct ClientDetailView: View {
                 .padding(.top, 4)
 
             if wide, let route, let points, let bests {
-                // The map beside the numbers, and the recent list under the
+                // The route beside the numbers, and the recent list under the
                 // bests rather than one long line stretched across the page.
                 Grid(alignment: .topLeading, horizontalSpacing: AdaptiveLayout.gutter) {
                     GridRow {
@@ -475,9 +474,8 @@ struct ClientDetailView: View {
         let stats = OutdoorDisplay.routeStats(route, unit: distanceUnit)
         return LiftCard(title: "Last route") {
             VStack(alignment: .leading, spacing: 10) {
-                ClientRouteMap(points: points)
+                RouteCanvas(points: points)
                     .frame(height: mapHeight)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
 
                 HStack {
                     Text(OutdoorDisplay.typeLabel(route.type) ?? "")
@@ -603,35 +601,5 @@ struct ClientDetailView: View {
             }
             .fillsGridCell()
         }
-    }
-}
-
-/// A client's last route on a map that does not move, drawn as LIFT iOS draws
-/// its own Last route card. Scrolling the client screen must scroll it.
-///
-/// The polyline arrives already trimmed of its first and last 200 m by the
-/// client's app; nothing here trims or extends it.
-private struct ClientRouteMap: View {
-    let points: [OutdoorShareCoordinate]
-
-    var body: some View {
-        let coordinates = points.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
-        Map(initialPosition: .automatic, interactionModes: []) {
-            MapPolyline(coordinates: coordinates)
-                .stroke(Theme.accent, style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
-            if let start = coordinates.first {
-                Annotation("Start", coordinate: start, anchor: .center) {
-                    Circle().fill(Theme.accentSecondary).frame(width: 10, height: 10)
-                }
-                .annotationTitles(.hidden)
-            }
-            if let end = coordinates.last {
-                Annotation("Finish", coordinate: end, anchor: .center) {
-                    Circle().fill(Theme.accent).frame(width: 12, height: 12)
-                }
-                .annotationTitles(.hidden)
-            }
-        }
-        .allowsHitTesting(false)
     }
 }
