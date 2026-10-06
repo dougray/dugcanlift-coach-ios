@@ -48,6 +48,15 @@ final class RecipeReviewQueueTests: XCTestCase {
         XCTAssertEqual(q.next(canPresent: true)?.item, item(1), "the stuck one goes first, not last")
     }
 
+    func testARetriedRecipeIsANewIdentityOfTheSameItem() {
+        var q = queue(1)
+        let first = q.next(canPresent: true)
+        q.activated()
+        let retried = q.next(canPresent: true)
+        XCTAssertEqual(retried?.item, first?.item)
+        XCTAssertNotEqual(retried?.id, first?.id, "a new id, so the sheet sees something new to present")
+    }
+
     func testASheetThatAppearedIsNotRequeuedOnActivation() {
         var q = queue(2)
         let shown = q.next(canPresent: true)
@@ -74,7 +83,7 @@ final class RecipeReviewQueueTests: XCTestCase {
         _ = q.next(canPresent: true)
         q.markAppeared()
         XCTAssertNil(q.report("Log imported"), "held, not shown over the sheet")
-        XCTAssertEqual(q.heldReport, "Log imported")
+        XCTAssertEqual(q.heldReports, ["Log imported"])
         XCTAssertTrue(q.dismissed())
         XCTAssertEqual(q.takeHeldReport(), "Log imported")
         XCTAssertNil(q.takeHeldReport(), "promoted once")
@@ -84,10 +93,26 @@ final class RecipeReviewQueueTests: XCTestCase {
         XCTAssertEqual(q.next(canPresent: true)?.item, item(2))
     }
 
+    func testEveryHeldReportComesOutInOrderBeforeTheNextRecipe() {
+        var q = queue(2)
+        _ = q.next(canPresent: true)
+        q.markAppeared()
+        XCTAssertNil(q.report("Couldn't import"))
+        XCTAssertNil(q.report("Log imported"))
+        q.dismissed()
+        XCTAssertEqual(q.takeHeldReport(), "Couldn't import", "the first is never replaced by a later one")
+        // A report arriving while the held ones are still being shown waits its turn.
+        XCTAssertNil(q.report("Some links didn't import"))
+        XCTAssertEqual(q.takeHeldReport(), "Log imported")
+        XCTAssertEqual(q.takeHeldReport(), "Some links didn't import")
+        XCTAssertNil(q.takeHeldReport())
+        XCTAssertEqual(q.next(canPresent: true)?.item, item(2))
+    }
+
     func testAReportWithNoReviewOpenShowsAtOnce() {
         var q = queue(1)
         XCTAssertEqual(q.report("Log imported"), "Log imported")
-        XCTAssertNil(q.heldReport)
+        XCTAssertTrue(q.heldReports.isEmpty)
     }
 
     func testDismissAdvancesExactlyOnce() {
