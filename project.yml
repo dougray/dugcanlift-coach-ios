@@ -90,9 +90,9 @@ targets:
         # Xcode generates the Info.plist, and this target supplies its own.
         UILaunchScreen: {}
         CFBundleDisplayName: Coach
-        # Coach uses only the encryption built into iOS (HTTPS for Cook's two
-        # imports). Declaring it here answers App Store Connect's export
-        # compliance question once, instead of on every upload.
+        # Coach makes no requests and uses no encryption beyond what iOS
+        # itself provides. Declaring it here answers App Store Connect's
+        # export compliance question once, instead of on every upload.
         ITSAppUsesNonExemptEncryption: false
         # All four on iPad, which Split View and Stage Manager require. iPhone
         # has no key, as before, so its orientations are unchanged.
