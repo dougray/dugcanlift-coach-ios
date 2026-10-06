@@ -75,9 +75,12 @@ need one. The cost is one step: the coach opens Coach afterwards, which the
 confirmation says in words. App Groups, unlike Associated Domains, sign on a
 free Personal Team — `lift-ios`'s widget ships with one, and its
 `Lift-free.entitlements` keeps it. The extension compiles only
-`ShareLinkExtractor.swift` and `PendingShareLinks.swift` from `Sources/Shared`
+`ShareLinkExtractor.swift`, `PendingShareLinks.swift`,
+`PendingRecipeImports.swift` and `RecipePageShare.swift` from `Sources/Shared`
 and links `LiftCore` only: never add SwiftData models or `LiftReference` to it.
-It has its own `PrivacyInfo.xcprivacy` (an extension is its own bundle).
+A page shared from Safari also carries its JSON-LD, through `RecipePage.js`; a
+link always wins over a recipe. It has its own `PrivacyInfo.xcprivacy` (an
+extension is its own bundle).
 
 **`ShareLinkExtractor` is the one rule for finding a link in text.** The first
 `www.dugcanlift.com/coach/#1z…` / `#1u…` (or `dugcanliftcoach:` URL) anywhere
@@ -203,10 +206,12 @@ cover one.
 ## App Store
 
 `Resources/PrivacyInfo.xcprivacy` declares no tracking and no collected data,
-which stays true only while nothing reaches the developer — see "Coach makes
-exactly one network call". Adding any request, SDK or required-reason API
+which stays true only while nothing reaches the developer. Coach makes no
+network calls, and `NoNetworkTests` enforces it — see "Coach makes no network
+calls". Adding any request, SDK or required-reason API
 (`UserDefaults` is CA92.1; file timestamps C617.1, for SQLite) means revisiting
-it. `ITSAppUsesNonExemptEncryption` is `false` in `project.yml`: HTTPS only.
+it. `ITSAppUsesNonExemptEncryption` is `false` in `project.yml`: Coach makes no
+requests, so nothing here uses encryption beyond the system's own.
 Listing text is in `fastlane/metadata/en-US`, screenshots in
 `fastlane/screenshots/en-US`: iPhone 6.9" (`N_iPhone69_*`, 1320x2868) and, since
 Coach runs on iPad, iPad 13" landscape (`N_iPadPro13_*`, 2752x2064), all sample
@@ -431,27 +436,23 @@ release; don't work around the gap with `@testable import` tricks that would
 stop working the day the package adds one.
 
 Cook has a fourth section, **Road** -- see "Road picks" below. It reads
-bundled data and sends nothing of its own, so the network count below is
-unchanged.
+bundled data and sends nothing of its own.
 
-**Coach makes exactly one network call, in Cook's imports.** It talks to no
-server DUGCANLIFT operates, and it has explicit offline and failure states.
+**Coach makes no network calls.** Nothing in the app or its share extension
+requests anything from any server — the in-house rule (LIFT superproject,
+`2026-10-06-in-house-runtime-design.md`), enforced by `NoNetworkTests`, which
+fails the build on `URLSession`, `URLRequest`, `NWConnection`, `import Network`,
+`import MapKit`, `import WebKit` or `AsyncImage(` in any Swift file under
+`Sources/`, the share extension's included.
 
-1. **A recipe page the coach pastes** (`RecipeLinkImportView`), read as
-   schema.org JSON-LD by `LiftCore.RecipeJSONLD`. Servings come from the
-   page's own yield when it states one and from a stepper when it does not,
-   because guessing how many a dish feeds would divide every macro by a
-   number nobody chose.
-
-It sends a `User-Agent` naming the app rather than impersonating a browser.
-Several large recipe sites answer 403 regardless — measured, and they refuse a
-browser string identically, so the block is not about the agent — and an
-honest refusal the coach can read beats a disguise.
-
-Cook has **three** import sources; the other two need no connection. The
-catalogue (`RecipeCatalogView`) reads bundled data, and a pasted caption
-(`RecipePasteImportView`) reads text the coach supplies. The network count is
-the one to keep at one.
+Cook has **three** import sources: the bundled catalogue
+(`RecipeCatalogView`), a pasted caption (`RecipePasteImportView`), and a recipe
+page **shared from Safari**. Safari runs the extension's `RecipePage.js` on the
+page and hands over its schema.org JSON-LD; the extension queues the raw block
+(`PendingRecipeImports`) and the app re-reads it with `LiftCore.RecipeJSONLD`
+and opens `RecipeLinkImportView` to review it. Coach never fetches the page.
+Servings come from the page's own yield when it states one and from a stepper
+when it does not — never guessed.
 
 **A pasted caption is edited, not reviewed.** `RecipeLinkImportView` can review
 because JSON-LD is labelled — the publisher already said which strings are
@@ -470,10 +471,10 @@ to solve what cut-and-paste solves, and reparsing the boxes on save is the rule
 `WebLibraryImporter` already follows: the raw text is the contract.
 
 **Social video is out of reach and that is not a bug to fix.** TikTok, Instagram
-and Reels publish no schema.org `Recipe`; YouTube publishes a `VideoObject`.
-They also serve a JavaScript shell to a plain fetch and several 403 outright.
-Pasting the caption is the supported path, not a workaround waiting on a better
-scraper.
+and Reels publish no schema.org `Recipe`; YouTube publishes a `VideoObject`. So
+Safari has no recipe block to hand over, and Coach does not fetch pages to look
+for one. Pasting the caption is the supported path, not a workaround waiting on
+a better scraper.
 
 **Where an imported recipe's macros come from is a tested rule, not view
 code.** `LinkImportMacros` decides it: a source's own figures win, and costing
