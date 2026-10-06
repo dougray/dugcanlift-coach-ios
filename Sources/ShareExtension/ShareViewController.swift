@@ -3,13 +3,20 @@ import SwiftUI
 import UniformTypeIdentifiers
 import LiftCore
 
-/// The share sheet's entry point: finds a LIFT log link in what was shared,
-/// asks the coach to confirm it, and queues its fragment for the app
-/// (`PendingShareLinks`). The app imports it the next time it comes to the
-/// foreground, through Paste a Link's own code path.
+/// The share sheet's entry point, for one of two things (`RecipeShareDecision`
+/// decides which, and a link always wins):
 ///
-/// Nothing here touches SwiftData. The link is decoded only to show who it is
-/// from and to refuse a bad one before the coach leaves the share sheet.
+/// - **A LIFT log link** in what was shared, or the web Coach page's own
+///   address. The coach confirms it and its fragment is queued for the app
+///   (`PendingShareLinks`), which imports it the next time it comes to the
+///   foreground, through Paste a Link's own code path.
+/// - **A recipe from the page Safari shared.** `RecipePage.js` hands over the
+///   page's JSON-LD; the coach confirms the recipe and its raw block is queued
+///   (`PendingRecipeImports`) for the app to open for review.
+///
+/// Nothing here touches SwiftData or the network. A link is decoded, and a
+/// recipe read, only to show what it is and to refuse a bad one before the
+/// coach leaves the share sheet.
 final class ShareViewController: UIViewController {
 
     private let model = ShareModel()
@@ -99,14 +106,13 @@ final class ShareModel: ObservableObject {
     var finish: () -> Void = {}
 
     /// A LIFT log link or the web Coach page, which the link flow answers.
-    static func isLink(_ text: String) -> Bool {
-        ShareLinkExtractor.fragment(in: text) != nil || ShareLinkExtractor.isCoachPageWithoutLog(text)
-    }
+    static func isLink(_ text: String) -> Bool { ShareLinkExtractor.isLink(text) }
 
     func resolve(candidates: [String], page: SharedRecipePage?) {
         switch RecipeShareDecision.decide(candidates: candidates, page: page, isLink: Self.isLink) {
-        case .useLinkFlow:
-            resolveLink(candidates: candidates)
+        case let .useLinkFlow(linkCandidates):
+            // Includes the page's own address when Safari passed only the page.
+            resolveLink(candidates: linkCandidates)
         case let .recipe(name, servings, item):
             state = .recipe(name: name, servings: servings, item: item)
         case .noRecipe:
