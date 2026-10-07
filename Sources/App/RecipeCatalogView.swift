@@ -5,8 +5,8 @@ import LiftReference
 
 /// Browse the bundled recipe catalogue and copy one into the library.
 ///
-/// One of the import sources, beside Safari and pasted text, and the
-/// only one that needs no network at all: 622 recipes ship in `recipes.db`.
+/// One of the import sources, beside Safari and pasted text. None of the three
+/// needs a network; this one reads the 622 recipes that ship in `recipes.db`.
 ///
 /// Nothing is costed here. `RecipeCosting` applies the same weight-only rules
 /// the catalogue's own build already applied, so re-running it would spend a

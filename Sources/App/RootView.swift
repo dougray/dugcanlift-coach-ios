@@ -46,6 +46,8 @@ struct RootView: View {
     /// `dugcanliftcoach://` URL or the share extension's queue. Paste a Link
     /// reports in its own sheet instead.
     @State private var intakeReport: IntakeReport?
+    /// Recipes Safari handed over, and the rules for when each may open.
+    @State private var recipes = RecipeReviewQueue<IntakeReport>()
     @Environment(\.horizontalSizeClass) private var sizeClass
     /// Paste a Link, when it is asked for from the keyboard rather than from
     /// the Roster's own button.
@@ -60,6 +62,9 @@ struct RootView: View {
         .focusedSceneValue(\.coachNavigation, CoachNavigation(
             select: { item in withAnimation(.easeOut(duration: 0.18)) { tab = item } },
             pasteLink: {
+                // A second sheet over a recipe under review would be dropped,
+                // and could strand the review: ⇧⌘V waits until it closes.
+                guard recipes.reviewing == nil else { return }
                 tab = .roster
                 pastingFromCommand = true
             }))
@@ -68,11 +73,37 @@ struct RootView: View {
             report(importing: [url.absoluteString])
         }
         // `.active` covers both a cold launch and returning from the share
-        // sheet, which is when the extension's queue has something in it.
+        // sheet, which is when the extension's queues have something in them.
+        // Links first, then recipes, the order the extension decides in.
         .onChange(of: scenePhase, initial: true) { _, phase in
-            guard phase == .active, let inbox = PendingShareLinks.shared else { return }
-            let queued = inbox.takeAll()
-            if !queued.isEmpty { report(importing: queued) }
+            guard phase == .active else { return }
+            recipes.activated()
+            if let inbox = PendingShareLinks.shared {
+                let queued = inbox.takeAll()
+                if !queued.isEmpty { report(importing: queued) }
+            }
+            if let drained = PendingRecipeImports.shared {
+                recipes.enqueue(drained.takeAll())
+            }
+            presentNextRecipe()
+        }
+        // One presentation at a time on this view: a recipe waits for the link
+        // report's alert and the paste sheet (see `RecipeReviewQueue`).
+        .onChange(of: intakeReport == nil) { _, clear in
+            if clear { advance() }
+        }
+        .onChange(of: pastingFromCommand) { _, showing in
+            if !showing { presentNextRecipe() }
+        }
+        .sheet(item: Binding(get: { recipes.reviewing },
+                             set: { if $0 == nil { recipes.dismissed() } }),
+               onDismiss: afterRecipeReview) { queued in
+            RecipeLinkImportView(item: queued.item)
+                .onAppear { recipes.markAppeared() }
+                // Cancel and Save only: a swipe that ended the review would
+                // drop a recipe that is already gone from the App Group.
+                .interactiveDismissDisabled()
+                .liftAppearance()
         }
         .alert(intakeReport?.title ?? "", isPresented: Binding(
             get: { intakeReport != nil },
@@ -180,6 +211,25 @@ struct RootView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
+    /// Opens the next waiting recipe, unless something is already on screen.
+    private func presentNextRecipe() {
+        _ = recipes.next(canPresent: intakeReport == nil && !pastingFromCommand)
+    }
+
+    /// A review ended: end it (idempotently), then `advance()`.
+    private func afterRecipeReview() {
+        recipes.dismissed()
+        advance()
+    }
+
+    /// Whatever is on screen has gone. A link report that arrived during a
+    /// review is shown first, one alert at a time, and the next recipe opens
+    /// after the last alert's OK; with none held, it opens at once.
+    private func advance() {
+        if let held = recipes.takeHeldReport() { intakeReport = held; return }
+        presentNextRecipe()
+    }
+
     private struct IntakeReport {
         let title: String
         let message: String
@@ -199,15 +249,18 @@ struct RootView: View {
             }
         }
         tab = .roster
+        let made: IntakeReport
         if failed == 0 {
-            intakeReport = IntakeReport(title: "Log imported", message: added.joined(separator: "\n"))
+            made = IntakeReport(title: "Log imported", message: added.joined(separator: "\n"))
         } else if added.isEmpty {
-            intakeReport = IntakeReport(title: "Couldn't import", message: ShareLinkImporter.invalidLinkMessage)
+            made = IntakeReport(title: "Couldn't import", message: ShareLinkImporter.invalidLinkMessage)
         } else {
-            intakeReport = IntakeReport(
+            made = IntakeReport(
                 title: "Some links didn't import",
                 message: (added + ["\(failed) link\(failed == 1 ? "" : "s") could not be read."]).joined(separator: "\n"))
         }
+        // An alert beside an open recipe sheet would be dropped: hold it.
+        if let now = recipes.report(made) { intakeReport = now }
     }
 
     /// "LIFT Coach" — accent wordmark, the second word muted and unbolded, as

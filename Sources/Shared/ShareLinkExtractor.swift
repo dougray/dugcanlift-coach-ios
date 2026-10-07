@@ -70,6 +70,13 @@ enum ShareLinkExtractor {
             && coachPagePattern.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil
     }
 
+    /// Whether the link flow answers this text: a LIFT log link, or the web
+    /// Coach page with no log in it. The share sheet asks this before it looks
+    /// for a recipe, because a link always wins.
+    static func isLink(_ text: String) -> Bool {
+        fragment(in: text) != nil || isCoachPageWithoutLog(text)
+    }
+
     /// The URL that opens Coach and imports `fragment`.
     static func openURL(for fragment: String) -> URL? {
         URL(string: "\(urlScheme)://import#\(fragment)")

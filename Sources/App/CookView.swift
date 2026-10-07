@@ -13,7 +13,7 @@ struct CookView: View {
     /// phantom row; `editing` alone (an `Identifiable` item) has no room for
     /// that second fact without changing its type.
     @State private var editingIsNew = false
-    @State private var importingLink = false
+    @State private var showingFromSafari = false
     @State private var browsingCatalogue = false
     @State private var pasting = false
     @State private var section: Section = .recipes
@@ -78,9 +78,9 @@ struct CookView: View {
             .focusedSceneValue(\.coachNewItem, section == .recipes
                                ? CoachNewItem(title: "New Recipe", action: newRecipe) : nil)
             .sheet(item: $editing) { RecipeEditorView(recipe: $0, isNew: editingIsNew) }
-            .sheet(isPresented: $importingLink) { RecipeLinkImportView() }
             .sheet(isPresented: $browsingCatalogue) { RecipeCatalogView() }
             .sheet(isPresented: $pasting) { RecipePasteImportView() }
+            .sheet(isPresented: $showingFromSafari) { FromSafariView() }
         }
     }
 
@@ -161,11 +161,10 @@ struct CookView: View {
         Menu("Import") {
             // First: it needs no connection and no typing.
             Button("From the catalogue") { browsingCatalogue = true }
-            // The pair for a recipe found elsewhere. A link is
-            // better whenever the page has a recipe card, so it
-            // leads; pasting the text is what is left when it
-            // does not -- a caption, an email, a photo retyped.
-            Button("From a link") { importingLink = true }
+            // A recipe found on the web arrives from Safari's share sheet;
+            // this says how. Pasting the text is what is left when a page has
+            // no recipe card -- a caption, an email, a photo retyped.
+            Button("From Safari") { showingFromSafari = true }
             Button("Paste the text") { pasting = true }
         }
         .tint(Theme.accent)
