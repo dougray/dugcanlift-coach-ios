@@ -50,10 +50,6 @@ struct TrainView: View {
                                           shareLink: $planShareLink)
                 }
             }
-            // The floating tab bar draws over scroll content. A List or Form
-            // reserves space for it automatically; a raw ScrollView does not,
-            // so the last card sits half-covered without this.
-            .safeAreaPadding(.bottom, 72)
             .coachScreen()
             .background(Theme.background)
             // The tab row above already names this screen, and the browser build
@@ -62,7 +58,7 @@ struct TrainView: View {
             .regularWidthTitle("Train")
             .focusedSceneValue(\.coachNewItem, section == .workouts
                                ? CoachNewItem(title: "New Workout", action: newWorkout) : nil)
-            .sheet(item: $editing) { WorkoutEditorView(routine: $0) }
+            .sheet(item: $editing) { WorkoutEditorView(routine: $0).liftAppearance() }
             .alert(confirmingDelete.map { "Delete \($0.name)?" } ?? "",
                    isPresented: Binding(get: { confirmingDelete != nil },
                                         set: { if !$0 { confirmingDelete = nil } }),
