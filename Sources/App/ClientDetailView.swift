@@ -485,7 +485,7 @@ struct ClientDetailView: View {
                         .foregroundStyle(Theme.textSecondary)
                     Spacer()
                 }
-                .font(.system(size: 15, weight: .semibold))
+                .font(.subheadline.weight(.semibold))
 
                 HStack(spacing: 0) {
                     outdoorStat("Distance", stats.distance)
@@ -508,7 +508,7 @@ struct ClientDetailView: View {
                     let stats = OutdoorDisplay.bestStats(best, unit: distanceUnit)
                     VStack(alignment: .leading, spacing: 6) {
                         Text(OutdoorDisplay.bestHeading(best))
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.subheadline.weight(.semibold))
                             .foregroundStyle(Theme.textPrimary)
                         HStack(spacing: 0) {
                             outdoorStat("Farthest", stats.farthest)
@@ -525,10 +525,10 @@ struct ClientDetailView: View {
     private func outdoorStat(_ label: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label)
-                .font(.system(size: 12))
+                .font(.caption)
                 .foregroundStyle(Theme.textSecondary)
             Text(value)
-                .font(.system(size: 16, weight: .semibold).monospacedDigit())
+                .font(.callout.weight(.semibold).monospacedDigit())
                 .foregroundStyle(Theme.textPrimary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
