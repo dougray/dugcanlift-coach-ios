@@ -52,6 +52,18 @@ struct WorkoutEditorView: View {
                                 PrescriptionSides.setSide(side, for: set.id, in: context)
                             }
                         }
+                        // Swipe a set away. Read from the same ordered list
+                        // the rows were drawn from, so an offset is the set
+                        // the coach swiped. The swipe animation finishes on a
+                        // row that is already out of the list; the roster's
+                        // swipe crash was a relationship read mid-animation,
+                        // which this does not do.
+                        .onDelete { offsets in
+                            let sets = exercise.orderedSets
+                            for set in offsets.map({ sets[$0] }) {
+                                PrescriptionSides.removeSet(set, in: context)
+                            }
+                        }
                         HStack(spacing: 24) {
                             Button("Add a set") {
                                 let next = RoutinePrescribedSet(orderIndex: exercise.orderedSets.count)
@@ -67,6 +79,12 @@ struct WorkoutEditorView: View {
                         }
                         .buttonStyle(.borderless)
                         .tint(Theme.accent)
+                        // Its own row, apart from Add a set, so a mis-tap
+                        // there never removes the exercise.
+                        Button("Remove \(exercise.displayName)", role: .destructive) {
+                            PrescriptionSides.removeExercise(exercise, in: context)
+                        }
+                        .buttonStyle(.borderless)
                     } header: {
                         Text(exercise.displayName)
                     }
