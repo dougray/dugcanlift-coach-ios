@@ -35,7 +35,7 @@ struct PlanClientCard: View {
             Text("Pick a client").tag("")
             ForEach(clients) { Text($0.name).tag($0.id) }
         }
-        .tint(Theme.accent)
+        .tint(Theme.accentText)
     }
 }
 
@@ -48,7 +48,8 @@ struct DayColumnHeading: View {
         VStack(alignment: .leading, spacing: 1) {
             Text(CookFormat.dayLabel(dayKey: dayKey))
                 .font(Theme.cardTitle)
-                .foregroundStyle(Theme.accent)
+                .foregroundStyle(Theme.accentText)
+                .accessibilityAddTraits(.isHeader)
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
             Text(shortDate)

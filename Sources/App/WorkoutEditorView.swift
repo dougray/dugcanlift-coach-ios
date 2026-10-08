@@ -78,7 +78,7 @@ struct WorkoutEditorView: View {
                             }
                         }
                         .buttonStyle(.borderless)
-                        .tint(Theme.accent)
+                        .tint(Theme.accentText)
                         // Its own row, apart from Add a set, so a mis-tap
                         // there never removes the exercise.
                         Button("Remove \(exercise.displayName)", role: .destructive) {
@@ -232,7 +232,7 @@ struct PrescribedSetRow: View {
         .pickerStyle(.segmented)
         .labelsHidden()
         .frame(maxWidth: 180)
-        .tint(Theme.accent)
+        .tint(Theme.accentText)
     }
 }
 

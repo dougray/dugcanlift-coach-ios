@@ -149,7 +149,7 @@ struct ClientDetailView: View {
             }
         }
         .buttonStyle(.bordered)
-        .tint(Theme.accent)
+        .tint(Theme.accentText)
         .frame(maxWidth: .infinity)
         .padding(.top, 12)
     }
@@ -596,7 +596,7 @@ struct ClientDetailView: View {
                         }
                     }
                     .foregroundStyle(Theme.textPrimary)
-                    .tint(Theme.accent)
+                    .tint(Theme.accentText)
                 }
             }
             .fillsGridCell()

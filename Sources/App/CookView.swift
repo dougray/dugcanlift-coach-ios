@@ -61,7 +61,7 @@ struct CookView: View {
                 // narrower than any iPhone, so no change there.
                 .frame(maxWidth: AdaptiveLayout.readableWidth)
                 .padding()
-                .tint(Theme.accent)
+                .tint(Theme.accentText)
 
                 switch section {
                 case .recipes: library
@@ -130,7 +130,7 @@ struct CookView: View {
                             Spacer(minLength: 0)
                             HStack {
                                 Button("Edit") { editingIsNew = false; editing = recipe }
-                                    .tint(Theme.accent)
+                                    .tint(Theme.accentText)
                                 Spacer()
                                 Button("Delete", role: .destructive) { confirmingDelete = recipe }
                             }
@@ -168,7 +168,7 @@ struct CookView: View {
 
     private var newRecipeButton: some View {
         Button("New recipe", action: newRecipe)
-            .tint(Theme.accent)
+            .tint(Theme.accentText)
     }
 
     // A Menu rather than a row of buttons: the import sources would not fit
@@ -184,7 +184,7 @@ struct CookView: View {
             Button("From a link") { importingLink = true }
             Button("Paste the text") { pasting = true }
         }
-        .tint(Theme.accent)
+        .tint(Theme.accentText)
     }
 
     @ViewBuilder
@@ -202,7 +202,7 @@ struct CookView: View {
                     }
                 }
             }
-            .tint(Theme.accent)
+            .tint(Theme.accentText)
         }
     }
 

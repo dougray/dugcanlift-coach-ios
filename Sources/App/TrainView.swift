@@ -42,7 +42,7 @@ struct TrainView: View {
                 // narrower than any iPhone, so no change there.
                 .frame(maxWidth: AdaptiveLayout.readableWidth)
                 .padding()
-                .tint(Theme.accent)
+                .tint(Theme.accentText)
 
                 switch section {
                 case .workouts: library
@@ -108,7 +108,7 @@ struct TrainView: View {
                             Spacer(minLength: 0)
                             HStack {
                                 Button("Edit") { editing = routine }
-                                    .tint(Theme.accent)
+                                    .tint(Theme.accentText)
                                 Spacer()
                                 // Confirms first, saying how many booked
                                 // days it empties, as Coach web and Android
@@ -135,7 +135,7 @@ struct TrainView: View {
     @ViewBuilder
     private var libraryActions: some View {
         Button("New workout", action: newWorkout)
-            .tint(Theme.accent)
+            .tint(Theme.accentText)
 
         // The only route to a "here is the programme, nothing
         // booked yet" send. `link()`/`fragment()` inline only
@@ -164,7 +164,7 @@ struct TrainView: View {
                     }
                 }
             }
-            .tint(Theme.accent)
+            .tint(Theme.accentText)
         }
     }
 

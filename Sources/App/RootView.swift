@@ -59,7 +59,7 @@ struct RootView: View {
     var body: some View {
         shell
         .background(Theme.background)
-        .tint(Theme.accent)
+        .tint(Theme.accentText)
         .liftAppearance()
         .focusedSceneValue(\.coachNavigation, CoachNavigation(
             select: { item in withAnimation(.easeOut(duration: 0.18)) { tab = item } },

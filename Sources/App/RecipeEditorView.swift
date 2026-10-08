@@ -199,7 +199,7 @@ struct RecipeEditorView: View {
                             set: { amounts[record.id] = $0 }))
                             .keyboardType(.decimalPad)
                         Button("Add") { add(record) }
-                            .tint(Theme.accent)
+                            .tint(Theme.accentText)
                     }
                 }
             }

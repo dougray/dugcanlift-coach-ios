@@ -63,7 +63,7 @@ struct RecipeLinkImportView: View {
                     .keyboardType(.URL)
                     .onSubmit { Task { await fetch() } }
                 Button("Fetch") { Task { await fetch() } }
-                    .tint(Theme.accent)
+                    .tint(Theme.accentText)
                     .disabled(busy || normalisedURL == nil)
             }
             if !note.isEmpty {
