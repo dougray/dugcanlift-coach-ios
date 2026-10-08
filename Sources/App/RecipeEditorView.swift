@@ -49,6 +49,29 @@ struct RecipeEditorView: View {
     /// the bodyweight side.
     @State private var displayedUnit: ServingUnit = .grams
 
+    /// The staged fields as `load()` left them, to tell an edited form from an
+    /// untouched one. nil until loaded.
+    @State private var loaded: Snapshot?
+    /// Set by Done and Cancel, so the disappear hook below knows the sheet
+    /// went some other way.
+    @State private var finished = false
+
+    private struct Snapshot: Equatable {
+        var name, servings, ingredients, steps, totalWeight: String
+        var macros: MacroFields
+    }
+
+    private var current: Snapshot {
+        Snapshot(name: nameText, servings: servingsText, ingredients: ingredientText,
+                 steps: stepText, totalWeight: totalWeightText, macros: macros)
+    }
+
+    /// Swiping the sheet down threw away a long recipe without a word, and on
+    /// a new recipe it skipped `cancel()` and left a "New recipe" phantom in
+    /// the library and every Plan menu. A new or edited recipe now leaves by
+    /// Done or Cancel only; an untouched one still swipes away.
+    private var guardsDismiss: Bool { isNew || (loaded != nil && loaded != current) }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -143,6 +166,12 @@ struct RecipeEditorView: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { cancel() } }
             }
             .onAppear(perform: load)
+            .interactiveDismissDisabled(guardsDismiss)
+            // Belt and braces for the phantom: however the sheet goes, a new
+            // recipe that was never saved does not stay behind.
+            .onDisappear {
+                if !finished { Self.discard(recipe, in: context, isNew: isNew) }
+            }
         }
     }
 
@@ -307,6 +336,7 @@ struct RecipeEditorView: View {
         totalWeightText = recipe.totalWeightGrams
             .map { OptionalNumberField.string(from: (weightUnit.fromGrams($0) * 10).rounded() / 10) } ?? ""
         displayedUnit = weightUnit
+        loaded = current
     }
 
     /// Rewrites the displayed weight into the newly chosen unit.
@@ -340,6 +370,7 @@ struct RecipeEditorView: View {
         // is nothing here worth keeping, and an untitled phantom recipe is
         // exactly the failure this fix exists to prevent.
         if isNew, trimmedName.isEmpty {
+            finished = true
             Self.discard(recipe, in: context, isNew: true)
             dismiss()
             return
@@ -366,10 +397,12 @@ struct RecipeEditorView: View {
         }
 
         try? context.save()
+        finished = true
         dismiss()
     }
 
     private func cancel() {
+        finished = true
         Self.discard(recipe, in: context, isNew: isNew)
         dismiss()
     }

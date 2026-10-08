@@ -18,6 +18,11 @@ struct CookView: View {
     @State private var browsingCatalogue = false
     @State private var pasting = false
     @State private var section: Section = .recipes
+    /// The recipe whose Delete was tapped, waiting on the alert. Delete used
+    /// to be instant, and it also empties every week the recipe was planned
+    /// into -- Train's Delete has always asked first, and so does Android's.
+    @State private var confirmingDelete: Recipe?
+    @Query private var plannedMeals: [PlannedMeal]
 
     /// Mirrors `CookPlanView`'s own `@AppStorage("cookPlanOwners")` --
     /// deleting a recipe here orphans its `PlannedMeal`s (see `delete(_:)`),
@@ -67,9 +72,6 @@ struct CookView: View {
                 case .road: RoadPicksView(clientID: $planClientID)
                 }
             }
-            // Applied once, by the parent every section shares -- see the
-            // note in TrainPlanView about nesting this inside itself.
-            .safeAreaPadding(.bottom, 72)
             .coachScreen()
             .background(Theme.background)
             // The tab row above already names this screen, and the browser build
@@ -78,11 +80,25 @@ struct CookView: View {
             .regularWidthTitle("Cook")
             .focusedSceneValue(\.coachNewItem, section == .recipes
                                ? CoachNewItem(title: "New Recipe", action: newRecipe) : nil)
-            .sheet(item: $editing) { RecipeEditorView(recipe: $0, isNew: editingIsNew) }
-            .sheet(isPresented: $importing) { RecipeImportView() }
-            .sheet(isPresented: $importingLink) { RecipeLinkImportView() }
-            .sheet(isPresented: $browsingCatalogue) { RecipeCatalogView() }
-            .sheet(isPresented: $pasting) { RecipePasteImportView() }
+            // `.liftAppearance()` on every sheet: a sheet is its own
+            // presentation and does not inherit the app's Light/Dark choice.
+            .sheet(item: $editing) { RecipeEditorView(recipe: $0, isNew: editingIsNew).liftAppearance() }
+            .sheet(isPresented: $importing) { RecipeImportView().liftAppearance() }
+            .sheet(isPresented: $importingLink) { RecipeLinkImportView().liftAppearance() }
+            .sheet(isPresented: $browsingCatalogue) { RecipeCatalogView().liftAppearance() }
+            .sheet(isPresented: $pasting) { RecipePasteImportView().liftAppearance() }
+            .alert(confirmingDelete.map { "Delete \($0.name)?" } ?? "",
+                   isPresented: Binding(get: { confirmingDelete != nil },
+                                        set: { if !$0 { confirmingDelete = nil } }),
+                   presenting: confirmingDelete) { recipe in
+                Button("Delete", role: .destructive) {
+                    delete(recipe)
+                    confirmingDelete = nil
+                }
+                Button("Keep", role: .cancel) { confirmingDelete = nil }
+            } message: { recipe in
+                Text(Self.deleteWarning(planned: plannedMeals.filter { $0.recipeID == recipe.id }.count))
+            }
         }
     }
 
@@ -118,7 +134,7 @@ struct CookView: View {
                                 Button("Edit") { editingIsNew = false; editing = recipe }
                                     .tint(Theme.accent)
                                 Spacer()
-                                Button("Delete", role: .destructive) { delete(recipe) }
+                                Button("Delete", role: .destructive) { confirmingDelete = recipe }
                             }
                         }
                         .fillsGridCell()
@@ -237,6 +253,16 @@ struct CookView: View {
         ownersData = Self.sweepOwners(ownersData, removing: orphans.map(\.id))
         context.delete(recipe)
         try? context.save()
+    }
+
+    /// What the delete alert says: how many planned meals go with the recipe.
+    /// Static and pure so `CookViewOwnershipTests` can pin it, as Train's
+    /// `ScheduledSession.deleteWarning` is pinned.
+    static func deleteWarning(planned: Int) -> String {
+        guard planned > 0 else { return "This cannot be undone." }
+        let meals = planned == 1 ? "1 planned meal" : "\(planned) planned meals"
+        return "This also removes \(meals) built from it. "
+             + "A week already sent to a client is unaffected — it left as a link."
     }
 
     /// Removes the given meal IDs' entries from a `cookPlanOwners`-shaped

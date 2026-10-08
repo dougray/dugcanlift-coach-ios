@@ -16,6 +16,19 @@ struct AccentTextButtonStyle: ButtonStyle {
         configuration.label
             .foregroundStyle(.tint)
             .opacity(configuration.isPressed ? 0.5 : 1)
+            // The label alone was the hit area: about 16pt tall for a caption
+            // "Remove", 13pt square for an xmark. HIG's 44pt minimum, without
+            // changing how the label looks.
+            .minimumHitTarget()
+    }
+}
+
+extension View {
+    /// At least 44x44pt to tap, drawn at the size it already is. For Menus and
+    /// other controls `AccentTextButtonStyle` does not reach.
+    func minimumHitTarget() -> some View {
+        frame(minWidth: 44, minHeight: 44)
+            .contentShape(Rectangle())
     }
 }
 

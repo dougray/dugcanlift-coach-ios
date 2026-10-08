@@ -50,6 +50,7 @@ struct TrainPlanView: View {
                                         context.delete(session)
                                     } label: {
                                         Image(systemName: "xmark.circle")
+                                            .font(.subheadline)
                                     }
                                     .accessibilityLabel("Remove \(name(of: session.routineID))")
                                     .tint(Theme.accent)
@@ -72,7 +73,9 @@ struct TrainPlanView: View {
                                         .foregroundStyle(Theme.textPrimary)
                                     Spacer()
                                     Button("Remove") { context.delete(session) }
+                                        .font(.subheadline)
                                         .tint(Theme.accent)
+                                        .accessibilityLabel("Remove \(name(of: session.routineID))")
                                 }
                                 .font(.caption)
                             }
@@ -116,10 +119,6 @@ struct TrainPlanView: View {
                 }
             }
         }
-        // The bottom inset for the floating tab bar is applied once, by the
-        // parent `TrainView` (which every section shares). Applying it here
-        // too nested the padding inside itself, so scrolling this section to
-        // the end landed on an empty 72pt-plus-72pt gap.
         .coachScreen()
         .task(id: rebuildKey) {
             shareLink = link()
@@ -177,6 +176,7 @@ struct TrainPlanView: View {
             }
         }
         .tint(Theme.accent)
+        .minimumHitTarget()
         .disabled(clientID.isEmpty)
     }
 
