@@ -107,14 +107,8 @@ struct RootView: View {
                     LiftTabButton(label: item.rawValue, isSelected: tab == item) {
                         withAnimation(.easeOut(duration: 0.18)) { tab = item }
                     }
-                    // Selection was colour and a 2pt rule only, so VoiceOver read
-                    // four plain buttons. Set here until LiftKit's LiftTabButton
-                    // carries the trait itself.
-                    .accessibilityAddTraits(tab == item ? [.isSelected] : [])
                 }
             }
-            .accessibilityElement(children: .contain)
-            .accessibilityAddTraits(.isTabBar)
 
             // Each case keeps its own NavigationStack so a push inside one tab
             // is not unwound by switching to another and back -- the behaviour
