@@ -43,7 +43,7 @@ struct RoadPicksView: View {
                         Text("Pick a client").tag("")
                         ForEach(clients) { Text($0.name).tag($0.id) }
                     }
-                    .tint(Theme.accent)
+                    .tint(Theme.accentText)
                     Text(note)
                         .font(.caption)
                         .foregroundStyle(Theme.textSecondary)
@@ -121,7 +121,7 @@ struct RoadPicksView: View {
                 }
                 if !ids.isEmpty {
                     Button("Clear these picks", role: .destructive) { confirmingClear = true }
-                        .tint(Theme.accent)
+                        .tint(Theme.accentText)
                 }
             }
         }
@@ -170,7 +170,7 @@ struct RoadPicksView: View {
                             Spacer(minLength: 0)
                         }
                         .font(.caption)
-                        .tint(Theme.accent)
+                        .tint(Theme.accentText)
                         .padding(.top, 8)
 
                         ForEach(place.items) { item in
@@ -183,7 +183,8 @@ struct RoadPicksView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(place.name)
                             .font(Theme.cardTitle)
-                            .foregroundStyle(Theme.accent)
+                            .foregroundStyle(Theme.accentText)
+                            .accessibilityAddTraits(.isHeader)
                         Text(picked > 0
                              ? "\(picked) of \(place.items.count) picked"
                              : "\(place.items.count) items")
@@ -196,7 +197,7 @@ struct RoadPicksView: View {
                         }
                     }
                 }
-                .tint(Theme.accent)
+                .tint(Theme.accentText)
             }
         }
     }

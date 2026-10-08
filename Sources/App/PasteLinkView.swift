@@ -43,11 +43,11 @@ struct PasteLinkView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Import") { importLink() }
                         .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                        .foregroundStyle(Theme.accent)
+                        .foregroundStyle(Theme.accentText)
                 }
             }
         }
-        .tint(Theme.accent)
+        .tint(Theme.accentText)
         .liftAppearance()
     }
 

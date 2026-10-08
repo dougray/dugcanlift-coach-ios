@@ -101,7 +101,7 @@ struct CookPlanView: View {
                     recordSend(mine: mineMeals, used: used)
                     sharing = true
                 }
-                .tint(Theme.accent)
+                .tint(Theme.accentText)
                 .sheet(isPresented: $sharing) {
                     PlanShareSheet(text: shareLink)
                         .liftAppearance()
@@ -135,7 +135,7 @@ struct CookPlanView: View {
                     }
                 }
                 .font(.subheadline)
-                .tint(Theme.accent)
+                .tint(Theme.accentText)
                 .minimumHitTarget()
                 .accessibilityLabel("Add \(slot.displayName.lowercased()) on \(day)")
                 .disabled(clientID.isEmpty || recipes.isEmpty)
@@ -153,7 +153,7 @@ struct CookPlanView: View {
                                 Button(CookFormat.servingsLabel(count)) { setServings(count, on: meal) }
                             }
                         }
-                        .tint(Theme.accent)
+                        .tint(Theme.accentText)
                         .minimumHitTarget()
                         .accessibilityLabel("Servings of \(meal.recipeName)")
                         .accessibilityValue(CookFormat.servingsLabel(meal.servings))
@@ -165,7 +165,7 @@ struct CookPlanView: View {
                                 .font(.subheadline)
                         }
                         .accessibilityLabel("Remove \(meal.recipeName)")
-                        .tint(Theme.accent)
+                        .tint(Theme.accentText)
                     }
                     .font(.caption)
                     .lineLimit(1)
@@ -187,7 +187,7 @@ struct CookPlanView: View {
                         Button(recipe.name) { book(recipe, on: day, slot: slot) }
                     }
                 }
-                .tint(Theme.accent)
+                .tint(Theme.accentText)
                 .minimumHitTarget()
                 .accessibilityLabel("Add \(slot.displayName.lowercased()) on \(day)")
                 .disabled(clientID.isEmpty || recipes.isEmpty)
@@ -206,13 +206,13 @@ struct CookPlanView: View {
                                 }
                             }
                             .font(.subheadline)
-                            .tint(Theme.accent)
+                            .tint(Theme.accentText)
                             .minimumHitTarget()
                             .accessibilityLabel("Servings of \(meal.recipeName)")
                             .accessibilityValue(CookFormat.servingsLabel(meal.servings))
                             Button("Remove") { remove(meal) }
                                 .font(.subheadline)
-                                .tint(Theme.accent)
+                                .tint(Theme.accentText)
                                 .accessibilityLabel("Remove \(meal.recipeName)")
                         }
                     }
