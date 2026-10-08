@@ -49,7 +49,7 @@ struct ConnectView: View {
                 ShareLink(item: inviteText) {
                     Label("Share Invite", systemImage: "square.and.arrow.up")
                 }
-                .tint(Theme.accent)
+                .tint(Theme.accentText)
             } header: {
                 Text("Invite a Client")
                     .foregroundStyle(Theme.textSecondary)
@@ -58,16 +58,16 @@ struct ConnectView: View {
 
             Section {
                 Button("Save Backup") { exportBackup() }
-                    .foregroundStyle(Theme.accent)
+                    .foregroundStyle(Theme.accentText)
                 Button("Restore from Backup") {
                     confirmingRestore = true
                 }
-                    .foregroundStyle(Theme.accent)
+                    .foregroundStyle(Theme.accentText)
                 Button("Import from the web app") {
                     importKind = .webLibrary
                     showingImporter = true
                 }
-                    .foregroundStyle(Theme.accent)
+                    .foregroundStyle(Theme.accentText)
                 if let importNote {
                     Text(importNote).foregroundStyle(Theme.textSecondary)
                 }

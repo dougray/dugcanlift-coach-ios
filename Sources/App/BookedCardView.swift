@@ -71,7 +71,8 @@ struct BookedSection: View {
                             ForEach(group.sends, id: \.id) { send in
                                 Text(send.head)
                                     .font(Theme.cardTitle)
-                                    .foregroundStyle(Theme.accent)
+                                    .foregroundStyle(Theme.accentText)
+                                    .accessibilityAddTraits(.isHeader)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .fixedSize(horizontal: false, vertical: true)
                                     .accessibilityLabel(send.spokenHead)
@@ -96,7 +97,8 @@ struct BookedSection: View {
                     LiftCard {
                         Text(lift.title)
                             .font(Theme.cardTitle)
-                            .foregroundStyle(Theme.accent)
+                            .foregroundStyle(Theme.accentText)
+                            .accessibilityAddTraits(.isHeader)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .accessibilityLabel(lift.spokenTitle)
                         VStack(alignment: .leading, spacing: 12) {
@@ -173,7 +175,7 @@ struct BookedSection: View {
                     .foregroundStyle(Theme.textPrimary)
                     .accessibilityLabel(day.spoken)
             }
-            .tint(Theme.accent)
+            .tint(Theme.accentText)
         }
     }
 

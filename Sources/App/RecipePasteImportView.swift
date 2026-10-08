@@ -84,10 +84,10 @@ struct RecipePasteImportView: View {
                 pasted = text
             }
             .labelStyle(.titleAndIcon)
-            .tint(Theme.accent)
+            .tint(Theme.accentText)
 
             Button("Read it") { read() }
-                .tint(Theme.accent)
+                .tint(Theme.accentText)
                 .disabled(pasted.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
             if !note.isEmpty {
@@ -157,7 +157,7 @@ struct RecipePasteImportView: View {
 
         Section {
             Button("Start over") { reset() }
-                .tint(Theme.accent)
+                .tint(Theme.accentText)
         }
     }
 

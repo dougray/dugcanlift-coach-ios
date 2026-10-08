@@ -53,7 +53,7 @@ struct TrainPlanView: View {
                                             .font(.subheadline)
                                     }
                                     .accessibilityLabel("Remove \(name(of: session.routineID))")
-                                    .tint(Theme.accent)
+                                    .tint(Theme.accentText)
                                 }
                                 .font(.caption)
                             }
@@ -74,7 +74,7 @@ struct TrainPlanView: View {
                                     Spacer()
                                     Button("Remove") { context.delete(session) }
                                         .font(.subheadline)
-                                        .tint(Theme.accent)
+                                        .tint(Theme.accentText)
                                         .accessibilityLabel("Remove \(name(of: session.routineID))")
                                 }
                                 .font(.caption)
@@ -112,7 +112,7 @@ struct TrainPlanView: View {
                     recordSend()
                     sharing = true
                 }
-                .tint(Theme.accent)
+                .tint(Theme.accentText)
                 .sheet(isPresented: $sharing) {
                     PlanShareSheet(text: shareLink)
                         .liftAppearance()
@@ -175,7 +175,7 @@ struct TrainPlanView: View {
                 Button(routine.name) { book(routine, on: day) }
             }
         }
-        .tint(Theme.accent)
+        .tint(Theme.accentText)
         .minimumHitTarget()
         .disabled(clientID.isEmpty)
     }

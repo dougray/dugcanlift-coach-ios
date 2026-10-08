@@ -60,7 +60,7 @@ struct ShoppingView: View {
                     ClientShoppingCheck.clear(clientID: clientID, in: checks, context: context)
                     try? context.save()
                 }
-                .tint(Theme.accent)
+                .tint(Theme.accentText)
             }
         }
         .coachScreen()
