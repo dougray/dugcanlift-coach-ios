@@ -14,6 +14,9 @@ struct ConnectView: View {
     @State private var exportDocument: BackupDocument?
     @State private var errorMessage: String?
     @State private var importNote: String?
+    /// Restore deletes every client on the device before it imports, so it
+    /// asks first, counted, as Remove client does.
+    @State private var confirmingRestore = false
 
     var body: some View {
         Form {
@@ -57,8 +60,7 @@ struct ConnectView: View {
                 Button("Save Backup") { exportBackup() }
                     .foregroundStyle(Theme.accent)
                 Button("Restore from Backup") {
-                    importKind = .backup
-                    showingImporter = true
+                    confirmingRestore = true
                 }
                     .foregroundStyle(Theme.accent)
                 Button("Import from the web app") {
@@ -97,6 +99,16 @@ struct ConnectView: View {
         // goes straight from its tabs into the content.
         .navigationBarTitleDisplayMode(.inline)
         .regularWidthTitle("Connect")
+        .alert("Replace your clients?", isPresented: $confirmingRestore) {
+            Button("Choose Backup", role: .destructive) {
+                importKind = .backup
+                showingImporter = true
+            }
+            Button("Save Backup First") { exportBackup() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(Self.restoreWarning(clients: (try? context.fetchCount(FetchDescriptor<Client>())) ?? 0))
+        }
         .fileExporter(isPresented: $showingExporter, document: exportDocument,
                       contentType: .json, defaultFilename: "coach-backup") { _ in }
         // One importer for both buttons, told apart by `importKind`. Two
@@ -144,9 +156,30 @@ struct ConnectView: View {
             defer { url.stopAccessingSecurityScopedResource() }
             let data = try Data(contentsOf: url)
             try BackupCodec.restore(from: data, into: context)
+            // Success used to be silent, and an earlier failure's message
+            // stayed on screen beneath a restore that had worked.
+            importNote = Self.restoredNote(clients: (try? context.fetchCount(FetchDescriptor<Client>())) ?? 0)
+            errorMessage = nil
         } catch {
             errorMessage = "That doesn't look like a valid backup file."
+            importNote = nil
         }
+    }
+
+    /// What the restore alert says. Clients are replaced; the recipe and
+    /// workout library merges by id (see `BackupCodec.restore`), so only the
+    /// roster is at stake. Static and pure so it can be tested.
+    static func restoreWarning(clients: Int) -> String {
+        let roster = clients == 0 ? "your roster"
+            : clients == 1 ? "your 1 client and their logs" : "your \(clients) clients and their logs"
+        return "Restoring replaces \(roster) with the backup's. This can't be undone, so save "
+             + "a backup of this device first if you might want it back. Recipes and workouts "
+             + "are merged: nothing in your library is deleted."
+    }
+
+    static func restoredNote(clients: Int) -> String {
+        "Restored \(clients) client\(clients == 1 ? "" : "s"). Recipes and workouts in the backup "
+            + "were added to your library."
     }
 
     private func importWebLibrary(_ result: Result<URL, Error>) {
