@@ -101,7 +101,7 @@ struct CookPlanView: View {
                     recordSend(mine: mineMeals, used: used)
                     sharing = true
                 }
-                .tint(Theme.accent)
+                .tint(Theme.accentText)
                 .sheet(isPresented: $sharing) {
                     PlanShareSheet(text: shareLink)
                         .liftAppearance()
@@ -134,8 +134,10 @@ struct CookPlanView: View {
                         Button(recipe.name) { book(recipe, on: day, slot: slot) }
                     }
                 }
-                .font(.caption)
-                .tint(Theme.accent)
+                .font(.subheadline)
+                .tint(Theme.accentText)
+                .minimumHitTarget()
+                .accessibilityLabel("Add \(slot.displayName.lowercased()) on \(day)")
                 .disabled(clientID.isEmpty || recipes.isEmpty)
             } else {
                 ForEach(booked) { meal in
@@ -143,21 +145,27 @@ struct CookPlanView: View {
                         .font(.caption)
                         .foregroundStyle(Theme.textPrimary)
                         .fixedSize(horizontal: false, vertical: true)
+                    // Servings and remove at either end of the line, each a
+                    // 44pt target, so changing servings never lands on remove.
                     HStack(spacing: 6) {
                         Menu(CookFormat.servingsLabel(meal.servings)) {
                             ForEach(Self.servingOptions, id: \.self) { count in
                                 Button(CookFormat.servingsLabel(count)) { setServings(count, on: meal) }
                             }
                         }
-                        .tint(Theme.accent)
+                        .tint(Theme.accentText)
+                        .minimumHitTarget()
+                        .accessibilityLabel("Servings of \(meal.recipeName)")
+                        .accessibilityValue(CookFormat.servingsLabel(meal.servings))
                         Spacer(minLength: 0)
                         Button {
                             remove(meal)
                         } label: {
                             Image(systemName: "xmark.circle")
+                                .font(.subheadline)
                         }
                         .accessibilityLabel("Remove \(meal.recipeName)")
-                        .tint(Theme.accent)
+                        .tint(Theme.accentText)
                     }
                     .font(.caption)
                     .lineLimit(1)
@@ -179,12 +187,16 @@ struct CookPlanView: View {
                         Button(recipe.name) { book(recipe, on: day, slot: slot) }
                     }
                 }
-                .tint(Theme.accent)
+                .tint(Theme.accentText)
+                .minimumHitTarget()
+                .accessibilityLabel("Add \(slot.displayName.lowercased()) on \(day)")
                 .disabled(clientID.isEmpty || recipes.isEmpty)
             } else {
                 VStack(alignment: .trailing, spacing: 2) {
                     ForEach(booked) { meal in
-                        HStack {
+                        // Larger type for the two controls, and room between
+                        // them: "Remove" sat a few points from the servings menu.
+                        HStack(spacing: 16) {
                             Text(meal.recipeName)
                                 .font(.caption)
                                 .foregroundStyle(Theme.textPrimary)
@@ -193,11 +205,15 @@ struct CookPlanView: View {
                                     Button(CookFormat.servingsLabel(count)) { setServings(count, on: meal) }
                                 }
                             }
-                            .font(.caption)
-                            .tint(Theme.accent)
+                            .font(.subheadline)
+                            .tint(Theme.accentText)
+                            .minimumHitTarget()
+                            .accessibilityLabel("Servings of \(meal.recipeName)")
+                            .accessibilityValue(CookFormat.servingsLabel(meal.servings))
                             Button("Remove") { remove(meal) }
-                                .font(.caption)
-                                .tint(Theme.accent)
+                                .font(.subheadline)
+                                .tint(Theme.accentText)
+                                .accessibilityLabel("Remove \(meal.recipeName)")
                         }
                     }
                 }

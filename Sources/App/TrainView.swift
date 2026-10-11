@@ -42,7 +42,7 @@ struct TrainView: View {
                 // narrower than any iPhone, so no change there.
                 .frame(maxWidth: AdaptiveLayout.readableWidth)
                 .padding()
-                .tint(Theme.accent)
+                .tint(Theme.accentText)
 
                 switch section {
                 case .workouts: library
@@ -50,10 +50,6 @@ struct TrainView: View {
                                           shareLink: $planShareLink)
                 }
             }
-            // The floating tab bar draws over scroll content. A List or Form
-            // reserves space for it automatically; a raw ScrollView does not,
-            // so the last card sits half-covered without this.
-            .safeAreaPadding(.bottom, 72)
             .coachScreen()
             .background(Theme.background)
             // The tab row above already names this screen, and the browser build
@@ -62,7 +58,7 @@ struct TrainView: View {
             .regularWidthTitle("Train")
             .focusedSceneValue(\.coachNewItem, section == .workouts
                                ? CoachNewItem(title: "New Workout", action: newWorkout) : nil)
-            .sheet(item: $editing) { WorkoutEditorView(routine: $0) }
+            .sheet(item: $editing) { WorkoutEditorView(routine: $0).liftAppearance() }
             .alert(confirmingDelete.map { "Delete \($0.name)?" } ?? "",
                    isPresented: Binding(get: { confirmingDelete != nil },
                                         set: { if !$0 { confirmingDelete = nil } }),
@@ -112,7 +108,7 @@ struct TrainView: View {
                             Spacer(minLength: 0)
                             HStack {
                                 Button("Edit") { editing = routine }
-                                    .tint(Theme.accent)
+                                    .tint(Theme.accentText)
                                 Spacer()
                                 // Confirms first, saying how many booked
                                 // days it empties, as Coach web and Android
@@ -139,7 +135,7 @@ struct TrainView: View {
     @ViewBuilder
     private var libraryActions: some View {
         Button("New workout", action: newWorkout)
-            .tint(Theme.accent)
+            .tint(Theme.accentText)
 
         // The only route to a "here is the programme, nothing
         // booked yet" send. `link()`/`fragment()` inline only
@@ -168,7 +164,7 @@ struct TrainView: View {
                     }
                 }
             }
-            .tint(Theme.accent)
+            .tint(Theme.accentText)
         }
     }
 
