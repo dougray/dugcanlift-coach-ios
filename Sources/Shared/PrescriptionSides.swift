@@ -105,6 +105,45 @@ struct PrescriptionSides: Equatable {
     /// a routine calls this (`ScheduledSession.deleteRoutineAndSessions`).
     /// A row left behind would be harmless, since ids are never reused, but it
     /// would ride in every backup for nothing.
+    /// Takes one exercise out of its workout. Its sets go with it by cascade;
+    /// its side rows hold ids, not relationships, so they are swept here, as
+    /// `deleteAll` sweeps a whole routine's. What is left is renumbered so the
+    /// order stays 0, 1, 2 with no gap. The editor had no way to undo a wrong
+    /// pick from "Add an exercise" short of rebuilding the workout.
+    static func removeExercise(_ exercise: RoutineExercise, in context: ModelContext) {
+        let setIDs = Set(exercise.orderedSets.map(\.id))
+        let exerciseID = exercise.id
+        for row in (try? context.fetch(FetchDescriptor<EachSideExercise>())) ?? []
+        where row.exerciseID == exerciseID {
+            context.delete(row)
+        }
+        for row in (try? context.fetch(FetchDescriptor<PrescribedSetSide>())) ?? []
+        where setIDs.contains(row.setID) {
+            context.delete(row)
+        }
+        let routine = exercise.routine
+        routine?.exercises?.removeAll { $0.id == exerciseID }
+        context.delete(exercise)
+        for (index, remaining) in (routine?.orderedExercises ?? []).enumerated() {
+            remaining.orderIndex = index
+        }
+    }
+
+    /// Takes one set out of its exercise, with its side row, and renumbers the rest.
+    static func removeSet(_ set: RoutinePrescribedSet, in context: ModelContext) {
+        let setID = set.id
+        for row in (try? context.fetch(FetchDescriptor<PrescribedSetSide>(
+            predicate: #Predicate { $0.setID == setID }))) ?? [] {
+            context.delete(row)
+        }
+        let exercise = set.exercise
+        exercise?.prescribedSets?.removeAll { $0.id == setID }
+        context.delete(set)
+        for (index, remaining) in (exercise?.orderedSets ?? []).enumerated() {
+            remaining.orderIndex = index
+        }
+    }
+
     static func deleteAll(for routine: Routine, in context: ModelContext) {
         let exerciseIDs = Set(routine.orderedExercises.map(\.id))
         let setIDs = Set(routine.orderedExercises.flatMap(\.orderedSets).map(\.id))

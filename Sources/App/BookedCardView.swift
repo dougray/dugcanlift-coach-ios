@@ -71,7 +71,8 @@ struct BookedSection: View {
                             ForEach(group.sends, id: \.id) { send in
                                 Text(send.head)
                                     .font(Theme.cardTitle)
-                                    .foregroundStyle(Theme.accent)
+                                    .foregroundStyle(Theme.accentText)
+                                    .accessibilityAddTraits(.isHeader)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .fixedSize(horizontal: false, vertical: true)
                                     .accessibilityLabel(send.spokenHead)
@@ -96,14 +97,15 @@ struct BookedSection: View {
                     LiftCard {
                         Text(lift.title)
                             .font(Theme.cardTitle)
-                            .foregroundStyle(Theme.accent)
+                            .foregroundStyle(Theme.accentText)
+                            .accessibilityAddTraits(.isHeader)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .accessibilityLabel(lift.spokenTitle)
                         VStack(alignment: .leading, spacing: 12) {
                             ForEach(lift.entries, id: \.key) { entry in
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(entry.when)
-                                        .font(.system(size: 15, weight: .semibold))
+                                        .font(.subheadline.weight(.semibold))
                                         .foregroundStyle(Theme.textPrimary)
                                     // A day with nothing logged against this
                                     // lift says so in the rule's own words.
@@ -155,7 +157,7 @@ struct BookedSection: View {
                     if !day.alsoLogged.isEmpty {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Also logged")
-                                .font(.system(size: 15, weight: .semibold))
+                                .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(Theme.textPrimary)
                             ForEach(day.alsoLogged, id: \.key) { row in
                                 line(row.text).accessibilityLabel(row.spoken)
@@ -173,7 +175,7 @@ struct BookedSection: View {
                     .foregroundStyle(Theme.textPrimary)
                     .accessibilityLabel(day.spoken)
             }
-            .tint(Theme.accent)
+            .tint(Theme.accentText)
         }
     }
 
@@ -190,7 +192,7 @@ struct BookedSection: View {
         if !day.meals.isEmpty {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Meals")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Theme.textPrimary)
                 if let context = day.foodContext {
                     line(context, muted: true)
@@ -234,7 +236,7 @@ struct BookedSection: View {
         VStack(alignment: .leading, spacing: 4) {
             if sayTitle {
                 Text(row.title)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Theme.textPrimary)
             }
             if let side = row.sideLine { line(side, muted: true) }

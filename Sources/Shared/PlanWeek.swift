@@ -38,7 +38,7 @@ struct WeekHeader: View {
             } label: {
                 Image(systemName: "chevron.left")
             }
-            .tint(Theme.accent)
+            .tint(Theme.accentText)
 
             Spacer()
             Text(PlanWeek(startDayKey: startDayKey).label)
@@ -51,7 +51,7 @@ struct WeekHeader: View {
             } label: {
                 Image(systemName: "chevron.right")
             }
-            .tint(Theme.accent)
+            .tint(Theme.accentText)
         }
     }
 }

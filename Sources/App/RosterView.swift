@@ -32,7 +32,7 @@ struct RosterView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             Button("Paste a Link") { showingPasteLink = true }
-                .foregroundStyle(Theme.accent)
+                .foregroundStyle(Theme.accentText)
         }
         .sheet(isPresented: $showingPasteLink) {
             PasteLinkView()
@@ -57,7 +57,7 @@ struct RosterView: View {
                 systemImage: "person.2",
                 description: Text("Paste a log link from a client to get started.")
             )
-            .tint(Theme.accent)
+            .tint(Theme.accentText)
             .foregroundStyle(Theme.textPrimary)
             .listRowBackground(Theme.background)
         } else if !clients.isEmpty {
@@ -65,7 +65,7 @@ struct RosterView: View {
                 Section {
                     Text("\(silentClients.count) client\(silentClients.count == 1 ? "" : "s") logged nothing in a week: \(silentClients.map(\.name).joined(separator: ", "))")
                         .font(.caption)
-                        .foregroundStyle(Theme.accent)
+                        .foregroundStyle(Theme.accentText)
                 }
                 .listRowBackground(Theme.background)
             }
@@ -123,7 +123,7 @@ struct RosterView: View {
                 .font(.caption)
                 .foregroundStyle(
                     (client.daysSinceLastLoggedDay ?? Int.max) >= 7
-                        ? Theme.accent : Theme.textSecondary
+                        ? Theme.accentText : Theme.textSecondary
                 )
         }
     }

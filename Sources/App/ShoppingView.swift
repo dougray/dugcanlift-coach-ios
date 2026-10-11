@@ -60,7 +60,7 @@ struct ShoppingView: View {
                     ClientShoppingCheck.clear(clientID: clientID, in: checks, context: context)
                     try? context.save()
                 }
-                .tint(Theme.accent)
+                .tint(Theme.accentText)
             }
         }
         .coachScreen()
@@ -76,6 +76,7 @@ struct ShoppingView: View {
             HStack(alignment: .top) {
                 Image(systemName: isChecked ? "checkmark.circle.fill" : "circle")
                     .foregroundStyle(Theme.accent)
+                    .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(line.displayName)
                         .foregroundStyle(Theme.textPrimary)
@@ -100,6 +101,11 @@ struct ShoppingView: View {
             .liftCardBackground()
         }
         .buttonStyle(.plain)
+        // Road Picks' pattern: the tick is spoken, not just drawn. The
+        // strikethrough and the filled circle were visual only.
+        .accessibilityElement(children: .combine)
+        .accessibilityValue(isChecked ? "Ticked" : "Not ticked")
+        .accessibilityHint(isChecked ? "Untick" : "Tick off")
     }
 
     private var owners: [String: String] {

@@ -50,9 +50,10 @@ struct TrainPlanView: View {
                                         context.delete(session)
                                     } label: {
                                         Image(systemName: "xmark.circle")
+                                            .font(.subheadline)
                                     }
                                     .accessibilityLabel("Remove \(name(of: session.routineID))")
-                                    .tint(Theme.accent)
+                                    .tint(Theme.accentText)
                                 }
                                 .font(.caption)
                             }
@@ -72,7 +73,9 @@ struct TrainPlanView: View {
                                         .foregroundStyle(Theme.textPrimary)
                                     Spacer()
                                     Button("Remove") { context.delete(session) }
-                                        .tint(Theme.accent)
+                                        .font(.subheadline)
+                                        .tint(Theme.accentText)
+                                        .accessibilityLabel("Remove \(name(of: session.routineID))")
                                 }
                                 .font(.caption)
                             }
@@ -109,17 +112,13 @@ struct TrainPlanView: View {
                     recordSend()
                     sharing = true
                 }
-                .tint(Theme.accent)
+                .tint(Theme.accentText)
                 .sheet(isPresented: $sharing) {
                     PlanShareSheet(text: shareLink)
                         .liftAppearance()
                 }
             }
         }
-        // The bottom inset for the floating tab bar is applied once, by the
-        // parent `TrainView` (which every section shares). Applying it here
-        // too nested the padding inside itself, so scrolling this section to
-        // the end landed on an empty 72pt-plus-72pt gap.
         .coachScreen()
         .task(id: rebuildKey) {
             shareLink = link()
@@ -176,7 +175,8 @@ struct TrainPlanView: View {
                 Button(routine.name) { book(routine, on: day) }
             }
         }
-        .tint(Theme.accent)
+        .tint(Theme.accentText)
+        .minimumHitTarget()
         .disabled(clientID.isEmpty)
     }
 
