@@ -301,9 +301,9 @@ Only **trailing** nulls are trimmed from a set tuple. A conditioning piece is
 `[null, null, null, 600, 1600]`, and trimming leading nulls would slide
 distance into the weight slot.
 
-Train's screens use a raw `ScrollView` and so must inset themselves for the
-floating tab bar. `List` and `Form` reserve that space automatically, which
-is why `RosterView` and `ConnectView` do not need it.
+Coach has no floating bottom tab bar (the sections are a top row, or the
+iPad sidebar), so Train's screens, built on `AdaptiveScrollPage`, apply no
+bottom inset of their own.
 
 ## Cook
 

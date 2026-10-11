@@ -42,6 +42,7 @@ struct FromSafariView: View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text("\(number).")
                 .font(Theme.body.weight(.semibold))
+                .monospacedDigit()
                 .foregroundStyle(Theme.accentText)
             Text(text)
                 .font(Theme.body)
