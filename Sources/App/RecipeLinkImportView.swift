@@ -131,7 +131,7 @@ struct RecipeLinkImportView: View {
                 // Safari can hand over any scheme; only a web address is
                 // offered as a link, and anything else is shown as text.
                 if ["http", "https"].contains(url.scheme?.lowercased()) {
-                    Link(url.absoluteString, destination: url).font(.caption).tint(Theme.accent)
+                    Link(url.absoluteString, destination: url).font(.caption).tint(Theme.accentText)
                 } else {
                     Text(url.absoluteString).font(.caption).foregroundStyle(Theme.textSecondary)
                 }

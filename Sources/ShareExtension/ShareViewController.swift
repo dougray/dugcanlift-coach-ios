@@ -172,7 +172,7 @@ struct ShareConfirmView: View {
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Add") { model.addRecipe(item) }
                             .fontWeight(.semibold)
-                            .foregroundStyle(Theme.accent)
+                            .foregroundStyle(Theme.accentText)
                     }
                 }
                 if case .ready(_, let fragment) = model.state {
