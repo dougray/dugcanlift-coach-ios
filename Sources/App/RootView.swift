@@ -21,6 +21,10 @@ import LiftCore
 /// device: an iPad in a narrow Split View window is compact and gets exactly
 /// the iPhone shell.
 struct RootView: View {
+    /// The wordmark's 28pt, scaled with Dynamic Type so it stays above the
+    /// text it heads at large sizes.
+    @ScaledMetric(relativeTo: .title) private var wordmarkSize: CGFloat = 28
+
 
     enum Tab: String, CaseIterable, Identifiable {
         case roster = "Roster"
@@ -57,7 +61,7 @@ struct RootView: View {
     var body: some View {
         shell
         .background(Theme.background)
-        .tint(Theme.accent)
+        .tint(Theme.accentText)
         .liftAppearance()
         .focusedSceneValue(\.coachNavigation, CoachNavigation(
             select: { item in withAnimation(.easeOut(duration: 0.18)) { tab = item } },
@@ -189,7 +193,7 @@ struct RootView: View {
             Section {
                 ForEach(Tab.allCases) { item in
                     Label(item.rawValue, systemImage: item.systemImage)
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(.headline)
                         .foregroundStyle(tab == item ? Theme.onAccent : Theme.textPrimary)
                         .tag(item)
                         .listRowBackground(
@@ -268,11 +272,11 @@ struct RootView: View {
     private var header: some View {
         HStack(spacing: 6) {
             Text("LIFT")
-                .font(.system(size: 28, weight: .bold))
+                .font(.system(size: wordmarkSize, weight: .bold))
                 .tracking(-0.5)
                 .foregroundStyle(Theme.accent)
             Text("Coach")
-                .font(.system(size: 28, weight: .regular))
+                .font(.system(size: wordmarkSize, weight: .regular))
                 .tracking(-0.5)
                 .foregroundStyle(Theme.textSecondary)
             Spacer()
