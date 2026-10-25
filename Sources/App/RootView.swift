@@ -86,8 +86,10 @@ struct RootView: View {
                 let queued = inbox.takeAll()
                 if !queued.isEmpty { report(importing: queued) }
             }
-            if let drained = PendingRecipeImports.shared {
-                recipes.enqueue(drained.takeAll())
+            // Read, not emptied: a recipe's file goes only when its review
+            // finishes, so iOS ending Coach mid-review loses nothing.
+            if let inbox = PendingRecipeImports.shared {
+                recipes.enqueue(inbox.forReview())
             }
             presentNextRecipe()
         }
@@ -104,8 +106,8 @@ struct RootView: View {
                onDismiss: afterRecipeReview) { queued in
             RecipeLinkImportView(item: queued.item)
                 .onAppear { recipes.markAppeared() }
-                // Cancel and Save only: a swipe that ended the review would
-                // drop a recipe that is already gone from the App Group.
+                // Cancel and Save only: a close is what deletes the recipe
+                // from the App Group, so a swipe must not be one.
                 .interactiveDismissDisabled()
                 .liftAppearance()
         }
@@ -217,12 +219,16 @@ struct RootView: View {
 
     /// Opens the next waiting recipe, unless something is already on screen.
     private func presentNextRecipe() {
-        _ = recipes.next(canPresent: intakeReport == nil && !pastingFromCommand)
+        if let opened = recipes.next(canPresent: intakeReport == nil && !pastingFromCommand) {
+            PendingRecipeImports.shared?.markOpened(opened.item)
+        }
     }
 
-    /// A review ended: end it (idempotently), then `advance()`.
+    /// A review ended: end it (idempotently), delete what finished from the
+    /// App Group, then `advance()`.
     private func afterRecipeReview() {
         recipes.dismissed()
+        for item in recipes.takeFinished() { PendingRecipeImports.shared?.remove(item) }
         advance()
     }
 
