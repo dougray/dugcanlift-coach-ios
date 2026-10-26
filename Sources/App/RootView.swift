@@ -50,8 +50,9 @@ struct RootView: View {
     /// `dugcanliftcoach://` URL or the share extension's queue. Paste a Link
     /// reports in its own sheet instead.
     @State private var intakeReport: IntakeReport?
-    /// Recipes Safari handed over, and the rules for when each may open.
-    @State private var recipes = RecipeReviewQueue<IntakeReport>()
+    /// Recipes Safari handed over, the rules for when each may open, and the
+    /// App Group files kept in step with them (`RecipeIntake`).
+    @State private var recipes = RecipeIntake<IntakeReport>(inbox: PendingRecipeImports.shared)
     @Environment(\.horizontalSizeClass) private var sizeClass
     /// Paste a Link, when it is asked for from the keyboard rather than from
     /// the Roster's own button.
@@ -81,15 +82,13 @@ struct RootView: View {
         // Links first, then recipes, the order the extension decides in.
         .onChange(of: scenePhase, initial: true) { _, phase in
             guard phase == .active else { return }
+            // Reads the recipe files without emptying them: one goes only
+            // when its review finishes, so iOS ending Coach mid-review loses
+            // nothing.
             recipes.activated()
             if let inbox = PendingShareLinks.shared {
                 let queued = inbox.takeAll()
                 if !queued.isEmpty { report(importing: queued) }
-            }
-            // Read, not emptied: a recipe's file goes only when its review
-            // finishes, so iOS ending Coach mid-review loses nothing.
-            if let inbox = PendingRecipeImports.shared {
-                recipes.enqueue(inbox.forReview())
             }
             presentNextRecipe()
         }
@@ -102,10 +101,10 @@ struct RootView: View {
             if !showing { presentNextRecipe() }
         }
         .sheet(item: Binding(get: { recipes.reviewing },
-                             set: { if $0 == nil { recipes.dismissed() } }),
+                             set: { if $0 == nil { recipes.closing() } }),
                onDismiss: afterRecipeReview) { queued in
             RecipeLinkImportView(item: queued.item)
-                .onAppear { recipes.markAppeared() }
+                .onAppear { recipes.appeared() }
                 // Cancel and Save only: a close is what deletes the recipe
                 // from the App Group, so a swipe must not be one.
                 .interactiveDismissDisabled()
@@ -219,16 +218,12 @@ struct RootView: View {
 
     /// Opens the next waiting recipe, unless something is already on screen.
     private func presentNextRecipe() {
-        if let opened = recipes.next(canPresent: intakeReport == nil && !pastingFromCommand) {
-            PendingRecipeImports.shared?.markOpened(opened.item)
-        }
+        _ = recipes.next(canPresent: intakeReport == nil && !pastingFromCommand)
     }
 
-    /// A review ended: end it (idempotently), delete what finished from the
-    /// App Group, then `advance()`.
+    /// A review's sheet has gone: the next may open (`advance()`).
     private func afterRecipeReview() {
-        recipes.dismissed()
-        for item in recipes.takeFinished() { PendingRecipeImports.shared?.remove(item) }
+        recipes.closed()
         advance()
     }
 
