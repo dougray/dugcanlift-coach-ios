@@ -90,9 +90,9 @@ targets:
         # Xcode generates the Info.plist, and this target supplies its own.
         UILaunchScreen: {}
         CFBundleDisplayName: Coach
-        # Coach uses only the encryption built into iOS (HTTPS for Cook's two
-        # imports). Declaring it here answers App Store Connect's export
-        # compliance question once, instead of on every upload.
+        # Coach makes no requests and uses no encryption beyond what iOS
+        # itself provides. Declaring it here answers App Store Connect's
+        # export compliance question once, instead of on every upload.
         ITSAppUsesNonExemptEncryption: false
         # All four on iPad, which Split View and Stage Manager require. iPhone
         # has no key, as before, so its orientations are unchanged.
@@ -125,6 +125,8 @@ targets:
       # Only what the extension needs from Shared: no SwiftData, no views.
       - path: Sources/Shared/ShareLinkExtractor.swift
       - path: Sources/Shared/PendingShareLinks.swift
+      - path: Sources/Shared/PendingRecipeImports.swift
+      - path: Sources/Shared/RecipePageShare.swift
     dependencies:
       # LiftCore only. LiftReference's GRDB and 2.3 MB of databases have no
       # business in a share sheet with a tight memory limit.
@@ -148,12 +150,16 @@ targets:
           NSExtensionPointIdentifier: com.apple.share-services
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
           NSExtensionAttributes:
+            # Safari runs RecipePage.js on a shared page and hands over its
+            # JSON-LD, so a recipe arrives without Coach requesting anything.
+            NSExtensionJavaScriptPreprocessingFile: RecipePage
             # A web URL (Safari, Messages' link previews) or text (Notes, Mail,
             # a message body) -- a link can arrive as either. Text means Coach
             # is offered for any text; the extension says plainly when it
             # isn't a LIFT link.
             NSExtensionActivationRule:
               NSExtensionActivationSupportsWebURLWithMaxCount: 1
+              NSExtensionActivationSupportsWebPageWithMaxCount: 1
               NSExtensionActivationSupportsText: true
 
   # --------------------------------------------------------------- tests
