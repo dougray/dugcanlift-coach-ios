@@ -13,7 +13,7 @@ struct CookView: View {
     /// phantom row; `editing` alone (an `Identifiable` item) has no room for
     /// that second fact without changing its type.
     @State private var editingIsNew = false
-    @State private var importingLink = false
+    @State private var showingFromSafari = false
     @State private var browsingCatalogue = false
     @State private var pasting = false
     @State private var section: Section = .recipes
@@ -82,9 +82,9 @@ struct CookView: View {
             // `.liftAppearance()` on every sheet: a sheet is its own
             // presentation and does not inherit the app's Light/Dark choice.
             .sheet(item: $editing) { RecipeEditorView(recipe: $0, isNew: editingIsNew).liftAppearance() }
-            .sheet(isPresented: $importingLink) { RecipeLinkImportView().liftAppearance() }
             .sheet(isPresented: $browsingCatalogue) { RecipeCatalogView().liftAppearance() }
             .sheet(isPresented: $pasting) { RecipePasteImportView().liftAppearance() }
+            .sheet(isPresented: $showingFromSafari) { FromSafariView().liftAppearance() }
             .alert(confirmingDelete.map { "Delete \($0.name)?" } ?? "",
                    isPresented: Binding(get: { confirmingDelete != nil },
                                         set: { if !$0 { confirmingDelete = nil } }),
@@ -177,11 +177,10 @@ struct CookView: View {
         Menu("Import") {
             // First: it needs no connection and no typing.
             Button("From the catalogue") { browsingCatalogue = true }
-            // The pair for a recipe found elsewhere. A link is
-            // better whenever the page has a recipe card, so it
-            // leads; pasting the text is what is left when it
-            // does not -- a caption, an email, a photo retyped.
-            Button("From a link") { importingLink = true }
+            // A recipe found on the web arrives from Safari's share sheet;
+            // this says how. Pasting the text is what is left when a page has
+            // no recipe card -- a caption, an email, a photo retyped.
+            Button("From Safari") { showingFromSafari = true }
             Button("Paste the text") { pasting = true }
         }
         .tint(Theme.accentText)

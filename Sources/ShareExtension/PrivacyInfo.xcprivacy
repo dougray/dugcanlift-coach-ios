@@ -5,7 +5,11 @@
 	<!-- The share extension's own manifest: an extension is its own bundle,
 	     and the app's manifest does not cover it. It reads the link the coach
 	     shared, decodes it on the device, and writes the link's fragment to
-	     Coach's App Group for the app to import. No network, no tracking. -->
+	     Coach's App Group for the app to import. Shared from a page in
+	     Safari, it also reads the JSON-LD Safari passes it (RecipePage.js
+	     runs on the page already on screen) and writes that text as a file
+	     into Coach's App Group container for the app to review. Still no
+	     network, no tracking. -->
 	<key>NSPrivacyTracking</key>
 	<false/>
 	<key>NSPrivacyTrackingDomains</key>
