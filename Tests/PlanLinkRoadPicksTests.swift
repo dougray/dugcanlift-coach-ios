@@ -24,7 +24,7 @@ final class PlanLinkRoadPicksTests: XCTestCase {
     }
 
     /// The fixture's JSON as a dictionary: `rf` is not a field on `LiftCore`'s
-    /// `PlanPayload` (see `PlanLinkEncoder.PayloadWithRoadPicks` for why), so
+    /// `PlanPayload` (see `PlanLinkEncoder.PayloadWithAppKeys` for why), so
     /// the raw object is where a test reads it.
     private func fixtureJSON() throws -> [String: Any] {
         let link = try fixture()
