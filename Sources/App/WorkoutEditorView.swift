@@ -20,23 +20,34 @@ struct WorkoutEditorView: View {
     /// a side the control stays because of that, and an untouched tap is
     /// nothing -- Coach web's `sidesAsked`.
     @State private var sidesAsked: Set<UUID> = []
+    @Query private var groupRows: [ExerciseGroup]
+    @Query private var kindRows: [PrescribedSetKind]
+    /// Exercises whose coach tapped "Drop / rest-pause". Not stored, for the
+    /// reason `sidesAsked` is not -- Coach web's `kindsAsked`.
+    @State private var kindsAsked: Set<UUID> = []
     @State private var width: CGFloat = 0
 
     var body: some View {
         let sides = PrescriptionSides(eachSideRows: eachSideRows, sideRows: sideRows)
-        let inline = AdaptiveLayout.showsSideControlInline(width: width)
+        let types = PrescriptionTypes(groupRows: groupRows, kindRows: kindRows)
+        let exercises = routine.orderedExercises
+        // "Superset A · A1" over a grouped exercise; nothing over any other.
+        let labels = types.labels(exercises)
         return NavigationStack {
             List {
                 Section {
                     TextField("Name", text: $routine.name)
                 }
 
-                ForEach(routine.orderedExercises) { exercise in
+                ForEach(Array(exercises.enumerated()), id: \.element.id) { index, exercise in
                     let showsSides = sides.showsSides(exercise) || sidesAsked.contains(exercise.id)
+                    let showsKinds = types.showsKinds(exercise) || kindsAsked.contains(exercise.id)
+                    let kinds = types.kinds(of: exercise)
+                    let sets = exercise.orderedSets
                     Section {
                         // What the exercise asks for, in words: "3 × 30 lb × 8
-                        // each side + 1 L".
-                        Text(PrescriptionText.summary(exercise, sides: sides))
+                        // each side + 1 L", "70 lb × 12, 50 lb × 10 drop".
+                        Text(PrescriptionText.summary(exercise, sides: sides, types: types))
                             .font(.caption)
                             .foregroundStyle(Theme.textSecondary)
                         // Every set on both sides: "3 × 8 each side" stays
@@ -46,11 +57,35 @@ struct WorkoutEditorView: View {
                             get: { sides.isEachSide(exercise) },
                             set: { setEachSide($0, for: exercise) }))
                             .tint(Theme.accent)
-                        ForEach(exercise.orderedSets) { set in
+                        // Beside each side, on every exercise but the last,
+                        // which has no next to join. Joining onto a superset
+                        // makes a circuit; turning it off splits the group
+                        // here. The rules are `ExerciseGrouping`'s.
+                        if index + 1 < exercises.count {
+                            Toggle("Superset with next", isOn: Binding(
+                                get: { types.groupedWithNext(exercises, at: index) },
+                                set: { PrescriptionTypes.setGroupedWithNext(
+                                    $0, at: index, in: routine, context: context) }))
+                                .tint(Theme.accent)
+                                .accessibilityHint(types.groupedWithNext(exercises, at: index)
+                                    ? "Done round by round with the next exercise, then the rest"
+                                    : "Do this and the next exercise back to back, then rest")
+                        }
+                        ForEach(Array(sets.enumerated()), id: \.element.id) { setIndex, set in
+                            // The first set has no kind control: there is no
+                            // set before it to drop from or pause after.
+                            let showsKind = showsKinds && setIndex > 0
+                            let controls = (showsSides ? 1 : 0) + (showsKind ? 1 : 0)
                             PrescribedSetRow(set: set, side: sides.side(of: set),
-                                             showsSide: showsSides, inline: inline) { side in
+                                             showsSide: showsSides,
+                                             kind: kinds[setIndex], showsKind: showsKind,
+                                             inline: AdaptiveLayout.showsSetControlsInline(
+                                                width: width, controls: controls),
+                                             setSide: { side in
                                 PrescriptionSides.setSide(side, for: set.id, in: context)
-                            }
+                            }, setKind: { kind in
+                                PrescriptionTypes.setKind(kind, for: set.id, in: context)
+                            })
                         }
                         // Swipe a set away. Read from the same ordered list
                         // the rows were drawn from, so an offset is the set
@@ -76,6 +111,13 @@ struct WorkoutEditorView: View {
                                 Button("Set a side") { sidesAsked.insert(exercise.id) }
                                     .accessibilityHint("Mark a set as left or right only")
                             }
+                            // Only from a second set: the first can never be
+                            // a drop or rest-pause. Out of sight until asked
+                            // for, so a straight-sets editor is unchanged.
+                            if !showsKinds && sets.count > 1 {
+                                Button("Drop / rest-pause") { kindsAsked.insert(exercise.id) }
+                                    .accessibilityHint("Mark a set as a drop set or rest-pause")
+                            }
                         }
                         .buttonStyle(.borderless)
                         .tint(Theme.accentText)
@@ -86,7 +128,13 @@ struct WorkoutEditorView: View {
                         }
                         .buttonStyle(.borderless)
                     } header: {
-                        Text(exercise.displayName)
+                        VStack(alignment: .leading, spacing: 2) {
+                            if let label = labels[index] {
+                                Text(label.text)
+                                    .foregroundStyle(Theme.accentText)
+                            }
+                            Text(exercise.displayName)
+                        }
                     }
                 }
 
@@ -162,36 +210,58 @@ struct PrescribedSetRow: View {
     /// is not each side and has no sided set, so a bench press row is the
     /// three number fields it always was.
     var showsSide = false
+    /// This set's kind; nil is straight.
+    var kind: SetKind?
+    /// Whether the Straight / Drop / Rest-pause control shows. Never on an
+    /// exercise's first set, and off until a set has a kind or the coach asks.
+    var showsKind = false
     /// Beside the numbers when there is room, under them when there is not.
     var inline = false
     var setSide: (SetSide?) -> Void = { _ in }
+    var setKind: (SetKind?) -> Void = { _ in }
 
     /// The weight as it was when this row appeared. An edit that returns the
     /// text to what was shown restores this exact value, not a reconversion.
     @State private var loadedWeightKg: Double?
 
     init(set: RoutinePrescribedSet, side: SetSide? = nil, showsSide: Bool = false,
-         inline: Bool = false, setSide: @escaping (SetSide?) -> Void = { _ in }) {
+         kind: SetKind? = nil, showsKind: Bool = false,
+         inline: Bool = false, setSide: @escaping (SetSide?) -> Void = { _ in },
+         setKind: @escaping (SetKind?) -> Void = { _ in }) {
         self.set = set
         self.side = side
         self.showsSide = showsSide
+        self.kind = kind
+        self.showsKind = showsKind
         self.inline = inline
         self.setSide = setSide
+        self.setKind = setKind
         _loadedWeightKg = State(initialValue: set.targetWeightKg)
     }
 
     var body: some View {
-        if showsSide && !inline {
+        let controls = showsSide || showsKind
+        if controls && !inline {
             VStack(alignment: .leading, spacing: 8) {
                 numbers
-                sidePicker
+                // Side by side under the numbers when the pair fits the row,
+                // one above the other when it does not.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 12) { pickers }
+                    VStack(alignment: .leading, spacing: 8) { pickers }
+                }
             }
         } else {
             HStack {
                 numbers
-                if showsSide { sidePicker }
+                pickers
             }
         }
+    }
+
+    @ViewBuilder private var pickers: some View {
+        if showsSide { sidePicker }
+        if showsKind { kindPicker }
     }
 
     private var numbers: some View {
@@ -232,6 +302,21 @@ struct PrescribedSetRow: View {
         .pickerStyle(.segmented)
         .labelsHidden()
         .frame(maxWidth: 180)
+        .tint(Theme.accentText)
+    }
+
+    /// Straight / Drop / Rest-pause: how this set follows the one before it.
+    private var kindPicker: some View {
+        Picker("Type", selection: Binding(get: { kind }, set: { setKind($0) })) {
+            Text("Straight").tag(SetKind?.none).accessibilityLabel("Straight set")
+            Text(SetKind.drop.displayName).tag(SetKind?.some(.drop))
+                .accessibilityLabel("Drop set: no rest before it")
+            Text(SetKind.restPause.displayName).tag(SetKind?.some(.restPause))
+                .accessibilityLabel("Rest-pause: a short pause before it")
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .frame(maxWidth: 280)
         .tint(Theme.accentText)
     }
 }
