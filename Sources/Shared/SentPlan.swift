@@ -300,12 +300,13 @@ extension PlanLinkEncoder {
     @discardableResult
     static func recordSend(routines: [Routine] = [], sessions: [ScheduledSession] = [],
                            recipes: [Recipe] = [], meals: [PlannedMeal] = [],
-                           sides: PrescriptionSides? = nil, roadPicks: [String] = [],
+                           sides: PrescriptionSides? = nil, types: PrescriptionTypes? = nil,
+                           roadPicks: [String] = [],
                            lifterID: String, coachName: String,
                            in context: ModelContext, now: Date = .now) -> SentPlan? {
         guard !lifterID.isEmpty,
               let payload = json(routines: routines, sessions: sessions, recipes: recipes,
-                                 meals: meals, sides: sides, roadPicks: roadPicks,
+                                 meals: meals, sides: sides, types: types, roadPicks: roadPicks,
                                  lifterID: lifterID, coachName: coachName),
               let decoded = try? JSONDecoder().decode(PlanPayload.self, from: payload),
               decoded.k?.isEmpty == false || decoded.m?.isEmpty == false

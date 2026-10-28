@@ -45,6 +45,12 @@ enum AdaptiveLayout {
     /// fourth control would squeeze three number fields to nothing. Wider
     /// than every iPhone in portrait.
     static let sideControlInlineMinWidth: CGFloat = 560
+    /// With both a set's side and its kind control showing, the pair sits
+    /// beside the numbers from this width -- 180 pt of Both / L / R and 280
+    /// of Straight / Drop / Rest-pause leave three number fields too little
+    /// below it -- and under them otherwise. One control alone keeps
+    /// `sideControlInlineMinWidth`.
+    static let setControlsPairInlineMinWidth: CGFloat = 820
 
     /// How many columns of at least `minColumnWidth` fit in `width`, clamped
     /// to `1...maxColumns`. Zero or negative width -- a view not yet measured
@@ -71,6 +77,16 @@ enum AdaptiveLayout {
     /// Whether the editor's side control fits in the set's own row.
     static func showsSideControlInline(width: CGFloat) -> Bool {
         width >= sideControlInlineMinWidth
+    }
+
+    /// Whether a set's controls -- side, kind, or both -- fit in the set's own
+    /// row. With none, there is nothing to place, and the row is the numbers.
+    static func showsSetControlsInline(width: CGFloat, controls: Int) -> Bool {
+        switch controls {
+        case ...0: return true
+        case 1: return showsSideControlInline(width: width)
+        default: return width >= setControlsPairInlineMinWidth
+        }
     }
 
     /// The content width a page gets inside a container `containerWidth`
