@@ -1,0 +1,3 @@
+- Supersets, circuits, drop sets and rest-pause sets in workout templates
+- Print a client's week, or save it as a PDF
+- Road: six more chains and newer nutrition charts
