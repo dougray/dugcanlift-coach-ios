@@ -530,9 +530,10 @@ has, and it skips an id it does not know silently and without counting it.
 `RoadPicks.missing` exists only so a coach is not puzzled by a count that does
 not match the ticks on screen.
 
-`rf` is written by `PlanLinkEncoder.PayloadWithRoadPicks`, an `Encodable`
+`rf` is written by `PlanLinkEncoder.PayloadWithAppKeys`, an `Encodable`
 wrapper that **delegates every other key to `LiftCore`'s own `PlanPayload`
-encoder** and adds one. Not a field on `PlanPayload` itself: the kit is pinned
+encoder** and adds its own (`rf`, and `w` so an exercise can carry `g` -- see
+"Set types"). Not a field on `PlanPayload` itself: the kit is pinned
 to an exact tag that two shipped apps consume, and a list of item ids is not
 worth a kit release plus a version bump in both. LIFT iOS reads it app-side
 from the same fragment for the same reason. `PlanLinkRoadPicksTests` pins that a
@@ -970,6 +971,97 @@ on a lift that is not each side is allowed -- it means that set is single-limb.
 **Backup**: `eachSide: true` on an exercise and `side: "left" | "right"` on a
 prescribed set, each omitted otherwise, read leniently (junk is not / both).
 `WebLibraryImporter` reads Coach web's same spellings.
+
+## Set types
+
+A coach can group exercises into a **superset** (two, done round by round: one
+set of each, then the rest) or a **circuit** (three or more), and mark a set as
+a **drop set** (straight after the one before, no rest, normally lighter) or
+**rest-pause** (a short pause, about 15 seconds, normally the same weight).
+PLAN-FORMAT.md "Set types"; the binding design is the LIFT superproject's
+`docs/superpowers/specs/2026-10-28-set-types-design.md`. Coach web's
+`prescriptions.js` is the reference implementation, as it was for sides, and its
+fixture `Tests/Fixtures/web-plan-set-types.txt` is checked in here. Never
+regenerate it from Swift.
+
+**On the wire** a group is `g`, a positive integer on each member. **Adjacency
+makes the group, not the number**: `g` is written only on a run of two or more
+adjacent exercises sharing a stored group, renumbered 1, 2, 3... in order of
+appearance, so a group of one is no group and is never written, and `g` is
+never `0`. A reader takes only a JSON positive integer -- a string, a fraction,
+a negative or a bool is not grouped (`ExerciseGrouping.groupOf(json:)`). A set's
+kind is `flags` bits 3-4 (drop `8`, rest-pause `16`), OR'd with the side bits,
+so a left-side drop is `10`; read masked (`SetKind.fromPlanFlags`), never
+compared, and `3` or junk is straight. **An exercise's first set is always
+straight** -- there is no set before it -- so it is never written with a kind
+and never read as one (`PrescriptionTypes.kinds(of:)` is the one place that
+rule lives, and the encoder, the summary and the backup all read through it). A
+straight both-sides set still writes no sixth position, and only trailing nulls
+are trimmed. A plan with no groups and no kinds is byte-for-byte what main
+wrote -- `SetTypesTests` pins that against a frozen copy of the old encoder,
+including a lone group and a first-set kind, which change no byte.
+
+**`g` is app-side, like `rf`.** `LiftCore.PlanWorkoutExercise` has no `g`, and
+the kit is pinned to an exact tag two shipped apps consume, so
+`PlanLinkEncoder.PayloadWithAppKeys` writes `w` itself, each exercise encoded by
+the kit's own `PlanWorkoutExercise` encoder plus `g`. Coach iPhone writes
+**sorted keys**, as it always has, not PLAN-FORMAT's `n q b g s c` insertion
+order; every decoder reads by name. The kit's `PlanLinkCodec` is therefore the
+old decoder: it ignores `g`, and its masked `PlanSetFlags.sideBits` reads the
+side through the kind bits -- `SetTypesTests` checks the fixture through it.
+
+**Coach writes what Coach web wrote, as text.**
+`testCoachWritesWhatCoachWebWroteByteForByte` builds the fixture's templates in
+a store through the editor's own writes, encodes them, and compares the JSON
+text with the fixture's payload re-serialised with sorted keys. The only thing
+set aside is the fixture's `"r":[],"m":[]`, which Coach web always sends and
+Coach leaves out (see "Backups"). Every number matches to the character,
+because pounds that went through kilograms come back exact for every weight in
+it; if a future fixture's weights do not, compare rounded, never regenerate.
+
+**Storage is Coach's own**: `ExerciseGroup` (`exerciseID`, `group`) and
+`PrescribedSetKind` (`setID`, `kindRaw`), keyed by id as plain values, for the
+reason `EachSideExercise` is, and named so neither can collide with a `LiftCore`
+entity. Storage holds groups **as the wire numbers them**: every write goes
+through `PrescriptionTypes`, which regroups after a join, a split or a removal,
+so no row is a group of one and no row is "not grouped". A kind row is never
+kept on a first set -- removing a set clears the kind of whichever set became
+first. The new entities are a lightweight migration, checked by
+`testAStoreWrittenBeforeSetTypesOpensWithEveryRow`, which writes an on-disk
+store with the schema minus the two and opens it with the full one. No cascade
+reaches them, so `deleteRoutineAndSessions` sweeps them
+(`PrescriptionTypes.deleteAll`), and `PrescriptionSides.removeExercise` /
+`removeSet` -- the editor's one path for each -- sweep and regroup.
+`PlanLinkEncoder` reads them from the routines' own store when not handed them,
+as it reads sides.
+
+**The editor**: "Superset with next" beside "Each side", on every exercise but
+the last. **Joining onto a group takes the whole group** -- on the exercise
+before a superset it makes a circuit, and between two groups it merges them --
+and **splitting keeps the earlier exercises in the group** and gives the later
+ones a new one, or none if one remains. The rules are `ExerciseGrouping`, values
+with no store and no view in them, for the reason `MacroFields` is one. A set's
+Straight / Drop / Rest-pause control shows only on sets after the first, and only
+once a set has a kind or the coach taps "Drop / rest-pause" (offered from a
+second set), so a straight-sets editor is unchanged. With the side control
+too, the pair sits beside the numbers from
+`AdaptiveLayout.setControlsPairInlineMinWidth` and under them below it. A
+grouped exercise is headed "Superset A · A1"; the workout list names the group
+once over its first member and prefixes each member "A1 · ". "Superset" is two,
+"Circuit" three or more, letters run on past Z as AA, AB. A set reads side then
+kind: "30 lb × 12 L drop". These are Coach web's and LIFT's words; change them
+in every build or in none.
+
+**Backup**: `group: <positive integer>` on an exercise and `kind: "drop" |
+"restPause"` on a prescribed set, each omitted otherwise, read leniently (case
+and space forgiven; junk is not grouped / straight; a kind on a first set is
+dropped), and regrouped on restore so a lone group is not kept.
+`WebLibraryImporter` reads Coach web's same spellings. A file written before
+this restores unchanged.
+
+**Nothing here is graded.** The Booked card counts sets and never pairs them,
+so a set type changes no count, and logging set types (SHARE-FORMAT) is out of
+scope: a drop set a client logs reaches Coach as an ordinary set.
 
 ## Saturated fat, sugar and sodium
 

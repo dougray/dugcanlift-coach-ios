@@ -9,6 +9,8 @@ struct TrainView: View {
     @Query private var sessions: [ScheduledSession]
     @Query private var eachSideRows: [EachSideExercise]
     @Query private var sideRows: [PrescribedSetSide]
+    @Query private var groupRows: [ExerciseGroup]
+    @Query private var kindRows: [PrescribedSetKind]
     @State private var editing: Routine?
     @State private var confirmingDelete: Routine?
     @State private var section: Section = .workouts
@@ -77,6 +79,7 @@ struct TrainView: View {
 
     private var library: some View {
         let sides = PrescriptionSides(eachSideRows: eachSideRows, sideRows: sideRows)
+        let types = PrescriptionTypes(groupRows: groupRows, kindRows: kindRows)
         return AdaptiveScrollPage { width in
             let columns = AdaptiveLayout.columns(for: width, maxColumns: 3)
             if routines.isEmpty {
@@ -99,9 +102,22 @@ struct TrainView: View {
                             Text(summary(of: routine))
                                 .font(.caption)
                                 .foregroundStyle(Theme.textSecondary)
-                            ForEach(routine.orderedExercises) { exercise in
-                                Text("\(exercise.displayName) — "
-                                     + PrescriptionText.summary(exercise, sides: sides))
+                            // A superset or circuit is named once, above
+                            // its first member, and each member carries its
+                            // place in it: "Superset A", then "A1 · …",
+                            // "A2 · …" -- as Coach web's workout list does.
+                            let exercises = routine.orderedExercises
+                            let labels = types.labels(exercises)
+                            ForEach(Array(exercises.enumerated()), id: \.element.id) { index, exercise in
+                                let label = labels[index]
+                                if let label, label.first {
+                                    Text(label.group)
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(Theme.accentText)
+                                }
+                                Text((label.map { "\($0.member) · " } ?? "")
+                                     + "\(exercise.displayName) — "
+                                     + PrescriptionText.summary(exercise, sides: sides, types: types))
                                     .font(.caption)
                                     .foregroundStyle(Theme.textPrimary)
                             }
