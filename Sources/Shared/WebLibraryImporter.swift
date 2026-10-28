@@ -96,6 +96,9 @@ enum WebLibraryImporter {
             let routine = Routine(name: row.name)
             routine.id = id
             context.insert(routine)
+            // `group` as the wire would number it: a lone or non-adjacent one
+            // is not kept, the rule Coach web's own restore follows.
+            let groups = ExerciseGrouping.runs((row.exercises ?? []).map(\.group))
             for (index, exercise) in (row.exercises ?? []).enumerated() {
                 let target = RoutineExercise(name: exercise.name,
                                              equipment: exercise.equipment ?? "",
@@ -107,6 +110,10 @@ enum WebLibraryImporter {
                 // (BACKUP-FORMAT.md, "The Coach backup's workouts").
                 if exercise.eachSide == true {
                     context.insert(EachSideExercise(exerciseID: target.id))
+                }
+                // `group` and a set's `kind`, Coach web's set-type spellings.
+                if let group = groups[index] {
+                    context.insert(ExerciseGroup(exerciseID: target.id, group: group))
                 }
                 for (order, set) in (exercise.sets ?? []).enumerated() {
                     let prescribed = RoutinePrescribedSet(orderIndex: order)
@@ -122,6 +129,10 @@ enum WebLibraryImporter {
                     context.insert(prescribed)
                     if let side = SetSide.fromBackup(set.side) {
                         context.insert(PrescribedSetSide(setID: prescribed.id, side: side))
+                    }
+                    // Never on a first set: there is no set before it.
+                    if order > 0, let kind = SetKind.fromBackup(set.kind) {
+                        context.insert(PrescribedSetKind(setID: prescribed.id, kind: kind))
                     }
                 }
             }
@@ -294,8 +305,11 @@ enum WebLibraryImporter {
         let sets: [WebSet]?
         /// Only `true` is each side; anything else, or junk, is not.
         let eachSide: Bool?
+        /// Only a positive integer is a group; a string, a fraction, a
+        /// negative or junk is not grouped.
+        let group: Int?
 
-        private enum CodingKeys: String, CodingKey { case name, equipment, note, sets, eachSide }
+        private enum CodingKeys: String, CodingKey { case name, equipment, note, sets, eachSide, group }
 
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -304,6 +318,7 @@ enum WebLibraryImporter {
             note = try c.decodeIfPresent(String.self, forKey: .note)
             sets = try c.decodeIfPresent([WebSet].self, forKey: .sets)
             eachSide = (try? c.decodeIfPresent(Bool.self, forKey: .eachSide)) ?? nil
+            group = ExerciseGrouping.groupOf((try? c.decodeIfPresent(Int.self, forKey: .group)) ?? nil)
         }
     }
 
@@ -316,8 +331,10 @@ enum WebLibraryImporter {
         let distanceM: Double?
         /// `"left"` / `"right"`, absent when both. Junk reads as both.
         let side: String?
+        /// `"drop"` / `"restPause"`, absent when straight. Junk reads as straight.
+        let kind: String?
 
-        private enum CodingKeys: String, CodingKey { case weightLb, reps, rpe, durationSec, distanceM, side }
+        private enum CodingKeys: String, CodingKey { case weightLb, reps, rpe, durationSec, distanceM, side, kind }
 
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -327,6 +344,7 @@ enum WebLibraryImporter {
             durationSec = try c.decodeIfPresent(Int.self, forKey: .durationSec)
             distanceM = try c.decodeIfPresent(Double.self, forKey: .distanceM)
             side = (try? c.decodeIfPresent(String.self, forKey: .side)) ?? nil
+            kind = (try? c.decodeIfPresent(String.self, forKey: .kind)) ?? nil
         }
     }
 

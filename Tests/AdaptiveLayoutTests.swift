@@ -29,6 +29,20 @@ final class AdaptiveLayoutTests: XCTestCase {
         XCTAssertTrue(AdaptiveLayout.showsSideControlInline(width: 580))
     }
 
+    /// A set's side and kind controls together need more room than either
+    /// alone, and go under the numbers at every iPhone portrait width.
+    func testTheSetsSideAndKindControlsGoUnderTheSetAtEveryIPhonePortraitWidth() {
+        for width in [0, 320, 375, 393, 402, 430, 440] as [CGFloat] {
+            XCTAssertFalse(AdaptiveLayout.showsSetControlsInline(width: width, controls: 1), "\(width)")
+            XCTAssertFalse(AdaptiveLayout.showsSetControlsInline(width: width, controls: 2), "\(width)")
+            XCTAssertTrue(AdaptiveLayout.showsSetControlsInline(width: width, controls: 0),
+                          "a set with no control is the numbers alone")
+        }
+        XCTAssertTrue(AdaptiveLayout.showsSetControlsInline(width: 580, controls: 1))
+        XCTAssertFalse(AdaptiveLayout.showsSetControlsInline(width: 580, controls: 2))
+        XCTAssertTrue(AdaptiveLayout.showsSetControlsInline(width: 840, controls: 2))
+    }
+
     func testUnmeasuredWidthIsOneColumn() {
         XCTAssertEqual(AdaptiveLayout.columns(for: 0), 1)
         XCTAssertEqual(AdaptiveLayout.columns(for: -10), 1)
