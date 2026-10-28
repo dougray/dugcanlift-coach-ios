@@ -23,6 +23,8 @@ struct TrainPlanView: View {
     /// Whether the share sheet for this week's link is up. `@State` here
     /// rather than in `TrainView`: it lives exactly as long as the sheet does.
     @State private var sharing = false
+    /// The printable week, written to a temporary file when asked for.
+    @State private var printout: PrintoutFile?
 
     private var days: [String] { PlanWeek(startDayKey: weekStart).days }
 
@@ -117,6 +119,16 @@ struct TrainPlanView: View {
                     PlanShareSheet(text: shareLink)
                         .liftAppearance()
                 }
+
+                // Paper, for the client who wants it printed. Not a send:
+                // nothing is recorded, because a printout is not a plan the
+                // client's app received.
+                Button("Print or save as PDF") { printout = writePrintout() }
+                    .tint(Theme.accentText)
+                    .sheet(item: $printout) { file in
+                        PlanShareSheet(items: [file.url])
+                            .liftAppearance()
+                    }
             }
         }
         .coachScreen()
@@ -214,6 +226,20 @@ struct TrainPlanView: View {
         return "https://www.dugcanlift.com/lift/#" + fragment
     }
 
+    private func writePrintout() -> PrintoutFile? {
+        let clientName = clients.first { $0.id == clientID }?.name ?? "Plan"
+        let days = PlanPrintout.days(weekDays: days, sessions: mineSessions, routines: routines,
+                                     sides: PrescriptionSides.load(from: context))
+        let coach = UserDefaults.standard.string(forKey: "coachName")
+            .flatMap { $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 }
+        let data = PlanPrintout.pdf(clientName: clientName, weekStart: weekStart,
+                                    coachName: coach, days: days)
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent(PlanPrintout.fileName(clientName: clientName, weekStart: weekStart))
+        do { try data.write(to: url, options: .atomic) } catch { return nil }
+        return PrintoutFile(url: url)
+    }
+
     /// The same payload the link carries, filed against this client.
     private func recordSend() {
         PlanLinkEncoder.recordSend(routines: usedRoutines, sessions: mineSessions,
@@ -227,11 +253,20 @@ struct TrainPlanView: View {
 /// is only the part of it Coach needs, so that the record and the sheet happen
 /// in one action rather than in two gestures that have to agree.
 struct PlanShareSheet: UIViewControllerRepresentable {
-    let text: String
+    let items: [Any]
+
+    init(text: String) { items = [text] }
+    init(items: [Any]) { self.items = items }
 
     func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: [text], applicationActivities: nil)
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
     }
 
     func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
+}
+
+/// A written printout, as an `Identifiable` for `.sheet(item:)`.
+struct PrintoutFile: Identifiable {
+    let url: URL
+    var id: String { url.absoluteString }
 }
