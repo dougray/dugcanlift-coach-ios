@@ -229,7 +229,8 @@ struct TrainPlanView: View {
     private func writePrintout() -> PrintoutFile? {
         let clientName = clients.first { $0.id == clientID }?.name ?? "Plan"
         let days = PlanPrintout.days(weekDays: days, sessions: mineSessions, routines: routines,
-                                     sides: PrescriptionSides.load(from: context))
+                                     sides: PrescriptionSides.load(from: context),
+                                     types: PrescriptionTypes.load(from: context))
         let coach = UserDefaults.standard.string(forKey: "coachName")
             .flatMap { $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 }
         let data = PlanPrintout.pdf(clientName: clientName, weekStart: weekStart,
