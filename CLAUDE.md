@@ -277,6 +277,14 @@ deleted, never `context.delete(routine)` alone. `TrainView` confirms first and
 says how many booked days the delete empties, across every client
 (`bookingCount` / `deleteWarning`), matching Coach web and Coach Android.
 
+**A week can be printed.** "Print or save as PDF" beside "Send this week"
+writes `PlanPrintout`'s PDF (the booked days, each workout, and each exercise
+read by `PrescriptionText.summary`, as the workout cards read it) to a
+temporary file and opens the share sheet, which offers Print and Save to Files.
+It is not a send, so nothing is recorded: a printout is not a plan the client's
+app received. `PlanPrintoutTests` pins the lines and that a long week runs onto
+a second page.
+
 An orphan can still exist in a store written before the reaper, or restored
 from such a backup. It shows in the week as "Removed workout"
 (`TrainPlanView.name(of:)`), where the coach can remove it, and the encoder
