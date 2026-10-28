@@ -35,7 +35,7 @@ final class PlanPrintoutTests: XCTestCase {
             ScheduledSession(clientID: "c1", dayKey: "2026-10-26", routineID: lower.id),
         ]
         let days = PlanPrintout.days(weekDays: week, sessions: sessions, routines: [lower],
-                                     sides: PrescriptionSides())
+                                     sides: PrescriptionSides(), types: PrescriptionTypes())
         XCTAssertEqual(days.map(\.dayKey), ["2026-10-26", "2026-10-29"])
         XCTAssertEqual(days[0].workouts.first?.name, "Lower A")
         XCTAssertEqual(days[0].workouts.first?.exercises,
@@ -50,7 +50,7 @@ final class PlanPrintoutTests: XCTestCase {
         let days = PlanPrintout.days(
             weekDays: PlanWeek(startDayKey: "2026-10-26").days,
             sessions: [ScheduledSession(clientID: "c1", dayKey: "2026-10-26", routineID: lower.id)],
-            routines: [lower], sides: PrescriptionSides())
+            routines: [lower], sides: PrescriptionSides(), types: PrescriptionTypes())
         let data = PlanPrintout.pdf(clientName: "Jordan Reyes", weekStart: "2026-10-26",
                                     coachName: "Doug", days: days)
         let document = try XCTUnwrap(PDFDocument(data: data))

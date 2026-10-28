@@ -28,7 +28,7 @@ enum PlanPrintout {
     /// Days in order, only those with a booking; a booking whose template has
     /// been deleted reads "Removed workout", as the week grid says it.
     static func days(weekDays: [String], sessions: [ScheduledSession], routines: [Routine],
-                     sides: PrescriptionSides) -> [Day] {
+                     sides: PrescriptionSides, types: PrescriptionTypes) -> [Day] {
         weekDays.compactMap { day in
             let booked = sessions.filter { $0.dayKey == day }
             guard !booked.isEmpty else { return nil }
@@ -38,7 +38,7 @@ enum PlanPrintout {
                 }
                 return Workout(name: routine.name, exercises: routine.orderedExercises.map { exercise in
                     Exercise(name: exercise.displayName,
-                             prescription: PrescriptionText.summary(exercise, sides: sides),
+                             prescription: PrescriptionText.summary(exercise, sides: sides, types: types),
                              note: exercise.note.flatMap { $0.isEmpty ? nil : $0 })
                 })
             })

@@ -16,6 +16,10 @@ enum CoachSchema {
         // id, not properties on LiftKit's shared routine models -- see
         // PrescriptionSides.swift for why.
         EachSideExercise.self, PrescribedSetSide.self,
+        // Set types -- supersets, circuits, drop sets, rest-pause -- the same
+        // pattern, for the same reason: see PrescriptionTypes.swift. Named so
+        // neither can collide with a LiftCore entity.
+        ExerciseGroup.self, PrescribedSetKind.self,
         // Cook. LiftCore.FoodEntry is deliberately absent: PlannedMeal can
         // build one, but a coach plans meals rather than logging them, so
         // Coach never persists one.

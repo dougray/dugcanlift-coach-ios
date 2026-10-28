@@ -38,15 +38,19 @@ enum PlanLinkEncoder {
     /// - Parameter sides: the coach's prescribed sides. `nil` reads them from
     ///   the routines' own store, so no call site can send a plan and forget
     ///   them; a test passes them in.
+    /// - Parameter types: the coach's groups and set kinds (PLAN-FORMAT.md
+    ///   "Set types"). `nil` reads them from the routines' own store, as
+    ///   `sides` does, for the same reason.
     /// - Parameter roadPicks: the Road Food item ids marked for this client.
     ///   Sent as `rf`, omitted entirely when empty. Nothing is dropped from it
     ///   here for being absent from this app's copy of the file.
     static func fragment(routines: [Routine] = [], sessions: [ScheduledSession] = [],
                          recipes: [Recipe] = [], meals: [PlannedMeal] = [],
-                         sides: PrescriptionSides? = nil, roadPicks: [String] = [],
+                         sides: PrescriptionSides? = nil, types: PrescriptionTypes? = nil,
+                         roadPicks: [String] = [],
                          lifterID: String, coachName: String) -> String {
         guard let json = json(routines: routines, sessions: sessions, recipes: recipes,
-                              meals: meals, sides: sides, roadPicks: roadPicks,
+                              meals: meals, sides: sides, types: types, roadPicks: roadPicks,
                               lifterID: lifterID,
                               coachName: coachName) else { return "" }
         if let deflated = CompactEncoding.deflateRaw(json) {
@@ -59,19 +63,32 @@ enum PlanLinkEncoder {
     /// what the tests compare. Keys sorted, so the same plan is the same text.
     static func json(routines: [Routine] = [], sessions: [ScheduledSession] = [],
                      recipes: [Recipe] = [], meals: [PlannedMeal] = [],
-                     sides: PrescriptionSides? = nil, roadPicks: [String] = [],
+                     sides: PrescriptionSides? = nil, types: PrescriptionTypes? = nil,
+                     roadPicks: [String] = [],
                      lifterID: String, coachName: String) -> Data? {
         let sides = sides ?? PrescriptionSides.load(from: routines.first?.modelContext)
+        let types = types ?? PrescriptionTypes.load(from: routines.first?.modelContext)
         let workouts = routines.map { routine in
-            PlanWorkout(n: routine.name, e: routine.orderedExercises.map { exercise in
-                PlanWorkoutExercise(
+            let exercises = routine.orderedExercises
+            // `g` only on a run of two or more adjacent exercises sharing a
+            // stored group, renumbered 1, 2, 3... in order of appearance, and
+            // on no others -- so a plan without groups is the same bytes it
+            // always was. A group is a fact about neighbours, so it is worked
+            // out over the whole workout, never one exercise at a time.
+            let groups = types.wireGroups(exercises)
+            return WireWorkout(n: routine.name, e: zip(exercises, groups).map { exercise, group in
+                // The first set has nothing before it to drop from or pause
+                // after, so `kinds(of:)` never gives it a kind.
+                let kinds = types.kinds(of: exercise)
+                let sets = exercise.orderedSets
+                return WireExercise(PlanWorkoutExercise(
                     n: exercise.name,
                     q: exercise.equipment.isEmpty ? nil : exercise.equipment,
                     c: exercise.note,
-                    s: exercise.orderedSets.map { setTuple($0, side: sides.side(of: $0)) },
+                    s: sets.indices.map { setTuple(sets[$0], side: sides.side(of: sets[$0]), kind: kinds[$0]) },
                     // Each side is `b: 1`, and absent when not -- never `0` --
                     // so a plan without it is the same bytes it always was.
-                    b: sides.isEachSide(exercise) ? 1 : nil)
+                    b: sides.isEachSide(exercise) ? 1 : nil), g: group)
             })
         }
 
@@ -96,12 +113,14 @@ enum PlanLinkEncoder {
         }
 
         // Empty means absent, not `[]`. PLAN-FORMAT: "a coach who plans only
-        // training sends a payload with no `r` or `m` at all."
+        // training sends a payload with no `r` or `m` at all." `w` is left
+        // out of `PlanPayload` here and written by `PayloadWithAppKeys`,
+        // which carries each exercise's `g`.
         let payload = PlanPayload(
             v: 1, t: "plan", l: lifterID, n: coachName,
             r: inlined.isEmpty ? nil : inlined,
             m: planned.isEmpty ? nil : planned,
-            w: workouts.isEmpty ? nil : workouts,
+            w: nil,
             k: booked.isEmpty ? nil : booked)
 
         let encoder = JSONEncoder()
@@ -109,41 +128,74 @@ enum PlanLinkEncoder {
         // `rf` is a flat list of Road Food item ids, left out entirely when
         // there are none -- so a plan with no picks is byte for byte the plan
         // this encoder wrote before road picks existed, which
-        // `PlanLinkRoadPicksTests` pins against a frozen copy of it.
-        return try? encoder.encode(PayloadWithRoadPicks(payload, rf: RoadPicks.wire(roadPicks)))
+        // `PlanLinkRoadPicksTests` pins against a frozen copy of it. `g` is
+        // the same promise for groups, pinned by `SetTypesTests`.
+        return try? encoder.encode(PayloadWithAppKeys(
+            payload, w: workouts.isEmpty ? nil : workouts, rf: RoadPicks.wire(roadPicks)))
     }
 
-    /// `PlanPayload` plus `rf`.
+    /// `PlanPayload` plus the keys Coach writes app-side: `rf`, and `w` with
+    /// each exercise's `g`.
     ///
     /// **Why the wrapper.** `PlanPayload` is `LiftCore`'s -- the same
     /// definition LIFT decodes with, which is what stops a field being added
     /// on one side and forgotten on the other -- and the kit is pinned to an
-    /// exact tag that two shipped apps consume. A list of item ids is not
-    /// worth a kit release plus a version bump in both, so `rf` is written
-    /// here instead, and LIFT reads it app-side from the same fragment
-    /// (`RoadPickLink`). The fixture both ends read is the contract between
-    /// them.
+    /// exact tag that two shipped apps consume. A list of item ids, or one
+    /// optional integer on an exercise, is not worth a kit release plus a
+    /// version bump in both, so `rf` and `g` are written here instead, and
+    /// LIFT reads them app-side from the same fragment (`RoadPickLink` for
+    /// `rf`). The fixtures both ends read are the contract between them.
     ///
-    /// It delegates every other key to `PlanPayload`'s own encoder rather than
-    /// restating them, so nothing about the existing wire format is written
-    /// twice and none of it can drift. With `.sortedKeys`, `rf` lands in key
-    /// order like everything else.
-    private struct PayloadWithRoadPicks: Encodable {
+    /// It delegates every other key to the kit's own encoders rather than
+    /// restating them -- `PlanPayload` for the envelope, `PlanWorkoutExercise`
+    /// for every exercise key but `g` -- so nothing about the existing wire
+    /// format is written twice and none of it can drift. With `.sortedKeys`,
+    /// `rf` and `g` land in key order like everything else.
+    private struct PayloadWithAppKeys: Encodable {
         let payload: PlanPayload
+        let w: [WireWorkout]?
         let rf: [String]?
 
-        init(_ payload: PlanPayload, rf: [String]?) {
+        init(_ payload: PlanPayload, w: [WireWorkout]?, rf: [String]?) {
             self.payload = payload
+            self.w = w
             self.rf = rf
         }
 
-        private enum CodingKeys: String, CodingKey { case rf }
+        private enum CodingKeys: String, CodingKey { case w, rf }
 
         func encode(to encoder: Encoder) throws {
             try payload.encode(to: encoder)
-            guard let rf else { return }
             var container = encoder.container(keyedBy: CodingKeys.self)
-            try container.encode(rf, forKey: .rf)
+            try container.encodeIfPresent(w, forKey: .w)
+            try container.encodeIfPresent(rf, forKey: .rf)
+        }
+    }
+
+    /// `PlanWorkout`'s two keys, `n` and `e`, over exercises that can carry `g`.
+    private struct WireWorkout: Encodable {
+        let n: String
+        let e: [WireExercise]
+    }
+
+    /// A `PlanWorkoutExercise`, encoded by the kit, plus `g` when the exercise
+    /// is grouped. Absent otherwise -- never `0`.
+    private struct WireExercise: Encodable {
+        let exercise: PlanWorkoutExercise
+        let g: Int?
+
+        init(_ exercise: PlanWorkoutExercise, g: Int?) {
+            self.exercise = exercise
+            self.g = g
+        }
+
+        private enum CodingKeys: String, CodingKey { case g }
+
+        func encode(to encoder: Encoder) throws {
+            try exercise.encode(to: encoder)
+            guard let g else { return }
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(g, forKey: .g)
         }
     }
 
@@ -152,12 +204,18 @@ enum PlanLinkEncoder {
     /// `[null, null, null, 600, 1600]`, and trimming those would move
     /// distance into the weight slot.
     ///
-    /// `flags` is written only for a set that names a side -- bits 1-2, `2`
-    /// left, `4` right, bit 0 always 0 -- and then every position before it is
-    /// kept: a left-side conditioning piece is `[null, null, null, 600, 1600,
-    /// 2]`. A both-sides set writes no sixth position at all, so every plan
-    /// written before sides is unchanged to the byte.
-    static func setTuple(_ set: RoutinePrescribedSet, side: SetSide?) -> [Double?] {
+    /// `flags` is written only for a set that names a side or a kind -- the
+    /// side in bits 1-2 (`2` left, `4` right), the kind in bits 3-4 (`8` drop,
+    /// `16` rest-pause), OR'd together so a left-side drop set is `10`, and
+    /// bit 0 always 0 -- and then every position before it is kept: a
+    /// left-side conditioning piece is `[null, null, null, 600, 1600, 2]`. A
+    /// straight both-sides set writes no sixth position at all, so every plan
+    /// written before sides or set types is unchanged to the byte.
+    ///
+    /// This writes what it is handed. That an exercise's first set is never a
+    /// drop or rest-pause is the exercise's rule, applied by
+    /// `PrescriptionTypes.kinds(of:)`.
+    static func setTuple(_ set: RoutinePrescribedSet, side: SetSide?, kind: SetKind? = nil) -> [Double?] {
         var values: [Double?] = [
             set.targetWeightKg.map(kgToLb),
             set.targetReps.map(Double.init),
@@ -165,9 +223,9 @@ enum PlanLinkEncoder {
             set.targetDurationSec.map(Double.init),
             set.targetDistanceMeters,
         ]
-        if let side, let flags = PlanSetFlags.flags(sideBits: side.shareFlagBits) {
-            return values + [flags]
-        }
+        let sideFlags = side.flatMap { PlanSetFlags.flags(sideBits: $0.shareFlagBits) } ?? 0
+        let flags = sideFlags + Double(kind?.planFlags ?? 0)
+        if flags != 0 { return values + [flags] }
         while let last = values.last, last == nil { values.removeLast() }
         return values
     }

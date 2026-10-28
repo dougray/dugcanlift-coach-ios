@@ -110,9 +110,15 @@ struct PrescriptionSides: Equatable {
     /// `deleteAll` sweeps a whole routine's. What is left is renumbered so the
     /// order stays 0, 1, 2 with no gap. The editor had no way to undo a wrong
     /// pick from "Add an exercise" short of rebuilding the workout.
+    ///
+    /// Its group and its sets' kinds are swept too (`PrescriptionTypes`), and
+    /// the workout is regrouped afterwards: removing the middle of a superset
+    /// leaves a group of one, which is no group, and the middle of a circuit
+    /// leaves a superset.
     static func removeExercise(_ exercise: RoutineExercise, in context: ModelContext) {
         let setIDs = Set(exercise.orderedSets.map(\.id))
         let exerciseID = exercise.id
+        PrescriptionTypes.sweep(exerciseID: exerciseID, setIDs: setIDs, in: context)
         for row in (try? context.fetch(FetchDescriptor<EachSideExercise>())) ?? []
         where row.exerciseID == exerciseID {
             context.delete(row)
@@ -127,11 +133,15 @@ struct PrescriptionSides: Equatable {
         for (index, remaining) in (routine?.orderedExercises ?? []).enumerated() {
             remaining.orderIndex = index
         }
+        if let routine { PrescriptionTypes.regroup(routine, in: context) }
     }
 
-    /// Takes one set out of its exercise, with its side row, and renumbers the rest.
+    /// Takes one set out of its exercise, with its side row and its kind, and
+    /// renumbers the rest. A set that has just become the first loses its
+    /// kind, because there is no set before it to drop from or pause after.
     static func removeSet(_ set: RoutinePrescribedSet, in context: ModelContext) {
         let setID = set.id
+        PrescriptionTypes.sweep(setIDs: [setID], in: context)
         for row in (try? context.fetch(FetchDescriptor<PrescribedSetSide>(
             predicate: #Predicate { $0.setID == setID }))) ?? [] {
             context.delete(row)
@@ -142,6 +152,7 @@ struct PrescriptionSides: Equatable {
         for (index, remaining) in (exercise?.orderedSets ?? []).enumerated() {
             remaining.orderIndex = index
         }
+        PrescriptionTypes.clearFirstKind(of: exercise, in: context)
     }
 
     static func deleteAll(for routine: Routine, in context: ModelContext) {
@@ -191,11 +202,13 @@ struct PrescribedTargets: Equatable {
 // MARK: - How it reads
 
 /// The text a prescription reads as on a workout card: "3 × 225 lb × 5",
-/// "3 × 30 lb × 8 each side + 1 L", "60 lb × 8, 60 lb × 8, 40 lb × 10 R".
+/// "3 × 30 lb × 8 each side + 1 L", "60 lb × 8, 60 lb × 8, 40 lb × 10 R",
+/// "70 lb × 12, 50 lb × 10 drop", "30 lb × 12 L drop".
 ///
 /// The numbers are Coach iPhone's own, as they were before sides; the side
-/// rules are Coach web's `CoachPrescriptions.summary`. An exercise with no
-/// side anywhere reads exactly as it always has.
+/// and kind rules are Coach web's `CoachPrescriptions.summary`. An exercise
+/// with no side and no kind anywhere reads exactly as it always has. A set's
+/// side comes before its kind, as on the web.
 enum PrescriptionText {
 
     /// A set's numbers alone: "225 lb × 5 × RPE 8", "—" for nothing.
@@ -211,9 +224,16 @@ enum PrescriptionText {
         return parts.isEmpty ? "—" : parts.joined(separator: " × ")
     }
 
-    /// The same, with the side it names: "30 lb × 8 L". Nothing added for both.
-    static func text(_ set: RoutinePrescribedSet, side: SetSide?) -> String {
-        numbers(set) + (side.map { " \($0.shortLabel)" } ?? "")
+    /// " drop", " rest-pause", or nothing for a straight set.
+    private static func kindSuffix(_ kind: SetKind?) -> String {
+        kind.map { " \($0.label)" } ?? ""
+    }
+
+    /// The same, with the side it names and its kind: "30 lb × 8 L",
+    /// "50 lb × 10 drop", "30 lb × 12 L drop". Nothing added for both, or
+    /// straight.
+    static func text(_ set: RoutinePrescribedSet, side: SetSide?, kind: SetKind? = nil) -> String {
+        numbers(set) + (side.map { " \($0.shortLabel)" } ?? "") + kindSuffix(kind)
     }
 
     /// Collapses only when every set reads the same -- "3 × 225 lb × 5". A
@@ -223,34 +243,41 @@ enum PrescriptionText {
         return texts.joined(separator: ", ")
     }
 
-    static func summary(_ exercise: RoutineExercise, sides: PrescriptionSides) -> String {
+    static func summary(_ exercise: RoutineExercise, sides: PrescriptionSides,
+                        types: PrescriptionTypes) -> String {
         let sets = exercise.orderedSets
         guard !sets.isEmpty else { return "no sets yet" }
         let named = sets.map { sides.side(of: $0) }
-        let plain = zip(sets, named).filter { $0.1 == nil }.map(\.0)
+        let kinds = types.kinds(of: exercise)
+        let rows = sets.indices.map { (set: sets[$0], side: named[$0], kind: kinds[$0]) }
+        let plain = rows.filter { $0.side == nil }
         guard sides.isEachSide(exercise), !plain.isEmpty else {
-            return list(zip(sets, named).map { text($0.0, side: $0.1) })
+            return list(rows.map { text($0.set, side: $0.side, kind: $0.kind) })
         }
 
-        let plainTexts = plain.map(numbers)
+        // The each-side line's unit: a set's numbers and its kind, without
+        // its side, which is said once for the whole exercise.
+        let plainTexts = plain.map { numbers($0.set) + kindSuffix($0.kind) }
         let same = Set(plainTexts).count == 1 ? plainTexts[0] : nil
 
         // The named extras, grouped by what they say, in the order they appear.
-        var groups: [(side: SetSide, text: String, count: Int)] = []
-        for (set, side) in zip(sets, named) {
-            guard let side else { continue }
-            let text = numbers(set)
-            if let index = groups.firstIndex(where: { $0.side == side && $0.text == text }) {
+        var groups: [(side: SetSide, text: String, kind: String, count: Int)] = []
+        for row in rows {
+            guard let side = row.side else { continue }
+            let text = numbers(row.set)
+            let kind = kindSuffix(row.kind)
+            if let index = groups.firstIndex(where: { $0.side == side && $0.text == text && $0.kind == kind }) {
                 groups[index].count += 1
             } else {
-                groups.append((side, text, 1))
+                groups.append((side, text, kind, 1))
             }
         }
         let extras = groups.map { group -> String in
-            // "+ 1 L" when the extra is the same set; its numbers when it is not.
-            if group.text == same { return " + \(group.count) \(group.side.shortLabel)" }
+            // "+ 1 L" when the extra is the same set, kind and all; its
+            // numbers when it is not.
+            if group.text + group.kind == same { return " + \(group.count) \(group.side.shortLabel)" }
             return " + " + (group.count > 1 ? "\(group.count) × " : "") + group.text
-                + " " + group.side.shortLabel
+                + " " + group.side.shortLabel + group.kind
         }
         return list(plainTexts) + " each side" + extras.joined()
     }

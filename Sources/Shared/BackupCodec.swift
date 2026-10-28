@@ -204,15 +204,24 @@ enum BackupCodec {
         /// rather than failing the restore, and a file written before sides
         /// has no key and restores as it always did.
         var eachSide: Bool?
+        /// A positive integer on an exercise in a superset or circuit,
+        /// **omitted when not grouped** -- never `0` (BACKUP-FORMAT.md; Coach
+        /// web's and Android's spelling). Adjacent exercises with the same
+        /// `group` are one group. Anything that is not a positive integer --
+        /// a string, a fraction, a negative -- reads as not grouped, and the
+        /// workout is regrouped on restore, so a group of one is dropped.
+        var group: Int?
 
-        private enum CodingKeys: String, CodingKey { case name, equipment, note, sets, eachSide }
+        private enum CodingKeys: String, CodingKey { case name, equipment, note, sets, eachSide, group }
 
-        init(name: String, equipment: String, note: String?, sets: [BackupPrescribedSet], eachSide: Bool) {
+        init(name: String, equipment: String, note: String?, sets: [BackupPrescribedSet], eachSide: Bool,
+             group: Int?) {
             self.name = name
             self.equipment = equipment
             self.note = note
             self.sets = sets
             self.eachSide = eachSide ? true : nil
+            self.group = ExerciseGrouping.groupOf(group)
         }
 
         init(from decoder: Decoder) throws {
@@ -222,6 +231,7 @@ enum BackupCodec {
             note = try c.decodeIfPresent(String.self, forKey: .note)
             sets = try c.decode([BackupPrescribedSet].self, forKey: .sets)
             eachSide = (try? c.decodeIfPresent(Bool.self, forKey: .eachSide)) == true ? true : nil
+            group = ExerciseGrouping.groupOf((try? c.decodeIfPresent(Int.self, forKey: .group)) ?? nil)
         }
     }
 
@@ -237,19 +247,26 @@ enum BackupCodec {
         /// entirely when both** -- the spelling a logged set uses here. An
         /// unrecognised value, or one that is not a string, reads as both.
         var side: String?
+        /// `"drop"` or `"restPause"` on a drop or rest-pause set, **omitted
+        /// when straight** -- not `"straight"`, not `null` -- and never written
+        /// on an exercise's first set. Read leniently (`SetKind.fromBackup`):
+        /// case and space are forgiven, and junk reads as straight. A kind on
+        /// a first set is dropped on restore.
+        var kind: String?
 
         private enum CodingKeys: String, CodingKey {
-            case targetWeightKg, targetReps, targetRPE, targetDurationSec, targetDistanceMeters, side
+            case targetWeightKg, targetReps, targetRPE, targetDurationSec, targetDistanceMeters, side, kind
         }
 
         init(targetWeightKg: Double?, targetReps: Int?, targetRPE: Double?,
-             targetDurationSec: Int?, targetDistanceMeters: Double?, side: SetSide?) {
+             targetDurationSec: Int?, targetDistanceMeters: Double?, side: SetSide?, kind: SetKind?) {
             self.targetWeightKg = targetWeightKg
             self.targetReps = targetReps
             self.targetRPE = targetRPE
             self.targetDurationSec = targetDurationSec
             self.targetDistanceMeters = targetDistanceMeters
             self.side = side?.backupValue
+            self.kind = kind?.backupValue
         }
 
         init(from decoder: Decoder) throws {
@@ -260,6 +277,8 @@ enum BackupCodec {
             targetDurationSec = try c.decodeIfPresent(Int.self, forKey: .targetDurationSec)
             targetDistanceMeters = try c.decodeIfPresent(Double.self, forKey: .targetDistanceMeters)
             side = SetSide.fromBackup((try? c.decodeIfPresent(String.self, forKey: .side)) ?? nil)?
+                .backupValue
+            kind = SetKind.fromBackup((try? c.decodeIfPresent(String.self, forKey: .kind)) ?? nil)?
                 .backupValue
         }
     }
@@ -431,6 +450,7 @@ enum BackupCodec {
         let sessions = try context.fetch(FetchDescriptor<ScheduledSession>())
         let owners = MealOwners.load(from: defaults)
         let sides = PrescriptionSides.load(from: context)
+        let types = PrescriptionTypes.load(from: context)
         // Road picks live in `UserDefaults`, keyed by client id, not in the
         // store -- see `RoadPicks`. Written as they are stored: an object of
         // lists, omitted entirely when a coach has marked none.
@@ -511,16 +531,26 @@ enum BackupCodec {
                       clientID: owners[meal.id.uuidString])
         }, routines: routines.map { routine in
             BackupRoutine(id: routine.id, name: routine.name,
-                         exercises: routine.orderedExercises.map { exercise in
-                BackupRoutineExercise(name: exercise.name, equipment: exercise.equipment,
-                                      note: exercise.note,
-                                      sets: exercise.orderedSets.map { set in
-                    BackupPrescribedSet(targetWeightKg: set.targetWeightKg, targetReps: set.targetReps,
-                                        targetRPE: set.targetRPE, targetDurationSec: set.targetDurationSec,
-                                        targetDistanceMeters: set.targetDistanceMeters,
-                                        side: sides.side(of: set))
-                }, eachSide: sides.isEachSide(exercise))
-            })
+                         exercises: {
+                // Groups as the wire would number them, so a group of one --
+                // which storage should never hold -- is never written either;
+                // and no first set carries a kind.
+                let exercises = routine.orderedExercises
+                return zip(exercises, types.wireGroups(exercises)).map { exercise, group in
+                    let kinds = types.kinds(of: exercise)
+                    let sets = exercise.orderedSets
+                    return BackupRoutineExercise(name: exercise.name, equipment: exercise.equipment,
+                                                 note: exercise.note,
+                                                 sets: sets.indices.map { index in
+                        let set = sets[index]
+                        return BackupPrescribedSet(targetWeightKg: set.targetWeightKg, targetReps: set.targetReps,
+                                                   targetRPE: set.targetRPE,
+                                                   targetDurationSec: set.targetDurationSec,
+                                                   targetDistanceMeters: set.targetDistanceMeters,
+                                                   side: sides.side(of: set), kind: kinds[index])
+                    }, eachSide: sides.isEachSide(exercise), group: group)
+                }
+            }())
         }, sessions: sessions.map { session in
             BackupSession(id: session.id, clientID: session.clientID, dayKey: session.dayKey,
                           routineID: session.routineID)
@@ -676,6 +706,9 @@ enum BackupCodec {
             let routine = Routine(name: row.name)
             routine.id = row.id
             context.insert(routine)
+            // Groups as the wire would number them: a lone or non-adjacent
+            // `group` in a file is not kept, as Coach web's restore drops it.
+            let groups = ExerciseGrouping.runs(row.exercises.map(\.group))
             for (index, exerciseRow) in row.exercises.enumerated() {
                 let exercise = RoutineExercise(name: exerciseRow.name, equipment: exerciseRow.equipment,
                                                orderIndex: index, note: exerciseRow.note)
@@ -683,6 +716,9 @@ enum BackupCodec {
                 context.insert(exercise)
                 if exerciseRow.eachSide == true {
                     context.insert(EachSideExercise(exerciseID: exercise.id))
+                }
+                if let group = groups[index] {
+                    context.insert(ExerciseGroup(exerciseID: exercise.id, group: group))
                 }
                 for (order, setRow) in exerciseRow.sets.enumerated() {
                     let set = RoutinePrescribedSet(orderIndex: order, targetWeightKg: setRow.targetWeightKg,
@@ -693,6 +729,10 @@ enum BackupCodec {
                     context.insert(set)
                     if let side = SetSide.fromBackup(setRow.side) {
                         context.insert(PrescribedSetSide(setID: set.id, side: side))
+                    }
+                    // The first set has nothing before it to follow.
+                    if order > 0, let kind = SetKind.fromBackup(setRow.kind) {
+                        context.insert(PrescribedSetKind(setID: set.id, kind: kind))
                     }
                 }
             }
