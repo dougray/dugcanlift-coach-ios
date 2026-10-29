@@ -2,8 +2,9 @@ import SwiftUI
 import SwiftData
 import LiftCore
 
-/// Review a recipe Safari handed over, then cost whatever the page did not
-/// price. The page was never fetched by Coach: Safari's `RecipePage.js` passed
+/// Review a recipe Safari handed over -- or the "Send to Coach" bookmarklet,
+/// which hands over the same thing (`RecipeLink`) -- then cost whatever the
+/// page did not price. The page was never fetched by Coach: Safari's `RecipePage.js` passed
 /// its JSON-LD to the share extension, which queued the raw block
 /// (`PendingRecipeImports`), and this re-reads it with `LiftCore`'s
 /// `RecipeJSONLD` -- the same labels a fetch used to read.

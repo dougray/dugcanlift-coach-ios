@@ -51,9 +51,9 @@ persistence, nothing here ever talks to a server DUGCANLIFT operates.
 build time on a free team (confirmed by `lift-ios`'s own build history).
 Do not add the Associated Domains entitlement or attempt to intercept
 `https://www.dugcanlift.com/coach/#...` links via Universal Links. A link
-reaches Coach three ways instead, all through
+reaches Coach four ways instead. The first three carry a log, all through
 `ShareLinkImporter.importLink`, so they accept and refuse exactly the same
-text:
+text; the fourth carries a recipe:
 
 1. **Paste a Link** (`PasteLinkView`).
 2. **`dugcanliftcoach://import#1z...`**, a custom URL scheme
@@ -65,6 +65,13 @@ text:
    isn't a LIFT link), and on Add queues the *fragment* in the App Group
    `group.com.dugcanlift.coach` (`PendingShareLinks`). `RootView` drains the
    queue whenever the scene becomes active and imports each one.
+4. **`dugcanliftcoach://recipe#r1...`**, the "Send to Coach" bookmarklet's
+   link: the same scheme, host `recipe`, and never a log. `CoachURLRoute`
+   decides by host before anything reads the fragment, so `recipe` goes to
+   `RecipeLink` and the recipe review and every other host goes to
+   `ShareLinkImporter` as before -- a recipe fragment on `import` is refused as
+   a log, and a log fragment on `recipe` as a recipe. See "Recipes from any
+   browser" below.
 
 The extension **does not open the app and does not write SwiftData.** iOS
 gives a share extension no supported way to open its containing app
@@ -456,14 +463,34 @@ fails the build on `URLSession`, `URLRequest`, `NWConnection`, `import Network`,
 `WebSocket`, `sendBeacon` or `import(` in any JavaScript file there
 (`RecipePage.js`).
 
-Cook has **three** import sources: the bundled catalogue
-(`RecipeCatalogView`), a pasted caption (`RecipePasteImportView`), and a recipe
-page **shared from Safari**. Safari runs the extension's `RecipePage.js` on the
+Cook has **four** import sources: the bundled catalogue
+(`RecipeCatalogView`), a pasted caption (`RecipePasteImportView`), a recipe
+page **shared from Safari**, and the same page sent by the **"Send to Coach"
+bookmarklet** from any other browser (below). Safari runs the extension's `RecipePage.js` on the
 page and hands over its schema.org JSON-LD; the extension queues the raw block
 (`PendingRecipeImports`) and the app re-reads it with `LiftCore.RecipeJSONLD`
 and opens `RecipeLinkImportView` to review it. Coach never fetches the page.
 Servings come from the page's own yield when it states one and from a stepper
 when it does not — never guessed.
+
+**Recipes from any browser.** The contract is `dugcanlift-kit`'s
+`bookmarklet/README.md` (its "Rules every build follows" are binding), and
+`recipe-link.mjs` there is the reference decoder. The bookmarklet reads the
+page's JSON-LD in the browser and opens `dugcanliftcoach://recipe#r1...`;
+`RecipeLink` (a port, same refusals, same 512 KiB cap, `Compression`'s raw
+deflate) decodes it to the `SharedRecipePage` Safari's extension produces, and
+`RecipeIntake.received` files it in the same App Group inbox and queue, so it
+follows every rule below. A link that does not decode, and one that holds no
+Recipe, each get a "Couldn't import" report in the bookmarklet's shared wording
+(`RecipeLink.unreadableMessage` / `noRecipeMessage`), which every build uses
+word for word. Cook → Import → "Send recipes from your
+browser" (`BrowserBookmarkletView`) shows the `coachApp` string and how to save
+it in Chrome. `Resources/bookmarklets.json` and `.sha256` are the kit's bytes,
+pinned by `RecipeLinkTests` as `road-food.json` is; copy both over together,
+never edit either here. `Tests/Fixtures/recipe-link.txt` and
+`recipe-link-expected.json` are the kit's fixture pair (written for the
+`liftApp` target; the payload is the same for every target). Never regenerate
+them from Swift.
 
 **A shared recipe opens through `RecipeReviewQueue`, one at a time.** A recipe
 drained from the App Group is gone from disk, and SwiftUI shows one

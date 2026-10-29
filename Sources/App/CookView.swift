@@ -14,6 +14,7 @@ struct CookView: View {
     /// that second fact without changing its type.
     @State private var editingIsNew = false
     @State private var showingFromSafari = false
+    @State private var showingBookmarklet = false
     @State private var browsingCatalogue = false
     @State private var pasting = false
     @State private var section: Section = .recipes
@@ -85,6 +86,7 @@ struct CookView: View {
             .sheet(isPresented: $browsingCatalogue) { RecipeCatalogView().liftAppearance() }
             .sheet(isPresented: $pasting) { RecipePasteImportView().liftAppearance() }
             .sheet(isPresented: $showingFromSafari) { FromSafariView().liftAppearance() }
+            .sheet(isPresented: $showingBookmarklet) { BrowserBookmarkletView().liftAppearance() }
             .alert(confirmingDelete.map { "Delete \($0.name)?" } ?? "",
                    isPresented: Binding(get: { confirmingDelete != nil },
                                         set: { if !$0 { confirmingDelete = nil } }),
@@ -181,6 +183,9 @@ struct CookView: View {
             // this says how. Pasting the text is what is left when a page has
             // no recipe card -- a caption, an email, a photo retyped.
             Button("From Safari") { showingFromSafari = true }
+            // Every other browser: the "Send to Coach" bookmarklet, which
+            // hands over what Safari's share sheet does.
+            Button("Send recipes from your browser") { showingBookmarklet = true }
             Button("Paste the text") { pasting = true }
         }
         .tint(Theme.accentText)
