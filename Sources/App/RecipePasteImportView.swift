@@ -99,8 +99,8 @@ struct RecipePasteImportView: View {
             // should not paste a URL in here and wonder why it read as one
             // ingredient.
             Text("For a recipe written out as text — a video caption, an email, a "
-                 + "handwritten card. No connection needed. For a recipe website, "
-                 + "share the page from Safari to Coach: it reads the page's recipe card.")
+                 + "handwritten card. No connection needed. A recipe website's address will "
+                 + "not work here. Use Send recipes from your browser for a website instead.")
                 .font(.caption)
         }
     }
