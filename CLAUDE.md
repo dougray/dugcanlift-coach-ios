@@ -492,11 +492,9 @@ never edit either here. `Tests/Fixtures/recipe-link.txt` and
 `liftApp` target; the payload is the same for every target). Never regenerate
 them from Swift.
 
-**A shared recipe opens through `RecipeReviewQueue`, one at a time.** A recipe
-drained from the App Group is gone from disk, and SwiftUI shows one
-presentation at a time on a view and silently drops a second: presenting a
-review behind another sheet or alert could strand it, with nothing left to
-retry from. So the queue holds the rules, as a value type with no view in it
+**A shared recipe opens through `RecipeReviewQueue`, one at a time.** SwiftUI
+shows one presentation at a time on a view and silently drops a second:
+presenting a review behind another sheet or alert could strand it. So the queue holds the rules, as a value type with no view in it
 for the reason `MacroFields` is one. One review at a time. A review waits for
 the link report's alert and the ⇧⌘V Paste a Link sheet, and ⇧⌘V does nothing
 while a review is open. A review whose sheet never appeared (`markAppeared`
@@ -508,10 +506,29 @@ Save — no swipe. `RecipeReviewQueueTests` pins all of it. Do not simplify back
 to binding the sheet to the first waiting item: that is the version that loses
 a recipe whenever anything else is on screen.
 
-**The loss window is accepted, and it is this one.** The App Group queue is
-emptied when it is drained, not when a review is saved, so Cancel, or the app
-being killed mid-review, means sharing the page from Safari again — the step
-the coach took the first time. Accepted, not an oversight to work around.
+**A recipe's file stays until its review ends** (`RecipeIntake`, pinned by
+`RecipeIntakeTests`). Every activation reads the App Group folder without
+emptying it, and the queue's own dedup stops a file read again from opening
+twice. A file is deleted in exactly these cases:
+
+- **Save or Cancel**, as the sheet starts to close (`closing()`), not after its
+  animation, so being ended in between cannot reopen a saved recipe. Only a
+  review that came on screen can finish this way; a close for one that never
+  appeared is a dropped sheet, retried, and deletes nothing.
+- **Given up on a launch.** Opening a review counts a try in the recipe's own
+  file (`markOpened`), and a sheet SwiftUI dropped gives its try back. The first
+  activation in a process deletes a recipe opened `mostOpens` (3) times without
+  a Save or Cancel, so a page whose review crashes Coach cannot reopen on every
+  launch for ever. Later activations in the same process never give up: the
+  third review may be the one on screen.
+- **Unreadable**: a file that no longer decodes is deleted when read.
+- **Over the limit**: queuing a 21st recipe deletes the oldest (`limit`, 20).
+
+So killing Coach mid-review costs nothing the first two times: the recipe
+reopens on the next launch, with the page's own servings and nothing the coach
+had changed in the review. After three opens with no Save or Cancel it is gone,
+and the coach shares the page again. Cancel is the coach saying no, and also
+deletes it.
 
 **A pasted caption is edited, not reviewed.** `RecipeLinkImportView` can review
 because JSON-LD is labelled — the publisher already said which strings are

@@ -20,7 +20,7 @@ struct FromSafariView: View {
                             step(4, "Come back to Coach. The recipe opens for review.")
                         }
                     }
-                    Text("From Chrome, use Send recipes from your browser. From another app, copy the recipe's text and use Paste the text.")
+                    Text("From Chrome, use Send recipes from your browser. From another app, copy the recipe's text and use Paste a recipe.")
                         .font(Theme.detail)
                         .foregroundStyle(Theme.textSecondary)
                 }
