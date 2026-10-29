@@ -98,7 +98,7 @@ final class ShareModel: ObservableObject {
         /// here would reach the app. Said plainly rather than failing quietly.
         case noSharedStorage
         /// The same missing App Group, met while adding a recipe: the way
-        /// round is Paste the text, not Paste a Link.
+        /// round is Paste a recipe, not Paste a Link.
         case noSharedStorageForRecipe
     }
 
@@ -223,7 +223,7 @@ struct ShareConfirmView: View {
                 Text("There's no recipe card on this page")
                     .font(.headline)
                     .foregroundStyle(Theme.textPrimary)
-                Text("Copy the recipe's text and use Paste the text in Coach instead.")
+                Text("Copy the recipe's text and use Paste a recipe in Coach instead.")
                     .font(.subheadline)
                     .foregroundStyle(Theme.textSecondary)
             }
@@ -257,7 +257,7 @@ struct ShareConfirmView: View {
                 Text("This build of Coach can't pass recipes from the share sheet")
                     .font(.headline)
                     .foregroundStyle(Theme.textPrimary)
-                Text("Copy the recipe's text and use Paste the text in Coach instead.")
+                Text("Copy the recipe's text and use Paste a recipe in Coach instead.")
                     .font(.subheadline)
                     .foregroundStyle(Theme.textSecondary)
             }
