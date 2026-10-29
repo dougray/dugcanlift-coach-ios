@@ -186,4 +186,84 @@ final class RecipeIntakeTests: XCTestCase {
         intake.closing()
         XCTAssertEqual(files.pending, [item(1)], "the retry had not appeared, so nothing finished")
     }
+
+    // MARK: - A recipe from a link (the "Send to Coach" bookmarklet)
+
+    /// Filed in the same inbox as a Safari share, and opened once: the
+    /// activation that follows the link reads the same file.
+    func testALinkedRecipeIsFiledAndOpensOnce() throws {
+        let files = try folder()
+        var intake = Intake(inbox: files)
+        intake.activated()
+        intake.received(item(1))
+        XCTAssertEqual(files.pending, [item(1)])
+        intake.activated()
+        XCTAssertEqual(intake.waiting.map(\.item), [item(1)])
+        let opened = try XCTUnwrap(intake.next(canPresent: true))
+        intake.appeared(opened.id)
+        intake.closing()
+        intake.closed()
+        XCTAssertNil(intake.next(canPresent: true))
+        XCTAssertEqual(files.pending, [])
+    }
+
+    func testALinkedRecipeEndedMidReviewComesBack() throws {
+        let files = try folder()
+        var intake = Intake(inbox: files)
+        intake.activated()
+        intake.received(item(1))
+        let opened = try XCTUnwrap(intake.next(canPresent: true))
+        intake.appeared(opened.id)
+        var relaunched = Intake(inbox: files)
+        relaunched.activated()
+        XCTAssertEqual(relaunched.next(canPresent: true)?.item, item(1))
+    }
+
+    /// One review at a time, whichever way the second recipe came in.
+    func testALinkedRecipeWaitsForTheReviewUnderWay() throws {
+        let files = try folder()
+        try files.add(item(1))
+        var intake = Intake(inbox: files)
+        intake.activated()
+        let first = try XCTUnwrap(intake.next(canPresent: true))
+        intake.appeared(first.id)
+        intake.received(item(2))
+        XCTAssertNil(intake.next(canPresent: true))
+        intake.closing()
+        XCTAssertNil(intake.next(canPresent: true), "not while the first is closing")
+        intake.closed()
+        XCTAssertEqual(intake.next(canPresent: true)?.item, item(2))
+    }
+
+    func testALinkedRecipeWaitsForWhateverElseIsOnScreen() throws {
+        var intake = Intake(inbox: try folder())
+        intake.activated()
+        intake.received(item(1))
+        XCTAssertNil(intake.next(canPresent: false))
+        XCTAssertEqual(intake.next(canPresent: true)?.item, item(1))
+    }
+
+    /// The same page sent again while it is open is still one review.
+    func testTheSameRecipeLinkedDuringItsReviewIsOneReview() throws {
+        let files = try folder()
+        var intake = Intake(inbox: files)
+        intake.activated()
+        intake.received(item(1))
+        let opened = try XCTUnwrap(intake.next(canPresent: true))
+        intake.appeared(opened.id)
+        intake.received(item(1))
+        XCTAssertEqual(intake.waiting, [])
+        intake.closing()
+        intake.closed()
+        XCTAssertNil(intake.next(canPresent: true))
+        XCTAssertEqual(files.pending, [])
+    }
+
+    /// With no App Group (a build missing the entitlement) it still opens.
+    func testALinkedRecipeOpensWithNoInbox() {
+        var intake = Intake(inbox: nil)
+        intake.activated()
+        intake.received(item(1))
+        XCTAssertEqual(intake.next(canPresent: true)?.item, item(1))
+    }
 }
