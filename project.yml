@@ -28,8 +28,16 @@ settings:
     SWIFT_VERSION: "5.9"
     DEVELOPMENT_TEAM: "QG57FJM5C8"
     CODE_SIGN_STYLE: Automatic
-    MARKETING_VERSION: "1.0.0"
-    CURRENT_PROJECT_VERSION: "1"
+    # The one version for the app and its share extension. App Store
+    # validation rejects an embedded extension whose
+    # CFBundleShortVersionString differs from the app's, so both Info.plists
+    # read these two settings rather than the literal "1.0" and "1" XcodeGen
+    # writes by default. That literal is what 1.0 (1), the first App Store
+    # build (2026-10-26), reported while this said "1.0.0" and reached
+    # nothing. CURRENT_PROJECT_VERSION must be higher than every build ever
+    # uploaded, so it only goes up, whatever the version says.
+    MARKETING_VERSION: "1.1"
+    CURRENT_PROJECT_VERSION: "2"
     # SwiftData @Model classes are not Sendable. `complete` buries real errors
     # under concurrency warnings during scaffolding — tighten once it builds.
     SWIFT_STRICT_CONCURRENCY: minimal
@@ -90,6 +98,8 @@ targets:
         # Xcode generates the Info.plist, and this target supplies its own.
         UILaunchScreen: {}
         CFBundleDisplayName: Coach
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         # Coach makes no requests and uses no encryption beyond what iOS
         # itself provides. Declaring it here answers App Store Connect's
         # export compliance question once, instead of on every upload.
@@ -145,6 +155,8 @@ targets:
       path: Config/CoachShare-Info.plist
       properties:
         CFBundleDisplayName: Coach
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         ITSAppUsesNonExemptEncryption: false
         NSExtension:
           NSExtensionPointIdentifier: com.apple.share-services
