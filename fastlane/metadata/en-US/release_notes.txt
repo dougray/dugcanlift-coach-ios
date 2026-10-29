@@ -1,3 +1,5 @@
 - Supersets, circuits, drop sets and rest-pause sets in workout templates
 - Print a client's week, or save it as a PDF
 - Road: six more chains and newer nutrition charts
+- Send recipes from your browser: save a bookmark once, then tap it on a recipe page and the recipe opens in Coach for you to check. Coach never visits the page. In Safari, Share → Coach does the same
+- "Paste the text" is now "Paste a recipe", its name in LIFT and in Coach on the web and Android

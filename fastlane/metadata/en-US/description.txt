@@ -17,10 +17,10 @@ TRAIN
 Build workout templates with sets, reps, weight, RPE, time or distance. Group exercises into supersets and circuits, and mark drop sets and rest-pause sets. Book them onto a client's week, then send the week to the client as a link that opens in LIFT, or print it or save it as a PDF for a client who wants it on paper.
 
 COOK
-Keep a recipe library with ingredients and macros. Add recipes by hand, from a built-in catalogue, by sharing a recipe page from Safari, or by pasting a caption and editing the split. Plan a client's breakfasts, lunches, dinners and snacks for the week and send the plan with the workouts. Each client gets a shopping list built from their planned meals, with their own ticks. Under Road, tick the fast-food items you are happy for a client to order on the road; your picks go with their meal plan.
+Keep a recipe library with ingredients and macros. Add recipes by hand, from a built-in catalog, or with Paste a recipe: paste a caption and edit the split. From a recipe website, use Send recipes from your browser: save a bookmark once, tap it on a recipe page, and the recipe opens in Coach for you to check. In Safari, Share → Coach does the same. Plan a client's breakfasts, lunches, dinners and snacks for the week and send the plan with the workouts. Each client gets a shopping list built from their planned meals, with their own ticks. Under Road, tick the fast-food items you are happy for a client to order on the road; your picks go with their meal plan.
 
 PRIVATE BY DESIGN
-There is no account and no server. Everything stays on your device. A client's log reaches you only as a link they chose to send. Coach never goes online. A recipe page reaches it through Safari's share sheet, and a client's route is drawn on your device, with no map service involved.
+There is no account and no server. Everything stays on your device. A client's log reaches you only as a link they chose to send. Coach never goes online, and never visits a recipe page: your browser hands the recipe over. A client's route is drawn on your device, with no map service involved.
 
 Save a backup file to move your roster, recipes and workouts to another device, or import your library from the LIFT Coach web app.
 
