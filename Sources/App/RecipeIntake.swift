@@ -3,6 +3,7 @@ import Foundation
 /// What the share extension's recipe queue answers. `PendingRecipeImports`
 /// is the real one; the seam exists so `RecipeIntake` holds no file paths.
 protocol RecipeInbox {
+    func add(_ item: PendingRecipeImports.Item) throws
     func forReview(givingUp: Bool) -> [PendingRecipeImports.Item]
     func markOpened(_ item: PendingRecipeImports.Item)
     func unmarkOpened(_ item: PendingRecipeImports.Item)
@@ -50,6 +51,18 @@ struct RecipeIntake<Report> {
             queue.enqueue(inbox.forReview(givingUp: !launched))
         }
         launched = true
+    }
+
+    /// A recipe that arrived in a link -- the "Send to Coach" bookmarklet's
+    /// `dugcanliftcoach://recipe#r1…` -- rather than from the share extension.
+    /// Filed in the same inbox a Safari share is, so iOS ending Coach
+    /// mid-review loses it no more than a Safari recipe, and it counts its tries
+    /// the same way. Queued now as well: the activation that follows reads the
+    /// same file, and the queue skips it as already waiting. Without an inbox
+    /// it is held in memory only.
+    mutating func received(_ item: PendingRecipeImports.Item) {
+        try? inbox?.add(item)
+        queue.enqueue([item])
     }
 
     /// Opens the next review when the caller has nothing else on screen.
