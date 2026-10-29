@@ -186,7 +186,7 @@ struct CookView: View {
             // Every other browser: the "Send to Coach" bookmarklet, which
             // hands over what Safari's share sheet does.
             Button("Send recipes from your browser") { showingBookmarklet = true }
-            Button("Paste the text") { pasting = true }
+            Button("Paste a recipe") { pasting = true }
         }
         .tint(Theme.accentText)
     }

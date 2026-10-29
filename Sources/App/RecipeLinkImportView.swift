@@ -47,7 +47,7 @@ struct RecipeLinkImportView: View {
                     review(found, sourceURL)
                 } else {
                     Section {
-                        Text("This recipe couldn't be read. Share the page from Safari again, or use Paste the text.")
+                        Text("This recipe couldn't be read. Share the page from Safari again, or use Paste a recipe.")
                             .foregroundStyle(Theme.textSecondary)
                     }
                 }
