@@ -51,9 +51,9 @@ persistence, nothing here ever talks to a server DUGCANLIFT operates.
 build time on a free team (confirmed by `lift-ios`'s own build history).
 Do not add the Associated Domains entitlement or attempt to intercept
 `https://www.dugcanlift.com/coach/#...` links via Universal Links. A link
-reaches Coach three ways instead, all through
+reaches Coach four ways instead. The first three carry a log, all through
 `ShareLinkImporter.importLink`, so they accept and refuse exactly the same
-text:
+text; the fourth carries a recipe:
 
 1. **Paste a Link** (`PasteLinkView`).
 2. **`dugcanliftcoach://import#1z...`**, a custom URL scheme
@@ -65,6 +65,13 @@ text:
    isn't a LIFT link), and on Add queues the *fragment* in the App Group
    `group.com.dugcanlift.coach` (`PendingShareLinks`). `RootView` drains the
    queue whenever the scene becomes active and imports each one.
+4. **`dugcanliftcoach://recipe#r1...`**, the "Send to Coach" bookmarklet's
+   link: the same scheme, host `recipe`, and never a log. `CoachURLRoute`
+   decides by host before anything reads the fragment, so `recipe` goes to
+   `RecipeLink` and the recipe review and every other host goes to
+   `ShareLinkImporter` as before -- a recipe fragment on `import` is refused as
+   a log, and a log fragment on `recipe` as a recipe. See "Recipes from any
+   browser" below.
 
 The extension **does not open the app and does not write SwiftData.** iOS
 gives a share extension no supported way to open its containing app
@@ -456,20 +463,38 @@ fails the build on `URLSession`, `URLRequest`, `NWConnection`, `import Network`,
 `WebSocket`, `sendBeacon` or `import(` in any JavaScript file there
 (`RecipePage.js`).
 
-Cook has **three** import sources: the bundled catalogue
-(`RecipeCatalogView`), a pasted caption (`RecipePasteImportView`), and a recipe
-page **shared from Safari**. Safari runs the extension's `RecipePage.js` on the
+Cook has **four** import sources: the bundled catalogue
+(`RecipeCatalogView`), a pasted caption (`RecipePasteImportView`), a recipe
+page **shared from Safari**, and the same page sent by the **"Send to Coach"
+bookmarklet** from any other browser (below). Safari runs the extension's `RecipePage.js` on the
 page and hands over its schema.org JSON-LD; the extension queues the raw block
 (`PendingRecipeImports`) and the app re-reads it with `LiftCore.RecipeJSONLD`
 and opens `RecipeLinkImportView` to review it. Coach never fetches the page.
 Servings come from the page's own yield when it states one and from a stepper
 when it does not — never guessed.
 
-**A shared recipe opens through `RecipeReviewQueue`, one at a time.** A recipe
-drained from the App Group is gone from disk, and SwiftUI shows one
-presentation at a time on a view and silently drops a second: presenting a
-review behind another sheet or alert could strand it, with nothing left to
-retry from. So the queue holds the rules, as a value type with no view in it
+**Recipes from any browser.** The contract is `dugcanlift-kit`'s
+`bookmarklet/README.md` (its "Rules every build follows" are binding), and
+`recipe-link.mjs` there is the reference decoder. The bookmarklet reads the
+page's JSON-LD in the browser and opens `dugcanliftcoach://recipe#r1...`;
+`RecipeLink` (a port, same refusals, same 512 KiB cap, `Compression`'s raw
+deflate) decodes it to the `SharedRecipePage` Safari's extension produces, and
+`RecipeIntake.received` files it in the same App Group inbox and queue, so it
+follows every rule below. A link that does not decode, and one that holds no
+Recipe, each get a "Couldn't import" report in the bookmarklet's shared wording
+(`RecipeLink.unreadableMessage` / `noRecipeMessage`), which every build uses
+word for word. Cook → Import → "Send recipes from your
+browser" (`BrowserBookmarkletView`) shows the `coachApp` string and how to save
+it in Chrome. `Resources/bookmarklets.json` and `.sha256` are the kit's bytes,
+pinned by `RecipeLinkTests` as `road-food.json` is; copy both over together,
+never edit either here. `Tests/Fixtures/recipe-link.txt` and
+`recipe-link-expected.json` are the kit's fixture pair (written for the
+`liftApp` target; the payload is the same for every target). Never regenerate
+them from Swift.
+
+**A shared recipe opens through `RecipeReviewQueue`, one at a time.** SwiftUI
+shows one presentation at a time on a view and silently drops a second:
+presenting a review behind another sheet or alert could strand it. So the queue holds the rules, as a value type with no view in it
 for the reason `MacroFields` is one. One review at a time. A review waits for
 the link report's alert and the ⇧⌘V Paste a Link sheet, and ⇧⌘V does nothing
 while a review is open. A review whose sheet never appeared (`markAppeared`
@@ -481,10 +506,29 @@ Save — no swipe. `RecipeReviewQueueTests` pins all of it. Do not simplify back
 to binding the sheet to the first waiting item: that is the version that loses
 a recipe whenever anything else is on screen.
 
-**The loss window is accepted, and it is this one.** The App Group queue is
-emptied when it is drained, not when a review is saved, so Cancel, or the app
-being killed mid-review, means sharing the page from Safari again — the step
-the coach took the first time. Accepted, not an oversight to work around.
+**A recipe's file stays until its review ends** (`RecipeIntake`, pinned by
+`RecipeIntakeTests`). Every activation reads the App Group folder without
+emptying it, and the queue's own dedup stops a file read again from opening
+twice. A file is deleted in exactly these cases:
+
+- **Save or Cancel**, as the sheet starts to close (`closing()`), not after its
+  animation, so being ended in between cannot reopen a saved recipe. Only a
+  review that came on screen can finish this way; a close for one that never
+  appeared is a dropped sheet, retried, and deletes nothing.
+- **Given up on a launch.** Opening a review counts a try in the recipe's own
+  file (`markOpened`), and a sheet SwiftUI dropped gives its try back. The first
+  activation in a process deletes a recipe opened `mostOpens` (3) times without
+  a Save or Cancel, so a page whose review crashes Coach cannot reopen on every
+  launch for ever. Later activations in the same process never give up: the
+  third review may be the one on screen.
+- **Unreadable**: a file that no longer decodes is deleted when read.
+- **Over the limit**: queuing a 21st recipe deletes the oldest (`limit`, 20).
+
+So killing Coach mid-review costs nothing the first two times: the recipe
+reopens on the next launch, with the page's own servings and nothing the coach
+had changed in the review. After three opens with no Save or Cancel it is gone,
+and the coach shares the page again. Cancel is the coach saying no, and also
+deletes it.
 
 **A pasted caption is edited, not reviewed.** `RecipeLinkImportView` can review
 because JSON-LD is labelled — the publisher already said which strings are
