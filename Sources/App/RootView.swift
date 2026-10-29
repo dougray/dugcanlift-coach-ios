@@ -74,8 +74,24 @@ struct RootView: View {
                 pastingFromCommand = true
             }))
         .sheet(isPresented: $pastingFromCommand) { PasteLinkView() }
+        // The host decides before anything reads the fragment: `recipe` is the
+        // "Send to Coach" bookmarklet's, and everything else is a log link, as
+        // it always was (`CoachURLRoute`).
         .onOpenURL { url in
-            report(importing: [url.absoluteString])
+            switch CoachURLRoute(url) {
+            case .log(let text):
+                report(importing: [text])
+            case .recipe(let item):
+                recipes.received(item)
+                // When not yet active, the activation that follows opens it, after
+                // `activated()` has read the inbox; opening it here as well
+                // would have that activation take it for a dropped sheet.
+                if scenePhase == .active { presentNextRecipe() }
+            case .unreadableRecipe:
+                show(.recipeLinkUnreadable)
+            case .noRecipe:
+                show(.recipeLinkHoldsNoRecipe)
+            }
         }
         // `.active` covers both a cold launch and returning from the share
         // sheet, which is when the extension's queues have something in them.
@@ -238,6 +254,16 @@ struct RootView: View {
     private struct IntakeReport {
         let title: String
         let message: String
+
+        /// A log link Coach could not read.
+        static let couldNotImport = IntakeReport(title: "Couldn't import",
+                                                 message: ShareLinkImporter.invalidLinkMessage)
+        /// A "Send to Coach" link that did not decode, and one with no recipe
+        /// in it -- the bookmarklet's shared wording, the same in every build.
+        static let recipeLinkUnreadable = IntakeReport(title: "Couldn't import",
+                                                       message: RecipeLink.unreadableMessage)
+        static let recipeLinkHoldsNoRecipe = IntakeReport(title: "Couldn't import",
+                                                          message: RecipeLink.noRecipeMessage)
     }
 
     /// Imports each link through `ShareLinkImporter.importLink` -- Paste a
@@ -258,13 +284,17 @@ struct RootView: View {
         if failed == 0 {
             made = IntakeReport(title: "Log imported", message: added.joined(separator: "\n"))
         } else if added.isEmpty {
-            made = IntakeReport(title: "Couldn't import", message: ShareLinkImporter.invalidLinkMessage)
+            made = .couldNotImport
         } else {
             made = IntakeReport(
                 title: "Some links didn't import",
                 message: (added + ["\(failed) link\(failed == 1 ? "" : "s") could not be read."]).joined(separator: "\n"))
         }
-        // An alert beside an open recipe sheet would be dropped: hold it.
+        show(made)
+    }
+
+    /// An alert beside an open recipe sheet would be dropped: hold it.
+    private func show(_ made: IntakeReport) {
         if let now = recipes.report(made) { intakeReport = now }
     }
 
