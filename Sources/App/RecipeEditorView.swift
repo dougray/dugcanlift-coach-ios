@@ -80,7 +80,7 @@ struct RecipeEditorView: View {
                     // once the field has a value, which left the top of this
                     // form reading as an untitled name and a bare number.
                     LabeledContent("Name") {
-                        TextField("Beef chilli", text: $nameText)
+                        TextField("Beef chili", text: $nameText)
                             .multilineTextAlignment(.trailing)
                     }
                     LabeledContent("Servings") {
@@ -133,7 +133,7 @@ struct RecipeEditorView: View {
                     macroField("Protein", unit: "g", text: $macros.protein, field: .protein)
                     macroField("Carbs", unit: "g", text: $macros.carbs, field: .carbs)
                     macroField("Fat", unit: "g", text: $macros.fat, field: .fat)
-                    macroField("Fibre", unit: "g", text: $macros.fiber, field: .fiber)
+                    macroField("Fiber", unit: "g", text: $macros.fiber, field: .fiber)
                     macroField("Saturated fat", unit: "g", text: $macros.saturatedFat, field: .saturatedFat)
                     macroField("Sugar", unit: "g", text: $macros.sugar, field: .sugar)
                     macroField("Sodium", unit: "mg", text: $macros.sodium, field: .sodium)

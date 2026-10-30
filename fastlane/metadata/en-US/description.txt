@@ -17,7 +17,7 @@ TRAIN
 Build workout templates with sets, reps, weight, RPE, time or distance. Book them onto a client's week, then send the week to the client as a link that opens in LIFT.
 
 COOK
-Keep a recipe library with ingredients and macros. Add recipes by hand, from a built-in catalogue, by sharing a recipe page from Safari, or by pasting a caption and editing the split. Plan a client's breakfasts, lunches, dinners and snacks for the week and send the plan with the workouts. Each client gets a shopping list built from their planned meals, with their own ticks.
+Keep a recipe library with ingredients and macros. Add recipes by hand, from a built-in catalog, by sharing a recipe page from Safari, or by pasting a caption and editing the split. Plan a client's breakfasts, lunches, dinners and snacks for the week and send the plan with the workouts. Each client gets a shopping list built from their planned meals, with their own ticks.
 
 PRIVATE BY DESIGN
 There is no account and no server. Everything stays on your device. A client's log reaches you only as a link they chose to send. Coach never goes online. A recipe page reaches it through Safari's share sheet, and a client's route is drawn on your device, with no map service involved.
