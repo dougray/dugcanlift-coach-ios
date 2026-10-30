@@ -201,27 +201,75 @@ struct PrescribedTargets: Equatable {
 
 // MARK: - How it reads
 
-/// The text a prescription reads as on a workout card: "3 × 225 lb × 5",
-/// "3 × 30 lb × 8 each side + 1 L", "60 lb × 8, 60 lb × 8, 40 lb × 10 R",
-/// "70 lb × 12, 50 lb × 10 drop", "30 lb × 12 L drop".
+/// The text a prescription reads as on a workout card and a printout:
+/// "3 × 225 × 5", "225 × 5 · @8", "1,600 m · 10:00", "5 reps",
+/// "3 × 30 × 8 each side + 1 L", "185 × 5, 95 × 10 R",
+/// "70 × 12, 50 × 10 drop", "30 × 12 L drop".
 ///
-/// The numbers are Coach iPhone's own, as they were before sides; the side
-/// and kind rules are Coach web's `CoachPrescriptions.summary`. An exercise
-/// with no side and no kind anywhere reads exactly as it always has. A set's
-/// side comes before its kind, as on the web.
+/// A port of Coach web's `CoachPrescriptions.prescriptionText` / `setText` /
+/// `summary` (`coach/prescriptions.js`), the reference implementation, so a
+/// coach reads the same words in the browser, here, and on Coach Android.
+/// Change them in every build or in none.
+///
+/// Weights are pounds, the unit the editor's weight field is in
+/// (`PrescribedWeightField`), as web's are: converted from the stored
+/// kilograms here, at the point of display, and nowhere else. A weight with
+/// reps carries no unit ("225 × 5"); a weight alone does ("225 lb"). Blank is
+/// left out, never written as a zero, and a set with nothing in it reads "as
+/// written".
 enum PrescriptionText {
 
-    /// A set's numbers alone: "225 lb × 5 × RPE 8", "—" for nothing.
-    static func numbers(_ set: RoutinePrescribedSet) -> String {
-        var parts: [String] = []
-        if let kg = set.targetWeightKg {
-            parts.append("\(Int(PlanLinkEncoder.kgToLb(kg).rounded())) lb")
+    /// A set's numbers alone: "225 × 5 · @8", "5 reps", "225 lb",
+    /// "1,600 m · 10:00", "45s", "as written" for nothing. The order is web's:
+    /// load, distance, duration, effort.
+    ///
+    /// Whole numbers are grouped in the reader's locale, as web's
+    /// `toLocaleString()` and Android's `NumberFormat` group them; the tests
+    /// pin one only so they can assert a string. RPE is printed as JavaScript
+    /// prints a number -- "8", "8.5" -- because web writes it that way.
+    static func numbers(_ set: RoutinePrescribedSet, locale: Locale = .current) -> String {
+        var bits: [String] = []
+        // Through the editor field's own pounds first, so conversion noise
+        // cannot turn the 22.5 the coach typed into 22.4999... and round down.
+        let lb = set.targetWeightKg.map(PrescribedWeightField.displayedPounds(kilograms:))
+        switch (lb, set.targetReps) {
+        case let (lb?, reps?): bits.append("\(whole(lb, locale)) × \(reps)")
+        case let (nil, reps?): bits.append("\(reps) reps")
+        case let (lb?, nil): bits.append("\(whole(lb, locale)) lb")
+        case (nil, nil): break
         }
-        if let reps = set.targetReps { parts.append("\(reps)") }
-        if let rpe = set.targetRPE { parts.append("RPE \(rpe.formatted())") }
-        if let seconds = set.targetDurationSec { parts.append("\(seconds)s") }
-        if let metres = set.targetDistanceMeters { parts.append("\(Int(metres))m") }
-        return parts.isEmpty ? "—" : parts.joined(separator: " × ")
+        if let metres = set.targetDistanceMeters { bits.append("\(whole(metres, locale)) m") }
+        if let seconds = set.targetDurationSec { bits.append(duration(seconds)) }
+        if let rpe = set.targetRPE { bits.append("@\(script(rpe))") }
+        return bits.isEmpty ? "as written" : bits.joined(separator: " · ")
+    }
+
+    /// "10:00" from a minute up, "45s" under one -- web's rule, so 60 is
+    /// "1:00" and an hour is "60:00".
+    static func duration(_ seconds: Int) -> String {
+        let minutes = seconds / 60
+        guard minutes != 0 else { return "\(seconds)s" }
+        let rest = seconds % 60
+        return "\(minutes):" + (rest < 10 ? "0\(rest)" : "\(rest)")
+    }
+
+    /// Rounded to a whole number and grouped: web's `num`,
+    /// `Math.round(n).toLocaleString()`.
+    private static func whole(_ value: Double, _ locale: Locale) -> String {
+        let formatter = NumberFormatter()
+        formatter.locale = locale
+        formatter.numberStyle = .decimal
+        formatter.usesGroupingSeparator = true
+        formatter.maximumFractionDigits = 0
+        let rounded = (value + 0.5).rounded(.down)  // Math.round: halves go up
+        return formatter.string(from: NSNumber(value: rounded)) ?? "\(Int(rounded))"
+    }
+
+    /// A number as JavaScript's `String(n)` writes it: no ".0" on a whole
+    /// number, and a "." decimal whatever the locale.
+    private static func script(_ value: Double) -> String {
+        if value == value.rounded(), abs(value) < 1e15 { return String(Int(value)) }
+        return String(value)
     }
 
     /// " drop", " rest-pause", or nothing for a straight set.
@@ -229,42 +277,64 @@ enum PrescriptionText {
         kind.map { " \($0.label)" } ?? ""
     }
 
-    /// The same, with the side it names and its kind: "30 lb × 8 L",
-    /// "50 lb × 10 drop", "30 lb × 12 L drop". Nothing added for both, or
-    /// straight.
-    static func text(_ set: RoutinePrescribedSet, side: SetSide?, kind: SetKind? = nil) -> String {
-        numbers(set) + (side.map { " \($0.shortLabel)" } ?? "") + kindSuffix(kind)
+    /// The same, with the side it names and its kind: "30 × 8 L",
+    /// "50 × 10 drop", "30 × 12 L drop". Nothing added for both, or straight.
+    static func text(_ set: RoutinePrescribedSet, side: SetSide?, kind: SetKind? = nil,
+                     locale: Locale = .current) -> String {
+        numbers(set, locale: locale) + (side.map { " \($0.shortLabel)" } ?? "") + kindSuffix(kind)
     }
 
-    /// Collapses only when every set reads the same -- "3 × 225 lb × 5". A
-    /// ramp lists its sets, because 225/225/245 has no collapsed form.
-    private static func list(_ texts: [String]) -> String {
-        if texts.count > 1, Set(texts).count == 1 { return "\(texts.count) × \(texts[0])" }
-        return texts.joined(separator: ", ")
+    /// What a set prescribes, for deciding whether every set matches. Web
+    /// compares the stored set, not its text: 225 and 225.4 print alike and
+    /// are not the same prescription.
+    private struct Prescribed: Equatable {
+        let weightKg: Double?, reps: Int?, rpe: Double?, seconds: Int?, metres: Double?
+        let side: SetSide?, kind: SetKind?
     }
 
+    private typealias Row = (set: RoutinePrescribedSet, side: SetSide?, kind: SetKind?)
+
+    private static func prescribed(_ row: Row) -> Prescribed {
+        Prescribed(weightKg: row.set.targetWeightKg, reps: row.set.targetReps, rpe: row.set.targetRPE,
+                   seconds: row.set.targetDurationSec, metres: row.set.targetDistanceMeters,
+                   side: row.side, kind: row.kind)
+    }
+
+    private static func allSame(_ rows: [Row]) -> Bool {
+        guard let first = rows.first.map(prescribed) else { return false }
+        return rows.allSatisfy { prescribed($0) == first }
+    }
+
+    /// "3 × 225 × 5" when every set matches, otherwise each set spelled out.
+    private static func list(_ rows: [Row], _ text: (Row) -> String) -> String {
+        if rows.count > 1, allSame(rows) { return "\(rows.count) × \(text(rows[0]))" }
+        return rows.map(text).joined(separator: ", ")
+    }
+
+    /// One line for an exercise: "3 × 225 × 5", "3 × 30 × 8 each side",
+    /// "3 × 30 × 8 each side + 1 L", "185 × 5, 185 × 5, 95 × 10 R".
     static func summary(_ exercise: RoutineExercise, sides: PrescriptionSides,
-                        types: PrescriptionTypes) -> String {
+                        types: PrescriptionTypes, locale: Locale = .current) -> String {
         let sets = exercise.orderedSets
         guard !sets.isEmpty else { return "no sets yet" }
         let named = sets.map { sides.side(of: $0) }
         let kinds = types.kinds(of: exercise)
-        let rows = sets.indices.map { (set: sets[$0], side: named[$0], kind: kinds[$0]) }
+        let rows: [Row] = sets.indices.map { (set: sets[$0], side: named[$0], kind: kinds[$0]) }
         let plain = rows.filter { $0.side == nil }
         guard sides.isEachSide(exercise), !plain.isEmpty else {
-            return list(rows.map { text($0.set, side: $0.side, kind: $0.kind) })
+            return list(rows) { text($0.set, side: $0.side, kind: $0.kind, locale: locale) }
         }
 
         // The each-side line's unit: a set's numbers and its kind, without
         // its side, which is said once for the whole exercise.
-        let plainTexts = plain.map { numbers($0.set) + kindSuffix($0.kind) }
-        let same = Set(plainTexts).count == 1 ? plainTexts[0] : nil
+        let plainText: (Row) -> String = { numbers($0.set, locale: locale) + kindSuffix($0.kind) }
+        let same = allSame(plain) ? plainText(plain[0]) : nil
 
         // The named extras, grouped by what they say, in the order they appear.
         var groups: [(side: SetSide, text: String, kind: String, count: Int)] = []
         for row in rows {
             guard let side = row.side else { continue }
-            let text = numbers(row.set)
+            let text = numbers(row.set, locale: locale)
             let kind = kindSuffix(row.kind)
             if let index = groups.firstIndex(where: { $0.side == side && $0.text == text && $0.kind == kind }) {
                 groups[index].count += 1
@@ -279,7 +349,7 @@ enum PrescriptionText {
             return " + " + (group.count > 1 ? "\(group.count) × " : "") + group.text
                 + " " + group.side.shortLabel + group.kind
         }
-        return list(plainTexts) + " each side" + extras.joined()
+        return list(plain, plainText) + " each side" + extras.joined()
     }
 }
 

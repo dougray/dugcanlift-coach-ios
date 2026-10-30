@@ -45,8 +45,8 @@ struct WorkoutEditorView: View {
                     let kinds = types.kinds(of: exercise)
                     let sets = exercise.orderedSets
                     Section {
-                        // What the exercise asks for, in words: "3 × 30 lb × 8
-                        // each side + 1 L", "70 lb × 12, 50 lb × 10 drop".
+                        // What the exercise asks for, in words: "3 × 30 × 8
+                        // each side + 1 L", "70 × 12, 50 × 10 drop".
                         Text(PrescriptionText.summary(exercise, sides: sides, types: types))
                             .font(.caption)
                             .foregroundStyle(Theme.textSecondary)
