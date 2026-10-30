@@ -499,10 +499,10 @@ final class SetTypesTests: XCTestCase {
         let sides = PrescriptionSides.load(from: ctx)
         let types = PrescriptionTypes.load(from: ctx)
         XCTAssertEqual(routine.orderedExercises.map { PrescriptionText.summary($0, sides: sides, types: types) }, [
-            "70 lb × 12, 70 lb × 12, 50 lb × 10 drop, 35 lb × 10 drop",
-            "65 lb × 8, 65 lb × 4 rest-pause",
-            "40 lb × 12, 30 lb × 12 L drop",
-            "2 × 30 lb × 12",
+            "70 × 12, 70 × 12, 50 × 10 drop, 35 × 10 drop",
+            "65 × 8, 65 × 4 rest-pause",
+            "40 × 12, 30 × 12 L drop",
+            "2 × 30 × 12",
         ])
     }
 
@@ -524,11 +524,11 @@ final class SetTypesTests: XCTestCase {
         let sides = PrescriptionSides.load(from: ctx)
         let types = PrescriptionTypes.load(from: ctx)
         XCTAssertEqual(routine.orderedExercises.map { PrescriptionText.summary($0, sides: sides, types: types) }, [
-            "50 lb × 10, 30 lb × 12 drop each side",
-            "2 × 50 lb × 10 each side + 30 lb × 12 L drop",
-            "50 lb × 10, 30 lb × 12 drop each side + 30 lb × 12 L drop",
-            "30 lb × 12, 30 lb × 12 drop each side + 30 lb × 12 L drop",
-            "30 lb × 12, 30 lb × 12 drop, 30 lb × 12 drop each side + 30 lb × 12 L drop",
+            "50 × 10, 30 × 12 drop each side",
+            "2 × 50 × 10 each side + 30 × 12 L drop",
+            "50 × 10, 30 × 12 drop each side + 30 × 12 L drop",
+            "30 × 12, 30 × 12 drop each side + 30 × 12 L drop",
+            "30 × 12, 30 × 12 drop, 30 × 12 drop each side + 30 × 12 L drop",
         ])
     }
 

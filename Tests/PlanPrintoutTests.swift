@@ -40,7 +40,7 @@ final class PlanPrintoutTests: XCTestCase {
         XCTAssertEqual(days[0].workouts.first?.name, "Lower A")
         XCTAssertEqual(days[0].workouts.first?.exercises,
                        [.init(name: lower.orderedExercises[0].displayName,
-                              prescription: "3 × 225 lb × 5", note: "Belt on the last set.")])
+                              prescription: "3 × 225 × 5", note: "Belt on the last set.")])
         XCTAssertEqual(days[1].workouts, [.init(name: "Removed workout", exercises: [])])
     }
 
@@ -59,7 +59,7 @@ final class PlanPrintoutTests: XCTestCase {
         XCTAssertTrue(text.contains("Jordan Reyes"))
         XCTAssertTrue(text.contains("from Doug"))
         XCTAssertTrue(text.contains("Lower A"))
-        XCTAssertTrue(text.contains("3 × 225 lb × 5"))
+        XCTAssertTrue(text.contains("3 × 225 × 5"))
     }
 
     /// A long programme goes on to a second page rather than off the bottom.
