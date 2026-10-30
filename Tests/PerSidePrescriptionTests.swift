@@ -324,7 +324,7 @@ final class PerSidePrescriptionTests: XCTestCase {
         ], in: context())
         let e = built.routine.orderedExercises
         XCTAssertEqual(e.map { PrescriptionText.summary($0, sides: built.sides, types: PrescriptionTypes()) },
-                       ["3 × 225 lb × 5", "225 lb × 5, 245 lb × 3", "no sets yet"])
+                       ["3 × 225 × 5", "225 × 5, 245 × 3", "no sets yet"])
     }
 
     func testEachSideReadsEachSideAndAnExtraSetReadsPlusOneL() throws {
@@ -338,12 +338,12 @@ final class PerSidePrescriptionTests: XCTestCase {
         ], in: context())
         let e = built.routine.orderedExercises
         XCTAssertEqual(e.map { PrescriptionText.summary($0, sides: built.sides, types: PrescriptionTypes()) }, [
-            "3 × 30 lb × 8 each side",
-            "3 × 30 lb × 8 each side + 1 L",
-            "3 × 30 lb × 8 each side + 20 lb × 12 L",
-            "30 lb × 8 each side",
-            "185 lb × 5, 95 lb × 10 R",
-            "2 × 30 lb × 8 L",
+            "3 × 30 × 8 each side",
+            "3 × 30 × 8 each side + 1 L",
+            "3 × 30 × 8 each side + 20 × 12 L",
+            "30 × 8 each side",
+            "185 × 5, 95 × 10 R",
+            "2 × 30 × 8 L",
         ])
     }
 
