@@ -163,7 +163,7 @@ struct TrainView: View {
         // one, or many workouts with no sessions, and picking a
         // subset is more UI than this needs.
         if !routines.isEmpty {
-            Menu("Send programme") {
+            Menu("Send program") {
                 if clients.isEmpty {
                     Text("No clients yet")
                 } else {

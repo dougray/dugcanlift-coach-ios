@@ -47,12 +47,12 @@ struct RecipeLinkImportView: View {
                     review(found, sourceURL)
                 } else {
                     Section {
-                        Text("This recipe couldn't be read. Share the page from Safari again, or use Paste a recipe.")
+                        Text("This recipe couldn't be read. Share the page again, or use Paste a recipe.")
                             .foregroundStyle(Theme.textSecondary)
                     }
                 }
             }
-            .navigationTitle("Import from Safari")
+            .navigationTitle("Check this recipe")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }

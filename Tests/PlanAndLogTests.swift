@@ -625,7 +625,7 @@ final class PlanAndLogTests: XCTestCase {
     func testAClientWhoSentTotalsAndNotItemsGetsNoSlotVerdictAtAll() throws {
         let result = runMeals([recipe("Beef Chilli")], [meal("2026-10-12", Self.dinner, 0)],
                               ["2026-10-12": foodDay(totals: totalsOnly)])
-        XCTAssertEqual(try first(result).foodContext, "Food logged that day, not itemised")
+        XCTAssertEqual(try first(result).foodContext, "Food logged that day, not itemized")
         XCTAssertNil(try first(result).meals[0].logged)
         XCTAssertFalse(PlanAndLog.lines(result).joined(separator: " ").contains("Nothing logged"))
     }
