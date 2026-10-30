@@ -260,9 +260,9 @@ struct RootView: View {
                                                  message: ShareLinkImporter.invalidLinkMessage)
         /// A "Send to Coach" link that did not decode, and one with no recipe
         /// in it -- the bookmarklet's shared wording, the same in every build.
-        static let recipeLinkUnreadable = IntakeReport(title: "Couldn't import",
+        static let recipeLinkUnreadable = IntakeReport(title: "Couldn't read that recipe",
                                                        message: RecipeLink.unreadableMessage)
-        static let recipeLinkHoldsNoRecipe = IntakeReport(title: "Couldn't import",
+        static let recipeLinkHoldsNoRecipe = IntakeReport(title: "Couldn't read that recipe",
                                                           message: RecipeLink.noRecipeMessage)
     }
 

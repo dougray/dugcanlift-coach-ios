@@ -941,7 +941,7 @@ enum PlanAndLog {
     /// app recorded with no slot.
     static func foodContext(_ food: DayFood) -> String {
         switch food.state {
-        case .totals: return "Food logged that day, not itemised"
+        case .totals: return "Food logged that day, not itemized"
         case .none: return "No food logged that day"
         case .items:
             let loose = food.items.filter { $0.slot == nil }.count
