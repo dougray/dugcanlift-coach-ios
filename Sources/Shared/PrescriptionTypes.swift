@@ -83,7 +83,7 @@ enum SetKind: String, CaseIterable, Identifiable {
 
     static let planShift = 3
 
-    /// The word a set's text ends with: "50 lb × 10 drop". Coach web's
+    /// The word a set's text ends with: "50 × 10 drop". Coach web's
     /// `kindLabel`.
     var label: String { self == .drop ? "drop" : "rest-pause" }
 
