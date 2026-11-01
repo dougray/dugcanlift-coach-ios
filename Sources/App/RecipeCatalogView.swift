@@ -51,7 +51,7 @@ struct RecipeCatalogView: View {
                     reposition(proxy, from: old, to: new)
                 }
             }
-            .navigationTitle(selected == nil ? "Recipe catalogue" : "Add recipe")
+            .navigationTitle(selected == nil ? "Recipe catalog" : "Add recipe")
             .searchable(text: $query, prompt: "Search 600+ recipes")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -222,7 +222,7 @@ struct RecipeCatalogView: View {
             note = found.isEmpty && trimmed.count >= 2 ? "Nothing matches that." : ""
         } catch {
             entries = []
-            note = "The recipe catalogue could not be opened."
+            note = "The recipe catalog could not be opened."
         }
     }
 

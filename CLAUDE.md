@@ -1101,7 +1101,7 @@ too, the pair sits beside the numbers from
 grouped exercise is headed "Superset A · A1"; the workout list names the group
 once over its first member and prefixes each member "A1 · ". "Superset" is two,
 "Circuit" three or more, letters run on past Z as AA, AB. A set reads side then
-kind: "30 lb × 12 L drop". These are Coach web's and LIFT's words; change them
+kind: "30 × 12 L drop". These are Coach web's and LIFT's words; change them
 in every build or in none.
 
 **Backup**: `group: <positive integer>` on an exercise and `kind: "drop" |
