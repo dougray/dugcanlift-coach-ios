@@ -178,7 +178,7 @@ struct CookView: View {
     private var importMenu: some View {
         Menu("Import") {
             // First: it needs no connection and no typing.
-            Button("From the catalogue") { browsingCatalogue = true }
+            Button("From the catalog") { browsingCatalogue = true }
             // A recipe found on the web arrives from Safari's share sheet;
             // this says how. Pasting the text is what is left when a page has
             // no recipe card -- a caption, an email, a photo retyped.
