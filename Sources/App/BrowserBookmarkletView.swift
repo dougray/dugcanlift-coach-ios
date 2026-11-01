@@ -28,7 +28,7 @@ struct BrowserBookmarkletView: View {
                     if let bookmarklet {
                         LiftCard(title: "Send to Coach") {
                             VStack(alignment: .leading, spacing: 12) {
-                                Text(bookmarklet)
+                                Text(Self.characterWrapped(bookmarklet))
                                     .font(.caption.monospaced())
                                     .foregroundStyle(Theme.textSecondary)
                                     .lineLimit(4)
@@ -72,6 +72,15 @@ struct BrowserBookmarkletView: View {
             }
         }
         .liftAppearance()
+    }
+
+    /// The preview only, never what Copy copies. The bookmarklet has no
+    /// spaces, so `Text` broke it at its punctuation and hyphenated the runs in
+    /// between, writing hyphens into code that has none. A zero-width space
+    /// between every character makes each one a break opportunity, so lines
+    /// fill to the edge and wrap by character with nothing added.
+    static func characterWrapped(_ text: String) -> String {
+        text.map(String.init).joined(separator: "\u{200B}")
     }
 
     private func step(_ number: Int, _ text: String) -> some View {
