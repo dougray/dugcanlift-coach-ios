@@ -184,17 +184,26 @@ struct ClientDetailView: View {
 
     // MARK: - Training volume
 
+    /// A day key as the date the charts plot. Plotting the key itself made
+    /// every day a category, and five weeks of categories truncated their
+    /// labels to a row of "2 2 2"; a date lets Charts choose a few ticks and
+    /// format them in the reader's locale.
+    private static func plotted(_ dayKey: String) -> Date? {
+        DayKey.date(from: dayKey)
+    }
+
     private var volumeChart: some View {
-        let points = sortedDays.map { day -> (String, Double) in
+        let points = sortedDays.compactMap { day -> (Date, Double)? in
+            guard let date = Self.plotted(day.dayKey) else { return nil }
             let volume = day.sets.reduce(0.0) { total, set in
                 guard !set.isWarmup else { return total }
                 return total + (set.weightLb ?? 0) * Double(set.reps ?? 0)
             }
-            return (day.dayKey, ClientDisplay.weightValue(lb: volume, unit: unit))
+            return (date, ClientDisplay.weightValue(lb: volume, unit: unit))
         }
         return LiftCard(title: "Training Volume") {
             Chart(points, id: \.0) { point in
-                BarMark(x: .value("Day", point.0), y: .value("Volume (\(unit))", point.1))
+                BarMark(x: .value("Day", point.0, unit: .day), y: .value("Volume (\(unit))", point.1))
                     .foregroundStyle(Theme.accent)
             }
             .frame(height: 180)
@@ -205,17 +214,18 @@ struct ClientDetailView: View {
     // MARK: - Fuel vs. goal
 
     private var fuelChart: some View {
-        let points = sortedDays.compactMap { day -> (String, Double)? in
-            if let calories = day.foodCalories { return (day.dayKey, calories) }
+        let points = sortedDays.compactMap { day -> (Date, Double)? in
+            guard let date = Self.plotted(day.dayKey) else { return nil }
+            if let calories = day.foodCalories { return (date, calories) }
             guard !day.foodEntries.isEmpty else { return nil }
             let total = day.foodEntries.reduce(0.0) { $0 + $1.calories }
-            return (day.dayKey, total)
+            return (date, total)
         }
         return LiftCard(title: "Fuel") {
             VStack(alignment: .leading, spacing: 12) {
                 Chart {
                     ForEach(points, id: \.0) { point in
-                        LineMark(x: .value("Day", point.0), y: .value("Calories", point.1))
+                        LineMark(x: .value("Day", point.0, unit: .day), y: .value("Calories", point.1))
                             .foregroundStyle(Theme.accent)
                     }
                     if let goal = client.goal {
@@ -278,17 +288,20 @@ struct ClientDetailView: View {
     // MARK: - Bodyweight trend
 
     private var bodyweightChart: some View {
-        let points = sortedDays.compactMap { day -> (String, Double)? in
-            guard let weight = day.bodyweightLb else { return nil }
-            return (day.dayKey, ClientDisplay.weightValue(lb: weight, unit: unit))
+        let points = sortedDays.compactMap { day -> (Date, Double)? in
+            guard let weight = day.bodyweightLb, let date = Self.plotted(day.dayKey) else { return nil }
+            return (date, ClientDisplay.weightValue(lb: weight, unit: unit))
         }
         return LiftCard(title: "Bodyweight") {
             Chart(points, id: \.0) { point in
-                LineMark(x: .value("Day", point.0), y: .value("Weight (\(unit))", point.1))
+                LineMark(x: .value("Day", point.0, unit: .day), y: .value("Weight (\(unit))", point.1))
                     .foregroundStyle(Theme.accent)
-                PointMark(x: .value("Day", point.0), y: .value("Weight (\(unit))", point.1))
+                PointMark(x: .value("Day", point.0, unit: .day), y: .value("Weight (\(unit))", point.1))
                     .foregroundStyle(Theme.accent)
             }
+            // Fitted to the weights, as LIFT's own body weight chart is: from
+            // zero, a few pounds of change over a month is a flat line.
+            .chartYScale(domain: .automatic(includesZero: false))
             .frame(height: 180)
             .fillsGridCell()
         }
@@ -316,9 +329,12 @@ struct ClientDetailView: View {
                             .font(.subheadline).foregroundStyle(Theme.textSecondary)
                         Chart {
                             ForEach(plotted) { line in
-                                ForEach(line.points, id: \.dayKey) { point in
+                                ForEach(line.points.compactMap { point in
+                                    Self.plotted(point.dayKey).map { (date: $0, point: point) }
+                                }, id: \.point.dayKey) { dated in
+                                    let point = dated.point
                                     LineMark(
-                                        x: .value("Day", point.dayKey),
+                                        x: .value("Day", dated.date, unit: .day),
                                         y: .value("Est. 1RM (\(unit))",
                                                   ClientDisplay.weightValue(
                                                     lb: point.estimatedOneRepMaxLb, unit: unit)),
