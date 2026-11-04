@@ -28,6 +28,7 @@ Package.resolved
 # Claude Code: per-machine settings and worktrees
 .claude/settings.local.json
 .claude/worktrees/
+.claude/launch.json
 
 # Secrets: never commit env files (examples and templates stay tracked)
 .env
