@@ -29,3 +29,10 @@ Package.resolved
 .claude/settings.local.json
 .claude/worktrees/
 .claude/launch.json
+
+# Secrets: never commit env files (examples and templates stay tracked)
+.env
+.env.*
+*.env
+!.env.example
+!.env.template
