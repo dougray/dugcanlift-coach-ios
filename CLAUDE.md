@@ -46,9 +46,9 @@ architectural judgment call this file doesn't cover.
 design exactly — single trainer per device, `SwiftData` is the only
 persistence, nothing here ever talks to a server DUGCANLIFT operates.
 
-**Universal Links do not work on this team.** Doug's signing team
-(`YOUR_TEAM_ID`) is a free Apple Personal Team — Associated Domains fails at
-build time on a free team (confirmed by `lift-ios`'s own build history).
+**Universal Links do not work on this team.** Doug's signing team (set in
+the gitignored `Config/Local.xcconfig`) is a free Apple Personal Team —
+Associated Domains fails at build time on a free team (confirmed by `lift-ios`'s own build history).
 Do not add the Associated Domains entitlement or attempt to intercept
 `https://www.dugcanlift.com/coach/#...` links via Universal Links. A link
 reaches Coach four ways instead. The first three carry a log, all through
