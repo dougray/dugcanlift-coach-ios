@@ -23,6 +23,12 @@ options:
   groupSortPosition: top
   generateEmptyDirectories: true
 
+# Signing team: Config/Signing.xcconfig, which reads your Team ID from the
+# gitignored Config/Local.xcconfig, so no team ID is ever committed.
+configFiles:
+  Debug: Config/Signing.xcconfig
+  Release: Config/Signing.xcconfig
+
 settings:
   base:
     SWIFT_VERSION: "5.9"

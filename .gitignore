@@ -6,6 +6,9 @@
 Config/*.entitlements
 Config/*-Info.plist
 
+# Your signing Team ID (see Config/Signing.xcconfig)
+Config/Local.xcconfig
+
 # Build artifacts
 .build/
 DerivedData/
