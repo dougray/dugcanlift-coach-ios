@@ -59,7 +59,7 @@ final class MapTargetsTests: XCTestCase {
     }
 
     func testTheKitIsPinnedToTheMapRelease() throws {
-        XCTAssertTrue(try projectYML().contains("exactVersion: 1.18.0"))
+        XCTAssertTrue(try projectYML().contains("exactVersion: 1.18.1"))
     }
 
     // MARK: the route card's offer
