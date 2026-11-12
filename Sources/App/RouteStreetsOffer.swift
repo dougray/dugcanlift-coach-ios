@@ -26,7 +26,8 @@ struct RouteStreetsOffer: View {
         // Connect, decides this again.
         let _ = revision
         Group {
-            if let store, let bounds = MapBounds.around(points), Self.shouldOffer(points: points, store: store) {
+            if let store, Self.shouldOffer(points: points, store: store),
+               let bounds = MapBounds.around(points) {
                 Button(Self.title) { presenting = true }
                     .font(.subheadline)
                     .tint(Theme.accentText)
@@ -46,11 +47,13 @@ struct RouteStreetsOffer: View {
             .receive(on: DispatchQueue.main)) { _ in revision += 1 }
     }
 
-    /// The line is showing and a route could be covered. While the store is
+    /// The line is showing and a route could be covered. A route of fewer than
+    /// two points is the line but has no area to download: `MapBounds.around`
+    /// still answers for one point, with a box of nothing. While the store is
     /// being written the map steps back to the line too, but a download
     /// already under way is no moment to start another.
     static func shouldOffer(points: [OutdoorShareCoordinate], store: StreetStore) -> Bool {
-        guard !store.isWriting else { return false }
+        guard points.count >= 2, !store.isWriting else { return false }
         return RouteMapDecision.decide(points: points) { (try? store.covers($0)) ?? false } == .line
     }
 

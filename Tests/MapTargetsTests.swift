@@ -1,4 +1,7 @@
 import XCTest
+import LiftCore
+import LiftMapCore
+@testable import Coach
 
 /// Where the street map is allowed to link.
 ///
@@ -57,5 +60,24 @@ final class MapTargetsTests: XCTestCase {
 
     func testTheKitIsPinnedToTheMapRelease() throws {
         XCTAssertTrue(try projectYML().contains("exactVersion: 1.18.0"))
+    }
+
+    // MARK: the route card's offer
+
+    private func emptyStore() throws -> StreetStore {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MapTargetsTests-\(UUID().uuidString).mbtiles")
+        addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+        return try StreetStore(fileURL: url)
+    }
+
+    func testTheOfferNeedsARouteOfAtLeastTwoPoints() throws {
+        let store = try emptyStore()
+        let a = OutdoorShareCoordinate(latitude: 30.26896, longitude: -97.74262)
+        let b = OutdoorShareCoordinate(latitude: 30.26544, longitude: -97.74262)
+        XCTAssertFalse(RouteStreetsOffer.shouldOffer(points: [], store: store))
+        // MapBounds.around answers for one point, with an area of nothing.
+        XCTAssertFalse(RouteStreetsOffer.shouldOffer(points: [a], store: store))
+        XCTAssertTrue(RouteStreetsOffer.shouldOffer(points: [a, b], store: store))
     }
 }
