@@ -10,8 +10,11 @@
 	<!-- Empty because nothing reaches the developer. Coach has no backend: a
 	     client's log arrives as a pasted link and stays in SwiftData on this
 	     device. Coach makes one kind of request, a street download the coach
-	     starts, and it goes to OpenFreeMap, not the developer; it names the
-	     area asked for, never a client. A recipe arrives through Safari's share
+	     starts, and it goes to OpenFreeMap, not the developer. It sends the
+	     tile coordinates of the area the coach picked (for Coach, the area
+	     around a client's route, so roughly where that client runs) and, as
+	     any request does, the coach's IP address; it names the area asked for,
+	     never a client. A recipe arrives through Safari's share
 	     sheet, and a client's route is drawn from files on the device. Nothing
 	     about the coach or a client reaches the developer. -->
 	<key>NSPrivacyCollectedDataTypes</key>

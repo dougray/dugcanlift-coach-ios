@@ -216,7 +216,8 @@ cover one.
 `Resources/PrivacyInfo.xcprivacy` declares no tracking and no collected data,
 which stays true only while nothing reaches the developer. Coach makes no
 network calls beyond the coach-started map download, which reaches OpenFreeMap
-and not the developer, and `NoNetworkTests` enforces that Coach itself holds no
+(the tile coordinates of the area picked -- around a client's route -- and the
+coach's IP address) and not the developer, and `NoNetworkTests` enforces that Coach itself holds no
 network code — see "Coach makes no network calls except a map download the
 coach starts". Adding any request, SDK or required-reason API
 (`UserDefaults` is CA92.1; file timestamps C617.1, for SQLite; system boot time 35F9.1, for MapLibre) means revisiting
@@ -468,7 +469,9 @@ fails the build on `URLSession`, `URLRequest`, `NWConnection`, `import Network`,
 street download in `LiftMapCore`'s `MapDownload.swift`, which runs only after
 the coach taps Download in `StreetsSheet` (from "Download streets for this
 route" on a client's route card, or Connect's Maps section) and tells OpenFreeMap
-which area was asked for, once. Viewing a map makes no request: the style names
+which area was asked for, once (the tile coordinates of the area around a
+client's route, roughly where that client runs, plus the coach's IP address;
+nothing reaches the developer). Viewing a map makes no request: the style names
 only local files and `MapNetworkGuard.install()` (`CoachApp.init`) refuses
 anything MapLibre asks for anyway. Coach itself holds no network code, so the
 scan above is unchanged and still passes. **The share extension never links

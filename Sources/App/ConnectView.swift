@@ -102,7 +102,8 @@ struct ConnectView: View {
                 Text("Everything stays on this device. There's no account and no server — "
                      + "a backup file is the only way to move your roster, your recipes and "
                      + "your workouts to another device. The one request Coach ever makes is "
-                     + "a street download you start yourself.")
+                     + "a street download you start yourself, and OpenFreeMap learns which area "
+                     + "you asked for, once.")
                     .font(.caption)
                     .foregroundStyle(Theme.textSecondary)
             }
