@@ -10,35 +10,32 @@ import LiftMapCore
 /// asks for the streets until the coach taps it, and the sheet says what the
 /// download is, how large, and what the server learns before anything is
 /// requested.
+///
+/// **The button comes and goes; the sheet does not.** A download holds the
+/// store's write gate, which hides the button (`shouldOffer`), so a sheet
+/// attached to the button would be torn down mid-download, taking its progress
+/// and its "Couldn't finish" with it. The sheet is `RouteStreetsSheet`,
+/// presented from a view that is always on screen (the route card), through the
+/// binding this button sets.
 struct RouteStreetsOffer: View {
     static let title = "Download streets for this route"
     static let note = "This asks for the area around your client's route."
 
     let points: [OutdoorShareCoordinate]
-    let clientName: String
+    @Binding var presenting: Bool
     var store: StreetStore? = StreetStore.shared
 
     @State private var revision = 0
-    @State private var presenting = false
 
     var body: some View {
-        // `revision` is read so a finished download, or an area deleted in
-        // Connect, decides this again.
+        // `revision` is read so a finished download, an area deleted in
+        // Connect, or a download beginning decides this again.
         let _ = revision
         Group {
-            if let store, Self.shouldOffer(points: points, store: store),
-               let bounds = MapBounds.around(points) {
+            if let store, Self.shouldOffer(points: points, store: store) {
                 Button(Self.title) { presenting = true }
                     .font(.subheadline)
                     .tint(Theme.accentText)
-                    .sheet(isPresented: $presenting) {
-                        StreetsSheet(plan: .forRoute(bounds), name: Self.areaName(clientName),
-                                     store: store, note: Self.note) { _ in
-                            presenting = false
-                            revision += 1
-                        }
-                        .liftAppearance()
-                    }
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: StreetStore.didChange, object: store)
@@ -58,4 +55,21 @@ struct RouteStreetsOffer: View {
     }
 
     static func areaName(_ clientName: String) -> String { clientName + "'s route" }
+}
+
+/// The download sheet for a client's route. Dismissed only by its own Cancel
+/// or by finishing (`onDone`), never by the offer button going away.
+struct RouteStreetsSheet: View {
+    let points: [OutdoorShareCoordinate]
+    let clientName: String
+    var store: StreetStore? = StreetStore.shared
+    let onDone: () -> Void
+
+    var body: some View {
+        if let store, let bounds = MapBounds.around(points) {
+            StreetsSheet(plan: .forRoute(bounds), name: RouteStreetsOffer.areaName(clientName),
+                         store: store, note: RouteStreetsOffer.note) { _ in onDone() }
+                .liftAppearance()
+        }
+    }
 }

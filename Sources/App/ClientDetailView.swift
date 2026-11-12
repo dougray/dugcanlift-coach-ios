@@ -29,6 +29,10 @@ struct ClientDetailView: View {
     /// defined -- this keeps the one render between the delete and the page
     /// going away from touching it at all.
     @State private var removed = false
+    /// The route's street download sheet. Held here, on the card, and not on
+    /// the offer button: a download hides the button, and a sheet attached to
+    /// it would go with it.
+    @State private var presentingStreets = false
 
     private var sortedDays: [TrainingDay] {
         client.trainingDays.sorted { $0.dayKey < $1.dayKey }
@@ -498,7 +502,7 @@ struct ClientDetailView: View {
                 RouteMap(points: points)
                     .frame(height: mapHeight)
 
-                RouteStreetsOffer(points: points, clientName: client.name)
+                RouteStreetsOffer(points: points, presenting: $presentingStreets)
 
                 HStack {
                     Text(OutdoorDisplay.typeLabel(route.type) ?? "")
@@ -519,6 +523,11 @@ struct ClientDetailView: View {
                 Text(OutdoorDisplay.trimNote)
                     .font(.caption)
                     .foregroundStyle(Theme.textSecondary)
+            }
+            .sheet(isPresented: $presentingStreets) {
+                RouteStreetsSheet(points: points, clientName: client.name) {
+                    presentingStreets = false
+                }
             }
             .fillsGridCell()
         }

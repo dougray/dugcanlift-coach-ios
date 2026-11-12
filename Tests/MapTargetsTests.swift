@@ -80,4 +80,26 @@ final class MapTargetsTests: XCTestCase {
         XCTAssertFalse(RouteStreetsOffer.shouldOffer(points: [a], store: store))
         XCTAssertTrue(RouteStreetsOffer.shouldOffer(points: [a, b], store: store))
     }
+
+    func testTheOfferGoesWhileADownloadHoldsTheStore() throws {
+        let store = try emptyStore()
+        let a = OutdoorShareCoordinate(latitude: 30.26896, longitude: -97.74262)
+        let b = OutdoorShareCoordinate(latitude: 30.26544, longitude: -97.74262)
+        XCTAssertTrue(RouteStreetsOffer.shouldOffer(points: [a, b], store: store))
+        store.beginWriting()
+        XCTAssertFalse(RouteStreetsOffer.shouldOffer(points: [a, b], store: store))
+        store.endWriting()
+        XCTAssertTrue(RouteStreetsOffer.shouldOffer(points: [a, b], store: store))
+    }
+
+    func testTheOfferGoesOnceStreetsCoverTheRoute() throws {
+        let store = try emptyStore()
+        let a = OutdoorShareCoordinate(latitude: 30.26896, longitude: -97.74262)
+        let b = OutdoorShareCoordinate(latitude: 30.26544, longitude: -97.74262)
+        let area = try store.beginArea(.forRoute(try XCTUnwrap(MapBounds.around([a, b]))), name: "route")
+        // Begun but not finished is not cover.
+        XCTAssertTrue(RouteStreetsOffer.shouldOffer(points: [a, b], store: store))
+        try store.finishArea(area)
+        XCTAssertFalse(RouteStreetsOffer.shouldOffer(points: [a, b], store: store))
+    }
 }

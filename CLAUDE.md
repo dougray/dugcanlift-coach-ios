@@ -216,8 +216,9 @@ cover one.
 `Resources/PrivacyInfo.xcprivacy` declares no tracking and no collected data,
 which stays true only while nothing reaches the developer. Coach makes no
 network calls beyond the coach-started map download, which reaches OpenFreeMap
-and not the developer, and `NoNetworkTests` enforces it — see "Coach makes no
-network calls except a map download the coach starts". Adding any request, SDK or required-reason API
+and not the developer, and `NoNetworkTests` enforces that Coach itself holds no
+network code — see "Coach makes no network calls except a map download the
+coach starts". Adding any request, SDK or required-reason API
 (`UserDefaults` is CA92.1; file timestamps C617.1, for SQLite; system boot time 35F9.1, for MapLibre) means revisiting
 it. `ITSAppUsesNonExemptEncryption` is `false` in `project.yml`: the one request
 is the system's HTTPS, so nothing here uses encryption beyond the system's own.

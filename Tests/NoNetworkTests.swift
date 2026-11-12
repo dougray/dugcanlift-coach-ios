@@ -1,8 +1,11 @@
 import XCTest
 
 /// The in-house rule (LIFT superproject,
-/// `docs/superpowers/specs/2026-10-06-in-house-runtime-design.md`): at runtime
-/// Coach makes no request to any server. iOS has no internet permission to
+/// `docs/superpowers/specs/2026-10-06-in-house-runtime-design.md`): Coach itself
+/// holds no network code. The one thing that may make a request is the kit's
+/// street download (`LiftMapCore`'s `MapDownload.swift`, started by the coach),
+/// which lives outside this repo's `Sources/`, so this test guarantees that
+/// Coach's own code makes none. iOS has no internet permission to
 /// withhold, so this reads the shipped source -- every Swift file under
 /// `Sources/`, the app's and the share extension's, and every JavaScript file
 /// there (Safari runs `RecipePage.js` on the shared page) -- and fails on any
