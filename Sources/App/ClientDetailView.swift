@@ -2,6 +2,8 @@ import SwiftUI
 import SwiftData
 import Charts
 import LiftCore
+import LiftMap
+import LiftMapCore
 
 struct ClientDetailView: View {
     let client: Client
@@ -27,6 +29,10 @@ struct ClientDetailView: View {
     /// defined -- this keeps the one render between the delete and the page
     /// going away from touching it at all.
     @State private var removed = false
+    /// The route's street download sheet. Held here, on the card, and not on
+    /// the offer button: a download hides the button, and a sheet attached to
+    /// it would go with it.
+    @State private var presentingStreets = false
 
     private var sortedDays: [TrainingDay] {
         client.trainingDays.sorted { $0.dayKey < $1.dayKey }
@@ -490,8 +496,13 @@ struct ClientDetailView: View {
         let stats = OutdoorDisplay.routeStats(route, unit: distanceUnit)
         return LiftCard(title: "Last route") {
             VStack(alignment: .leading, spacing: 10) {
-                RouteCanvas(points: points)
+                // The streets under the route when the coach has downloaded
+                // them, the plain line when not. Drawn from this device's
+                // files; looking at it asks for nothing.
+                RouteMap(points: points)
                     .frame(height: mapHeight)
+
+                RouteStreetsOffer(points: points, presenting: $presentingStreets)
 
                 HStack {
                     Text(OutdoorDisplay.typeLabel(route.type) ?? "")
@@ -512,6 +523,11 @@ struct ClientDetailView: View {
                 Text(OutdoorDisplay.trimNote)
                     .font(.caption)
                     .foregroundStyle(Theme.textSecondary)
+            }
+            .sheet(isPresented: $presentingStreets) {
+                RouteStreetsSheet(points: points, clientName: client.name) {
+                    presentingStreets = false
+                }
             }
             .fillsGridCell()
         }
