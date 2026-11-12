@@ -215,11 +215,12 @@ cover one.
 
 `Resources/PrivacyInfo.xcprivacy` declares no tracking and no collected data,
 which stays true only while nothing reaches the developer. Coach makes no
-network calls, and `NoNetworkTests` enforces it — see "Coach makes no network
-calls". Adding any request, SDK or required-reason API
-(`UserDefaults` is CA92.1; file timestamps C617.1, for SQLite) means revisiting
-it. `ITSAppUsesNonExemptEncryption` is `false` in `project.yml`: Coach makes no
-requests, so nothing here uses encryption beyond the system's own.
+network calls beyond the coach-started map download, which reaches OpenFreeMap
+and not the developer, and `NoNetworkTests` enforces it — see "Coach makes no
+network calls except a map download the coach starts". Adding any request, SDK or required-reason API
+(`UserDefaults` is CA92.1; file timestamps C617.1, for SQLite; system boot time 35F9.1, for MapLibre) means revisiting
+it. `ITSAppUsesNonExemptEncryption` is `false` in `project.yml`: the one request
+is the system's HTTPS, so nothing here uses encryption beyond the system's own.
 Listing text is in `fastlane/metadata/en-US`, screenshots in
 `fastlane/screenshots/en-US`: iPhone 6.9" (`N_iPhone69_*`, 1320x2868) and, since
 Coach runs on iPad, iPad 13" landscape (`N_iPadPro13_*`, 2752x2064), all sample
@@ -454,14 +455,25 @@ stop working the day the package adds one.
 Cook has a fourth section, **Road** -- see "Road picks" below. It reads
 bundled data and sends nothing of its own.
 
-**Coach makes no network calls.** Nothing in the app or its share extension
-requests anything from any server — the in-house rule (LIFT superproject,
+**Coach makes no network calls except a map download the coach starts.**
+Nothing in the app or its share extension requests anything from any server
+the coach did not point it at -- the in-house rule (LIFT superproject,
 `2026-10-06-in-house-runtime-design.md`), enforced by `NoNetworkTests`, which
 fails the build on `URLSession`, `URLRequest`, `NWConnection`, `import Network`,
 `import MapKit`, `import WebKit` or `AsyncImage(` in any Swift file under
 `Sources/`, the share extension's included, and on `fetch(`, `XMLHttpRequest`,
 `WebSocket`, `sendBeacon` or `import(` in any JavaScript file there
-(`RecipePage.js`).
+(`RecipePage.js`). The one exception lives in `dugcanlift-kit`, not here: the
+street download in `LiftMapCore`'s `MapDownload.swift`, which runs only after
+the coach taps Download in `StreetsSheet` (from "Download streets for this
+route" on a client's route card, or Connect's Maps section) and tells OpenFreeMap
+which area was asked for, once. Viewing a map makes no request: the style names
+only local files and `MapNetworkGuard.install()` (`CoachApp.init`) refuses
+anything MapLibre asks for anyway. Coach itself holds no network code, so the
+scan above is unchanged and still passes. **The share extension never links
+`LiftMap` or `LiftMapCore`** -- `MapTargetsTests` reads `project.yml` and fails
+if either reaches a target other than `Coach`, or if `CoachShare` links anything
+but `LiftCore`.
 
 Cook has **four** import sources: the bundled catalogue
 (`RecipeCatalogView`), a pasted caption (`RecipePasteImportView`), a recipe
@@ -901,12 +913,23 @@ miles for a client whose unit is `lb`, kilometres for `kg`; a pace only from
 `toFixed`'s rounding of the binary value (2795 m is "2.79 km"), which
 `OutdoorShareTests` pins against the web app's own output.
 
-**The route is drawn by the app, with no map behind it** — the kit's
-`RouteCanvas`, a port of Coach web's canvas and LIFT Android's
-`RoutePolylineCanvas`, through `RouteProjection`, which is checked point for
-point against a fixture Coach web's `route.js` wrote. No tile server learns
-where a client runs, on any Coach build. This is the in-house rule (LIFT
-superproject, `2026-10-06-in-house-runtime-design.md`).
+**The route is drawn over streets the coach downloaded, or as a plain line.**
+`RouteMap` (the kit's `LiftMap`) draws it over MBTiles files on the device
+when one covers the route, with MapLibre Native, the bundled Noto glyphs and no
+server behind it; otherwise it is the kit's `RouteCanvas`, a port of Coach web's
+canvas and LIFT Android's `RoutePolylineCanvas`, through `RouteProjection`,
+which is checked point for point against a fixture Coach web's `route.js`
+wrote. The route card offers "Download streets for this route"
+(`RouteStreetsOffer`) only while it is drawn as the line; the sheet says the
+size, the source and what OpenFreeMap learns, plus "This asks for the area
+around your client's route." Connect's Maps section lists, updates and deletes
+areas (no "around here": Coach has no location). No tile server is asked while
+a map is *viewed*, on any Coach build; the one request is the download the coach
+starts. This is the in-house rule (LIFT superproject,
+`2026-10-06-in-house-runtime-design.md`) with the exception named under "Coach
+makes no network calls except a map download the coach starts". The credits
+(OpenStreetMap ODbL, OpenFreeMap, Noto OFL, MapLibre Native BSD-2) are
+`MapCreditsView`, in Connect.
 
 `Tests/Fixtures/outdoor-share-link.txt` and `outdoor-share-expected.json` were
 written by LIFT web. Do not regenerate them from Swift.

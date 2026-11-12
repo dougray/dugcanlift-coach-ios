@@ -2,6 +2,8 @@ import SwiftUI
 import SwiftData
 import UniformTypeIdentifiers
 import LiftCore
+import LiftMap
+import LiftMapCore
 
 struct ConnectView: View {
     @Environment(\.modelContext) private var context
@@ -80,10 +82,27 @@ struct ConnectView: View {
             }
             .listRowBackground(Theme.surface)
 
+            // The streets a client's route is drawn over: list, Update, Delete.
+            // No "around here": Coach has no location, and a coach downloads
+            // for a route from the client's page.
+            if let streets = StreetStore.shared {
+                MapsSection(store: streets, location: { nil }, lastRunStart: nil)
+                    .listRowBackground(Theme.surface)
+            }
+
+            Section {
+                MapCreditsView()
+            } header: {
+                Text("Map credits")
+                    .foregroundStyle(Theme.textSecondary)
+            }
+            .listRowBackground(Theme.surface)
+
             Section {
                 Text("Everything stays on this device. There's no account and no server — "
                      + "a backup file is the only way to move your roster, your recipes and "
-                     + "your workouts to another device.")
+                     + "your workouts to another device. The one request Coach ever makes is "
+                     + "a street download you start yourself.")
                     .font(.caption)
                     .foregroundStyle(Theme.textSecondary)
             }

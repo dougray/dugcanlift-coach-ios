@@ -2,6 +2,8 @@ import SwiftUI
 import SwiftData
 import Charts
 import LiftCore
+import LiftMap
+import LiftMapCore
 
 struct ClientDetailView: View {
     let client: Client
@@ -490,8 +492,13 @@ struct ClientDetailView: View {
         let stats = OutdoorDisplay.routeStats(route, unit: distanceUnit)
         return LiftCard(title: "Last route") {
             VStack(alignment: .leading, spacing: 10) {
-                RouteCanvas(points: points)
+                // The streets under the route when the coach has downloaded
+                // them, the plain line when not. Drawn from this device's
+                // files; looking at it asks for nothing.
+                RouteMap(points: points)
                     .frame(height: mapHeight)
+
+                RouteStreetsOffer(points: points, clientName: client.name)
 
                 HStack {
                     Text(OutdoorDisplay.typeLabel(route.type) ?? "")
