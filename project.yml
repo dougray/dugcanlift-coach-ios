@@ -41,8 +41,8 @@ settings:
     # build (2026-10-26), reported while this said "1.0.0" and reached
     # nothing. CURRENT_PROJECT_VERSION must be higher than every build ever
     # uploaded, so it only goes up, whatever the version says.
-    MARKETING_VERSION: "1.1"
-    CURRENT_PROJECT_VERSION: "2"
+    MARKETING_VERSION: "1.2"
+    CURRENT_PROJECT_VERSION: "3"
     # SwiftData @Model classes are not Sendable. `complete` buries real errors
     # under concurrency warnings during scaffolding — tighten once it builds.
     SWIFT_STRICT_CONCURRENCY: minimal
