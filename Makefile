@@ -27,6 +27,10 @@ DEVICE_APP     := $(DEVICE_DERIVED)/Build/Products/Debug-iphoneos/Coach.app
 # The first iPhone or iPad devicectl knows about. Override for a specific one:
 #   make device DEVICE=901D197D-95D6-5FA6-B188-6C827D7B0109
 #
+# Matched by shape, not by column: devicectl's table gained a "(UDID)" label
+# after this was written and $3 became that literal string, so every install
+# had to pass DEVICE= by hand.
+#
 # Deliberately NOT filtered on State. This used to require "connected", on the
 # assumption that "available (paired)" meant unreachable. It does not: installs
 # succeed against a device in that state routinely, and the stricter filter
@@ -34,7 +38,16 @@ DEVICE_APP     := $(DEVICE_DERIVED)/Build/Products/Debug-iphoneos/Coach.app
 # defeats the target. A device that really is unreachable fails at the install
 # with a clear CoreDevice error, which is better than a build that declines to
 # start.
-DEVICE ?= $(shell xcrun devicectl list devices 2>/dev/null | awk '/iPhone|iPad/ { for (i = 1; i <= NF; i++) if ($$i ~ /^[0-9A-Fa-f]{8}-[0-9A-Fa-f-]+$$/) { print $$i; exit } }')
+#
+# Rows marked "simulated" are skipped: devicectl lists simulators alongside
+# real devices now (its Reality column says which), sorted by name. Without
+# this filter the first matching row won whatever it was: any simulator whose
+# name sorts ahead of the phone's (a custom-named one, or every "iPad ..."/
+# "iPhone ..." simulator when the phone's name starts with a lowercase
+# letter) was taken as the device, and with no phone attached at all the
+# first simulator was taken instead of the "No iPhone or iPad visible"
+# message below. Ported from lift-ios's Makefile.
+DEVICE ?= $(shell xcrun devicectl list devices 2>/dev/null | awk '/iPhone|iPad/ && !/simulated/ { for (i = 1; i <= NF; i++) if ($$i ~ /^[0-9A-Fa-f]{8}-[0-9A-Fa-f-]+$$/) { print $$i; exit } }')
 
 # Unlike lift-ios, this app needs no entitlements override to build for a
 # device on a free Apple Personal Team. Its only capability is App Groups
